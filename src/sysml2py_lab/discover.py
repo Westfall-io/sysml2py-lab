@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+
+from .normalize import normalize_text
+from .parse_blocks import parse_brace_blocks
+from .model import Block, Line
+
+
+@dataclass(frozen=True)
+class DiscoveryResult:
+    """Summary of corpus patterns for codegen."""
+
+    files_scanned: int
+    statement_prefix_counts: dict[str, int]
+
+
+def iter_sysml_files(corpus_dir: Path) -> Iterable[Path]:
+    """Yield .sysml files under corpus_dir."""
+    yield from sorted(corpus_dir.rglob("*.sysml"))
+
+
+def discover_corpus(corpus_dir: Path) -> DiscoveryResult:
+    """
+    MVP discovery:
+      - parse each file into brace blocks
+      - count statement "prefix" = first token on each Line
+    """
+    corpus_dir = corpus_dir.expanduser().resolve()
+    counts: dict[str, int] = {}
+    files = list(iter_sysml_files(corpus_dir))
+
+    for p in files:
+        text = p.read_text(encoding="utf-8")
+        text = normalize_text(text)
+        root = parse_brace_blocks(text)
+
+        for b in root.walk_blocks():
+            for child in b.children:
+                if isinstance(child, Line):
+                    tok = (child.text.strip().split(" ", 1)[0] if child.text.strip() else "")
+                    if tok:
+                        counts[tok] = counts.get(tok, 0) + 1
+
+    return DiscoveryResult(files_scanned=len(files), statement_prefix_counts=counts)
