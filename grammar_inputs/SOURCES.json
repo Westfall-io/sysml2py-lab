@@ -1,0 +1,25 @@
+{
+  "description": "Vendored SysML v2 / KerML Xtext grammar inputs, snapshotted from the sysml2py library's textx/ directory (which in turn derives from the official SysML-v2-Release Xtext sources).",
+  "upstream": {
+    "repo": "https://github.com/Systems-Modeling/SysML-v2-Release",
+    "library_source": "sysml2py/src/sysml2py/textx/",
+    "note": "Exact upstream tag TBD; these are the .xtext files currently shipped inside sysml2py v0.5.3."
+  },
+  "files": {
+    "SysML.xtext": {
+      "sha256": "cd1f7d64ac7d5db71e775445401c6f0d42dc3726ed983ee3be90c3a4da4fc854",
+      "bytes": 60663,
+      "role": "authoritative SysML v2 grammar"
+    },
+    "KerML.xtext": {
+      "sha256": "07ac328618220d4991d1052f0eabd8c8e7994d31933fd9b408980b161c2d7a5a",
+      "bytes": 28524,
+      "role": "authoritative KerML grammar"
+    },
+    "KerMLExpressions.xtext": {
+      "sha256": "eaecbbc3f85fd011047721aa994303e4c7770e2df33b5ea043e587fe5d8ccf4e",
+      "bytes": 14284,
+      "role": "authoritative KerML expressions grammar"
+    }
+  }
+}

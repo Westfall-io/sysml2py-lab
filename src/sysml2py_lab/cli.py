@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .discover import discover_corpus
 from .codegen.emit import emit_sysml2py, EmitOptions
+from .grammar.inputs import verify_inputs, load_manifest
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,6 +22,14 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--out", type=Path, default=Path("out"))
     g.add_argument("--version", default="0.0.0")
 
+    iv = sub.add_parser("inputs", help="Grammar input management (vendor / verify).")
+    iv_sub = iv.add_subparsers(dest="inputs_cmd", required=True)
+    iv_verify = iv_sub.add_parser("verify", help="Verify vendored grammar inputs against the recorded manifest.")
+    iv_verify.add_argument(
+        "--dir", type=Path, default=Path("grammar_inputs"),
+        help="Path to the vendored grammar-inputs directory (default: ./grammar_inputs)",
+    )
+
     args = p.parse_args(argv)
 
     if args.cmd == "discover":
@@ -34,5 +44,17 @@ def main(argv: list[str] | None = None) -> int:
         pkg_root = emit_sysml2py(args.out, res, opts=EmitOptions(version=args.version))
         print(str(pkg_root))
         return 0
+
+    if args.cmd == "inputs":
+        if args.inputs_cmd == "verify":
+            try:
+                manifest = verify_inputs(args.dir)
+            except Exception as e:
+                print(f"inputs verify FAILED: {e}", file=sys.stderr)
+                return 1
+            print("inputs verify OK:")
+            for rel in sorted(manifest.entries):
+                print(f"  {rel}  sha256={manifest.entries[rel][:16]}...")
+            return 0
 
     return 2
