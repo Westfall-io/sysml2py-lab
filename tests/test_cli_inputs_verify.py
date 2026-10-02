@@ -33,3 +33,19 @@ def test_cli_inputs_verify_drift(tmp_path: Path, capsys):
     captured = capsys.readouterr()
     assert rc == 1
     assert "FAILED" in captured.err  # failure message goes to stderr
+
+
+def test_cli_spec_writes_json(tmp_path: Path, capsys):
+    """CLI `sysml2py-lab spec` builds language_spec.json from a grammar dir."""
+    g = tmp_path / "g"
+    g.mkdir()
+    (g / "mini.xtext").write_text(
+        "grammar Mini\nfragment A returns X::Y : foo = Bar;\n", encoding="utf-8"
+    )
+    out = tmp_path / "out" / "language_spec.json"
+    rc = main(["spec", "--dir", str(g), "--out", str(out)])
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert out.exists()
+    assert "spec wrote" in captured.out
+    assert "rules=1" in captured.out

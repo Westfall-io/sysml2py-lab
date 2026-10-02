@@ -7,6 +7,7 @@ from pathlib import Path
 from .discover import discover_corpus
 from .codegen.emit import emit_sysml2py, EmitOptions
 from .grammar.inputs import verify_inputs, load_manifest
+from .grammar.spec import build_spec, write_spec
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +29,16 @@ def main(argv: list[str] | None = None) -> int:
     iv_verify.add_argument(
         "--dir", type=Path, default=Path("grammar_inputs"),
         help="Path to the vendored grammar-inputs directory (default: ./grammar_inputs)",
+    )
+
+    sp = sub.add_parser("spec", help="Parse the Xtext grammar inputs into language_spec.json.")
+    sp.add_argument(
+        "--dir", type=Path, default=Path("grammar_inputs"),
+        help="Path to the vendored grammar-inputs directory (default: ./grammar_inputs)",
+    )
+    sp.add_argument(
+        "--out", type=Path, default=Path("spec") / "language_spec.json",
+        help="Output path (default: ./spec/language_spec.json)",
     )
 
     args = p.parse_args(argv)
@@ -56,5 +67,18 @@ def main(argv: list[str] | None = None) -> int:
             for rel in sorted(manifest.entries):
                 print(f"  {rel}  sha256={manifest.entries[rel][:16]}...")
             return 0
+
+    if args.cmd == "spec":
+        try:
+            spec = build_spec(args.dir)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            write_spec(spec, args.out)
+        except Exception as e:
+            print(f"spec FAILED: {e}", file=sys.stderr)
+            return 1
+        print(f"spec wrote {args.out} ({spec['counts']['total']} rules)")
+        print(f"  rules={spec['counts']['rules']} fragments={spec['counts']['fragments']} "
+              f"terminals={spec['counts']['terminals']} enums={spec['counts']['enums']}")
+        return 0
 
     return 2
