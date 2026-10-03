@@ -14,7 +14,7 @@ document is deterministic (same inputs → byte-identical JSON, sorted keys).
   "files": [
     {
       "file": "SysML.xtext",
-      "line_count": 2379,
+      "line_count": 2380,
       "grammar": { "name": "org.omg.sysml.xtext.SysML",
                    "with": ["org.omg.kerml.expressions.xtext.KerMLExpressions"] },
       "rule_names": ["RootNamespace", "..."]
@@ -51,7 +51,8 @@ document is deterministic (same inputs → byte-identical JSON, sorted keys).
 }
 ```
 
-`source.file` is the repo-relative posix path.  For `terminal` / `enum` rules
+`source.file` is the path of the file relative to the grammar-inputs
+directory (e.g. `"SysML.xtext"`).  For `terminal` / `enum` rules
 the `body` is a raw token stream:
 
 ```jsonc
@@ -92,8 +93,11 @@ with `"card": "?" | "*" | "+"`.
 
 Each file's `grammar` declaration records the fully-qualified grammar name
 and its `with` super-grammar chain (used by consumers to resolve overrides
-and cross-file rule references).  `import "..." as Alias` and `hidden(...)`
-declarations precede the rule stream.
+and cross-file rule references).  `grammar` is `null` when a file has no
+declaration; `with` is absent when the grammar has no super-grammar and
+`hidden` (the `hidden(WS, ...)` terminal list) is present only when the
+source declares it.  `import "..." as Alias` URI maps precede the rule
+stream.
 
 ## Determinism
 

@@ -126,7 +126,6 @@ class XtextParser:
 
     # -- rule-level -----------------------------------------------------
     def parse_rule(self):
-        c = self.c
         hdr = self._parse_header()
         body = self._parse_body(hdr)
         r = {"kind": "rule", "name": hdr.name, "rule_kind": hdr.kind,

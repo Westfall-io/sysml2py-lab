@@ -43,7 +43,9 @@ def test_lexer_range_operator():
     # '..' must be a single symbol (not two '.' symbols)
     toks = tokenize("'0'..'9'")
     assert any(t.kind == SYMBOL and t.value == ".." for t in toks)
-    assert not any(t.kind == SYMBOL and t.value == "." and False for t in toks)
+    # and it must NOT be split into two single '.' symbols
+    dots = [t for t in toks if t.kind == SYMBOL and t.value == "."]
+    assert len(dots) == 0
 
 
 def test_lexer_unterminated_comment_raises():
@@ -154,6 +156,20 @@ def test_c4_group_alt_is_nested_alt():
 def test_override_field_recorded():
     rules, _ = parse_xtext("@Override OwnedFeature returns X::Y : foo = Bar;", source="fixture.xtext")
     assert rules[0]["override"] is True
+
+
+def test_c1_quoted_arrow_vs_predicate():
+    """Quoted '->' is a keyword literal; bare -> is a predicate."""
+    rules, _ = parse_xtext(
+        "fragment K returns X::Y : {X::Type.operand += current} '->' -> FeatureSpecialization;",
+        source="fixture.xtext",
+    )
+    b = rules[0]["body"]
+    lits = _find_nodes(b, "lit")
+    preds = _find_nodes(b, "pred")
+    assert any(l["value"] == "->" for l in lits)  # quoted '->' kept as lit
+    assert len(preds) == 1  # bare -> is the predicate
+    assert preds[0]["body"]["kind"] == "call"
 
 
 # --- build_spec: keep all rules ------------------------------------------

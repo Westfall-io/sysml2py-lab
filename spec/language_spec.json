@@ -198,6 +198,11 @@
     {
       "file": "KerMLExpressions.xtext",
       "grammar": {
+        "hidden": [
+          "WS",
+          "ML_NOTE",
+          "SL_NOTE"
+        ],
         "name": "org.omg.kerml.expressions.xtext.KerMLExpressions"
       },
       "line_count": 558,

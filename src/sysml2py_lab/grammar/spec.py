@@ -41,12 +41,6 @@ class ParsedFile:
     rules: list[dict]
 
 
-@dataclass
-class _Header:
-    kind: str  # "grammar" | "import" | "with" | "hidden"
-    tokens: list  # raw tokens of the declaration
-
-
 def parse_xtext(text: str, source: str = "") -> tuple[list[dict], dict | None]:
     """Tokenize and parse a full .xtext source.
 
@@ -72,10 +66,30 @@ def parse_xtext(text: str, source: str = "") -> tuple[list[dict], dict | None]:
             continue
         if c.at("hidden"):
             # hidden(WS, ML_COMMENT, ...) - part of the grammar header block
-            _skip_statement(c)
+            if grammar_decl is not None:
+                grammar_decl["hidden"] = _parse_hidden_decl(c)
+            else:
+                _skip_statement(c)
             continue
         rules.append(parser.parse_rule())
     return rules, grammar_decl
+
+
+def _parse_hidden_decl(c) -> list[str]:
+    """Parse `hidden(WS, ML_NOTE, SL_NOTE, ...)` -> list of terminal names."""
+    c.next()  # 'hidden'
+    c.expect("(")
+    names = []
+    while True:
+        it = c.accept_ident()
+        if it is not None:
+            names.append(it.value)
+        if c.at(","):
+            c.next()
+            continue
+        break
+    c.expect(")")
+    return names
 
 
 def _parse_grammar_decl(c) -> dict:
