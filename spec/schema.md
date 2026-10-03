@@ -15,23 +15,26 @@ document is deterministic (same inputs → byte-identical JSON, sorted keys).
     {
       "file": "SysML.xtext",
       "line_count": 2379,
+      "grammar": { "name": "org.omg.sysml.xtext.SysML",
+                   "with": ["org.omg.kerml.expressions.xtext.KerMLExpressions"] },
       "rule_names": ["RootNamespace", "..."]
     }
   ],
   "rules": [ { "rule": ... }, ... ],
   "counts": {
-    "rules": 494, "fragments": 126, "terminals": 9, "enums": 10, "total": 639
+    "rules": 544, "fragments": 147, "terminals": 9, "enums": 13, "total": 713
   }
 }
 ```
 
-- `files` — one entry per input file, with the rule names defined in that
-  file (in source order).  A rule defined in an overridden/`with` grammar
-  appears in the file that defines it; the `rules` array is deduplicated by
-  rule name (later files win for overrides).
-- `rules` — all grammar rules, deduplicated by name, in stable order
-  (alphabetical by name), each with an `index`.
-- `counts` — kind counts over the deduplicated rule set.
+- `files` — one entry per input file, in sorted-path order, with the `grammar`
+  declaration (`name`, super-grammar `with` chain), `line_count`, and the rule
+  names defined in that file (source order).
+- `rules` — **every** parsed rule definition across all files, in stable
+  order.  Rules are NOT deduplicated by name: KerML and SysML are distinct
+  grammars, so a name defined in both is retained twice with its own
+  `source.file` provenance.  `sum(files[].rule_names) == counts.total` always.
+- `counts` — kind counts over the full (non-deduped) rule set.
 
 ## Rule object
 
@@ -41,16 +44,18 @@ document is deterministic (same inputs → byte-identical JSON, sorted keys).
   "name": "RootNamespace",
   "rule_kind": "rule",          // "rule" | "fragment" | "terminal" | "enum"
   "returns": "SysML::Namespace",// nullable
+  "override": false,            // true when preceded by @Override
   "source": { "file": "SysML.xtext", "line": 38 },
   "body": { ... },              // element tree, see below
   "index": 0
 }
 ```
 
-For `terminal` / `enum` rules the `body` is a token stream:
+`source.file` is the repo-relative posix path.  For `terminal` / `enum` rules
+the `body` is a raw token stream:
 
 ```jsonc
-{ "kind": "terminal_body", "tokens": [ { "kind": "symbol", "value": "'0'..'9'", "line": 533 }, ... ] }
+{ "kind": "terminal_body", "tokens": [ { "kind": "literal", "value": "0", "line": 533 }, ... ] }
 { "kind": "enum_body",     "tokens": [ ... ] }
 ```
 
@@ -63,22 +68,37 @@ with `"card": "?" | "*" | "+"`.
 | ---       | ---                                           | ---     |
 | `seq`     | `items: [element]`                            | ordered sequence |
 | `alt`     | `choices: [element]`                          | alternation (`\|`) |
-| `group`   | `items: [element]`                            | parenthesized group |
+| `group`   | `body: element`                               | parenthesized group; `body` is the single element, or an `alt` when the group is `( A \| B )` |
 | `action`  | `type: str`                                   | `{TypeName}` / `{Type.feature = current}` |
-| `assign`  | `name`, `op` (`=` `+=` `?=` `:=` `-=`), `value` | assignment |
+| `assign`  | `name`, `op` (`=` `+=` `?=` `:=`), `value`    | assignment |
 | `call`    | `name`                                        | reference to another rule |
 | `lit`     | `value`                                       | keyword literal (unquoted) |
 | `xref`    | `type`, `ref` (`{"name": ...}` or null)       | `[Type\|Name]` |
-| `pred`    | `arrow` (`=>` `->`), `body`                   | syntactic predicate |
+| `pred`    | `arrow` (`=>` `->`), `body`                   | syntactic predicate; `body` is exactly the one immediately-following element |
 | `tok`     | `value`                                       | unclassified passthrough (kept for losslessness) |
 
-Assignments, calls, groups, xrefs may carry `card`.  `lit.value` is the
-unquoted literal text; a quoted `';'` stays a literal `;` while a bare `;`
-is the rule terminator and is not part of the body.
+- A `group`'s `body` is the *single* wrapped element.  For a parenthesized
+  alternation `( A | B )` the `body` is an `alt` node; for a sequence group
+  `( A B )` it is a `seq` node.
+- A `pred`'s `body` is exactly the one element the `=>`/`->` scopes over
+  (never a run of following siblings).
+- Structural tokens are matched kind-aware: a quoted `';'` keyword stays a
+  `lit ";"` while a bare `;` is the rule terminator (not in the body); a
+  quoted `'|'` stays a `lit "|"` while a bare `|` is an alternation.  So a
+  keyword literal is never lost.
+- `lit.value` is the unquoted literal text.
+
+## Grammar capture
+
+Each file's `grammar` declaration records the fully-qualified grammar name
+and its `with` super-grammar chain (used by consumers to resolve overrides
+and cross-file rule references).  `import "..." as Alias` and `hidden(...)`
+declarations precede the rule stream.
 
 ## Determinism
 
 `json.dumps(..., indent=2, sort_keys=True)` — stable key order, stable rule
-order (alphabetical by name), stable file order (sorted by glob).  Two runs
-over identical vendored inputs are byte-identical; commit the output and
-diff-review it on grammar changes.
+order (source order per file, files sorted by path), stable grammatical
+output.  Two runs over identical vendored inputs are byte-identical; commit
+the output and diff-review it on grammar changes.  A `test_committed_spec_is_current`
+guard asserts a fresh build equals the committed spec.

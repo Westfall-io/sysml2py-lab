@@ -11,24 +11,28 @@ Node kinds produced (each is a dict with "kind" + kind-specific fields):
        name, returns (optional type string), source {file,line}, body
   seq          ordered sequence of elements  -> {"kind":"seq","items":[..]}
   alt          alternation  -> {"kind":"alt","choices":[..]}
-  group        parenthesized group -> {"kind":"group","items":[..]}
+  group        parenthesized group -> {"kind":"group","body":node}
   action       {TypeName} -> {"kind":"action","type":"TypeName"}
-  assign       name OP ref, OP in = += ?= ?= := -> {"name","op","value":node}
+  assign       name OP ref, OP in = += ?= := -> {"name","op","value":node}
   call         reference to another rule by name -> {"kind":"call","name"}
   lit          keyword literal -> {"kind":"lit","value":"..."}
   xref         [Type|Name] cross-ref -> {"kind":"xref","type","ref"}
   pred         syntactic predicate (=> or ->) -> {"kind":"pred","arrow","body"}
   terminal_body  raw terminal/enum body kept as a token stream
 
-Every element may carry "star"/"plus"/"question" cardinality suffixes and a
-"line".  Determinism: the emitting module sorts keys / uses stable orders.
+Every element may carry a "card" cardinality ("?","*","+") and a "line".
+Determinism: the emitting module sorts keys / uses stable orders.
+
+Structural tokens are matched *kind-aware*: a quoted `';'` keyword literal
+must never be confused with the bare `;` rule terminator, `'|'` with the
+alternation separator, or `')'` with a group close.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from .lexer import Token, tokenize, IDENT, LITERAL, SYMBOL
+from .lexer import Token, IDENT, LITERAL, SYMBOL
 
 
 class GrammarParseError(Exception):
@@ -41,6 +45,7 @@ class RuleHeader:
     name: str
     returns: str | None
     line: int
+    override: bool = False
 
 
 # --- token cursor -------------------------------------------------------
@@ -58,6 +63,10 @@ class Cursor:
         t = self.peek()
         return t is not None and t.value == value
 
+    def at_sym(self, value: str) -> bool:
+        t = self.peek()
+        return t is not None and t.kind == SYMBOL and t.value == value
+
     def next(self) -> Token:
         t = self.peek()
         if t is None:
@@ -69,6 +78,19 @@ class Cursor:
         if self.at(value):
             return self.next()
         return None
+
+    def accept_sym(self, value: str) -> Token | None:
+        if self.at_sym(value):
+            return self.next()
+        return None
+
+    def expect_sym(self, value: str) -> Token:
+        t = self.peek()
+        if t is None or t.kind != SYMBOL or t.value != value:
+            got = t.value if t is not None else "<eof>"
+            raise GrammarParseError(f"expected {value!r}, got {got!r} at line "
+                                    f"{t.line if t else '?'}")
+        return self.next()
 
     def expect(self, value: str) -> Token:
         t = self.next()
@@ -107,15 +129,16 @@ class XtextParser:
         c = self.c
         hdr = self._parse_header()
         body = self._parse_body(hdr)
-        return {"kind": "rule", "name": hdr.name, "rule_kind": hdr.kind,
-                "returns": hdr.returns, "source": {"file": self.source, "line": hdr.line},
-                "body": body}
+        r = {"kind": "rule", "name": hdr.name, "rule_kind": hdr.kind,
+             "returns": hdr.returns, "override": hdr.override,
+             "source": {"file": self.source, "line": hdr.line},
+             "body": body}
+        return r
 
     def _parse_header(self) -> RuleHeader:
         c = self.c
         # optional 'fragment' or 'enum' or 'terminal'/'terminal fragment'
         kind = "rule"
-        frag = False
         t = c.peek()
         if t is not None and t.value in ("fragment", "enum", "terminal"):
             kw = c.next().value
@@ -123,16 +146,16 @@ class XtextParser:
                 # may be 'terminal fragment NAME'
                 if c.at("fragment"):
                     c.next()
-                    frag = True
                 kind = "terminal"
             elif kw == "enum":
                 kind = "enum"
             else:  # fragment
-                frag = True
                 kind = "fragment"
         # @Override may precede the name; tolerates both a combined
         # '@Override' IDENT (this lexer) and '@' + 'Override' tokens.
+        override = False
         while c.peek() is not None and c.peek().value in ("@Override", "@"):
+            override = True
             c.next()
             if c.peek() is not None and c.peek().value == "Override":
                 c.next()
@@ -154,12 +177,10 @@ class XtextParser:
                     c.next()
                     continue
                 break
-            returns = "".join(
-                p if i == len(parts) - 1 else p + "::" for i, p in enumerate(parts)
-            ) if parts else None
+            returns = "::".join(parts) if parts else None
         # optional ':' (rule body) or ';' (empty)
         c.expect(":")
-        return RuleHeader(kind, name, returns, name_tok.line)
+        return RuleHeader(kind, name, returns, name_tok.line, override)
 
     def _parse_body(self, hdr: RuleHeader) -> dict:
         c = self.c
@@ -171,47 +192,45 @@ class XtextParser:
         element = self._parse_element()
         if element is not None:
             items.append(element)
-            while c.at("|"):
+            while c.at_sym("|"):
                 c.next()
                 e2 = self._parse_element()
                 if e2 is not None:
                     items.append(e2)
         # consume the rule-terminating ';' if present
-        c.accept(";")
+        c.accept_sym(";")
         return _clean_seq(items)
 
     def _collect_until_semicolon(self) -> list[dict]:
         out = []
         while True:
             t = self.c.peek()
-            if t is None or t.value == ";":
+            if t is None or (t.kind == SYMBOL and t.value == ";"):
                 break
             self.c.next()
             out.append({"kind": _tok_kind(t), "value": t.value, "line": t.line})
-        self.c.accept(";")
+        self.c.accept_sym(";")
         return out
 
     # -- element ---------------------------------------------------------
     def _parse_element(self) -> dict | None:
         c = self.c
         t = c.peek()
-        while t is not None and t.value == "|":
+        while t is not None and c.at_sym("|"):
             c.next()
             t = c.peek()
         if t is None:
             return None
         # alternation: collect 'primary' separated by '|'
         first = self._parse_primary()
-        if c.at("|"):
+        if c.at_sym("|"):
             choices = [first]
-            while c.at("|"):
+            while c.at_sym("|"):
                 c.next()
                 p = self._parse_primary()
                 if p is not None:
                     choices.append(p)
             return _add_cardinality(_node("alt", first["line"], choices=choices), c)
-        if first is not None and (c.at("|")):
-            pass
         return first
 
     def _parse_primary(self) -> dict | None:
@@ -220,7 +239,7 @@ class XtextParser:
         if t is None:
             return None
         # skip leading '|'
-        while c.at("|"):
+        while c.at_sym("|"):
             c.next()
         items = []
         while True:
@@ -229,7 +248,7 @@ class XtextParser:
                 break
             items.append(e)
             # stop if we hit a top-level alternative or body end
-            if c.at("|") or t_is_end(c):
+            if c.at_sym("|") or t_is_end(c):
                 break
         if not items:
             return None
@@ -240,7 +259,7 @@ class XtextParser:
     def _parse_factor(self) -> dict | None:
         c = self.c
         t = c.peek()
-        if t is None or t_is_end(c) or c.at("|"):
+        if t is None or t_is_end(c) or c.at_sym("|"):
             return None
         line = t.line
 
@@ -250,36 +269,28 @@ class XtextParser:
             return _add_cardinality(_node("lit", line, value=t.value), c)
 
         # parenthesized group
-        if c.at("("):
+        if c.at_sym("("):
             c.next()
-            items = []
-            elt = self._parse_primary()
-            if elt is not None:
-                items.append(elt)
-            while c.at("|"):
-                c.next()
-                e2 = self._parse_primary()
-                if e2 is not None:
-                    items.append(e2)
-            c.expect(")")
-            return _add_cardinality(_node("group", line, items=items), c)
+            inner = self._parse_group_inner(line)
+            c.expect_sym(")")
+            return _add_cardinality(_node("group", line, body=inner), c)
 
         # action {TypeName} or {TypeName.feature = current}
-        if c.at("{"):
+        if c.at_sym("{"):
             c.next()
-            # Collect idents, '::', '.', assignment ops up to the closing '}'.
             parts = []
             while True:
                 t2 = c.peek()
-                if t2 is None or (t2.value == "}" and t2.kind == SYMBOL):
+                if t2 is None or (t2.kind == SYMBOL and t2.value == "}"):
                     break
                 c.next()
                 parts.append(t2.value)
-            c.expect("}")
+            c.expect_sym("}")
             return _node("action", line, type=" ".join(parts))
 
-        # assignment: name op value (value may be literal, xref, call, group)
-        if t.kind == IDENT and c.peek(1) is not None and c.peek(1).value in ("=", "+=", "?=", ":=", "-="):
+        # assignment: name op value
+        if t.kind == IDENT and c.peek(1) is not None and c.peek(1).kind == SYMBOL \
+                and c.peek(1).value in ("=", "+=", "?=", ":="):
             name = t.value
             op = c.peek(1).value
             c.next()  # name
@@ -293,11 +304,11 @@ class XtextParser:
         if t.value in ("=>", "->"):
             arrow = t.value
             c.next()
-            body = self._parse_primary()
+            body = self._parse_factor()
             return _node("pred", line, arrow=arrow, body=body)
 
         # xref [Type|Name]
-        if c.at("["):
+        if c.at_sym("["):
             c.next()
             parts = []
             while True:
@@ -310,21 +321,39 @@ class XtextParser:
                     continue
                 break
             ref = None
-            if c.accept("|"):
+            if c.at_sym("|"):
+                c.next()
                 ref = self._parse_xref_ref()
-            c.expect("]")
+            c.expect_sym("]")
             return _add_cardinality(
-                _node("xref", line, type="".join(p if i == len(parts) - 1 else p + "::" for i, p in enumerate(parts)),
-                      ref=ref), c)
+                _node("xref", line, type="::".join(parts), ref=ref), c)
 
-        # rule call (ident) — possibly with an assignment already handled
+        # rule call (ident)
         if t.kind == IDENT:
             c.next()
             return _add_cardinality(_node("call", line, name=t.value), c)
 
-        # '.' or ',' etc.: treat as literal-ish passthrough token
+        # any other symbol: treat as literal-ish passthrough token
         c.next()
         return _node("tok", line, value=t.value)
+
+    def _parse_group_inner(self, line: int) -> dict:
+        """Parse the inside of a parenthesized group: a sequence or an
+        alternation.  Returns an `alt` node if there are `|` alternatives,
+        else a single element or an empty `seq`."""
+        c = self.c
+        first = self._parse_primary()
+        if first is None:
+            return _node("seq", line, items=[])
+        if not c.at_sym("|"):
+            return first
+        choices = [first]
+        while c.at_sym("|"):
+            c.next()
+            p = self._parse_primary()
+            if p is not None:
+                choices.append(p)
+        return _node("alt", line, choices=choices)
 
     def _parse_xref_ref(self) -> dict | None:
         c = self.c
@@ -346,25 +375,17 @@ class XtextParser:
         if t is None:
             return None
         # group value
-        if c.at("("):
+        if c.at_sym("("):
             c.next()
-            items = []
-            elt = self._parse_primary()
-            if elt is not None:
-                items.append(elt)
-            while c.at("|"):
-                c.next()
-                e2 = self._parse_primary()
-                if e2 is not None:
-                    items.append(e2)
-            c.expect(")")
-            return _node("group", t.line, items=items)
+            inner = self._parse_group_inner(t.line)
+            c.expect_sym(")")
+            return _node("group", t.line, body=inner)
         # literal
         if t.kind == LITERAL:
             c.next()
             return _node("lit", t.line, value=t.value)
         # xref
-        if c.at("["):
+        if c.at_sym("["):
             c.next()
             parts = []
             while True:
@@ -377,9 +398,10 @@ class XtextParser:
                     continue
                 break
             ref = None
-            if c.accept("|"):
+            if c.at_sym("|"):
+                c.next()
                 ref = self._parse_xref_ref()
-            c.expect("]")
+            c.expect_sym("]")
             return _node("xref", t.line, type="::".join(parts), ref=ref)
         # ident call
         if t.kind == IDENT:
@@ -388,11 +410,6 @@ class XtextParser:
         # otherwise passthrough
         c.next()
         return _node("tok", t.line, value=t.value)
-
-
-    # helper used by tests / hooks
-    def expect_ident_or(self, _):
-        return self.c.accept_ident()
 
 
 def _clean_seq(items: list) -> dict:

@@ -11,7 +11,7 @@ MANIFEST_FILENAME = "manifest.json"
 
 @dataclass(frozen=True)
 class GrammarInputManifest:
-    """A records checksums for vendored grammar input files."""
+    """A record of checksums for vendored grammar input files."""
 
     entries: dict[str, str] = field(default_factory=dict)
 
@@ -45,41 +45,61 @@ def load_manifest(grammar_dir: Path) -> GrammarInputManifest:
     return GrammarInputManifest(entries=data.get("entries", {}))
 
 
-def verify_inputs(grammar_dir: Path) -> GrammarInputManifest:
-    """
-    Verify vendored grammar input files against the recorded manifest.
+def record_manifest(grammar_dir: Path) -> GrammarInputManifest:
+    """Record sha256 hashes for every grammar file into manifest.json.
 
-    - If no manifest exists, record one (first run).
-    - If a file's sha256 differs from the manifest, raise (drift detected).
-    Returns the (possibly newly-written) manifest.
+    Explicitly writes the manifest (used by `inputs record`).  Read-only
+    verification never writes the manifest.
     """
     grammar_dir = grammar_dir.expanduser().resolve()
-    files = list(_iter_grammar_files(grammar_dir))
-
-    manifest_path = grammar_dir / MANIFEST_FILENAME
-    if manifest_path.exists():
-        manifest = load_manifest(grammar_dir)
-        entries = manifest.entries
-    else:
-        entries = {}
-
-    new_entries: dict[str, str] = {}
-    for f in files:
+    entries: dict[str, str] = {}
+    for f in _iter_grammar_files(grammar_dir):
         rel = f.relative_to(grammar_dir).as_posix()
-        digest = _sha256(f)
-        if rel in entries:
-            if entries[rel] != digest:
-                raise RuntimeError(
-                    f"grammar input drift detected for {rel}: recorded "
-                    f"{entries[rel][:12]}... but file sha256 is {digest[:12]}..."
-                )
-        new_entries[rel] = digest
-
-    # Also verify that no recorded entries are missing (file was removed)
-    for rel in entries:
-        if rel not in new_entries:
-            raise RuntimeError(f"grammar input {rel} recorded in manifest is missing from {grammar_dir}")
-
-    manifest = GrammarInputManifest(entries=new_entries)
+        entries[rel] = _sha256(f)
+    manifest = GrammarInputManifest(entries=entries)
     write_manifest(grammar_dir, manifest)
+    return manifest
+
+
+def verify_inputs(grammar_dir: Path) -> GrammarInputManifest:
+    """Read-only verification of vendored grammar files against the manifest.
+
+    - Raises FileNotFoundError if no manifest exists.
+    - Raises RuntimeError on drift (a file's sha256 differs from the manifest).
+    - Raises RuntimeError if a file is present that is not recorded.
+    - Raises RuntimeError if a recorded file is missing.
+
+    Does NOT modify the manifest (provenance gate must not bless new files).
+    """
+    grammar_dir = grammar_dir.expanduser().resolve()
+    manifest_path = grammar_dir / MANIFEST_FILENAME
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"no {MANIFEST_FILENAME} in {grammar_dir}; run `inputs record` first"
+        )
+    manifest = load_manifest(grammar_dir)
+    entries = manifest.entries
+
+    files = {f.relative_to(grammar_dir).as_posix(): f for f in _iter_grammar_files(grammar_dir)}
+    # any file present but not recorded -> fail (don't bless new files)
+    for rel in files:
+        if rel not in entries:
+            raise RuntimeError(
+                f"grammar input {rel} is not recorded in {MANIFEST_FILENAME}; "
+                f"run `inputs record` to bless it"
+            )
+    # any recorded entry missing -> fail
+    for rel in entries:
+        if rel not in files:
+            raise RuntimeError(
+                f"grammar input {rel} recorded in manifest is missing from {grammar_dir}"
+            )
+    # drift check
+    for rel, f in files.items():
+        digest = _sha256(f)
+        if entries[rel] != digest:
+            raise RuntimeError(
+                f"grammar input drift detected for {rel}: recorded "
+                f"{entries[rel][:12]}... but file sha256 is {digest[:12]}..."
+            )
     return manifest

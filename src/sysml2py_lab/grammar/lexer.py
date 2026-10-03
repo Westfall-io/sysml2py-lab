@@ -34,12 +34,9 @@ KIND_NAMES = {
 
 
 # One-char and multi-char symbols that carry grammar meaning.
-MULTI_SYMBOLS = ("...", "=>", "->", "?=", "+=", "-=", "::", "...") + tuple(
-    reversed(("<<", ">>"))
-)
 # priority order: longest first
 _SYM_ORDER = sorted(
-    {"...", "=>", "->", "?=", "+=", ":=", "::", "<<", ">>", "==", "!="},
+    {"=>", "->", "?=", "+=", ":=", "..", "::", "<<", ">>", "==", "!="},
     key=len,
     reverse=True,
 )
@@ -115,9 +112,8 @@ def tokenize(text: str) -> list[Token]:
         if c == "/" and i + 1 < n and text[i + 1] == "*":
             j = text.find("*/", i + 2)
             if j == -1:
-                j = n
-            else:
-                j += 2
+                raise ValueError(f"unterminated block comment starting at line {line}")
+            j += 2
             adv(text[i:j])
             i = j
             continue
@@ -128,6 +124,7 @@ def tokenize(text: str) -> list[Token]:
             quote = c
             j = i + 1
             body = []
+            closed = False
             while j < n:
                 ch = text[j]
                 if ch == "\\" and j + 1 < n:
@@ -135,14 +132,13 @@ def tokenize(text: str) -> list[Token]:
                     j += 2
                     continue
                 if ch == quote:
+                    closed = True
                     break
                 body.append(ch)
                 j += 1
-            if j < n:
-                j += 1  # closing quote
-            else:
-                # unterminated; take remainder
-                pass
+            if not closed:
+                raise ValueError(f"unterminated string literal starting at line {start_line}")
+            j += 1  # closing quote
             toks.append(Token(LITERAL, "".join(body), start_line, start_col))
             adv(text[i:j])
             i = j
@@ -200,8 +196,3 @@ def tokenize(text: str) -> list[Token]:
         i += 1
 
     return toks
-
-
-def find_terminal(name: str, toks: list[Token]) -> bool:
-    """Heuristic: whether an IDENT token equals name (used by tests)."""
-    return any(t.kind == IDENT and t.value == name for t in toks)

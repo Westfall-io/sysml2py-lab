@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .discover import discover_corpus
 from .codegen.emit import emit_sysml2py, EmitOptions
-from .grammar.inputs import verify_inputs, load_manifest
+from .grammar.inputs import verify_inputs, record_manifest
 from .grammar.spec import build_spec, write_spec
 
 
@@ -25,8 +25,13 @@ def main(argv: list[str] | None = None) -> int:
 
     iv = sub.add_parser("inputs", help="Grammar input management (vendor / verify).")
     iv_sub = iv.add_subparsers(dest="inputs_cmd", required=True)
-    iv_verify = iv_sub.add_parser("verify", help="Verify vendored grammar inputs against the recorded manifest.")
+    iv_verify = iv_sub.add_parser("verify", help="Read-only verify vendored grammar inputs against the recorded manifest.")
     iv_verify.add_argument(
+        "--dir", type=Path, default=Path("grammar_inputs"),
+        help="Path to the vendored grammar-inputs directory (default: ./grammar_inputs)",
+    )
+    iv_record = iv_sub.add_parser("record", help="Record sha256 checksums for all grammar inputs into the manifest (explicit bless).")
+    iv_record.add_argument(
         "--dir", type=Path, default=Path("grammar_inputs"),
         help="Path to the vendored grammar-inputs directory (default: ./grammar_inputs)",
     )
@@ -64,6 +69,16 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"inputs verify FAILED: {e}", file=sys.stderr)
                 return 1
             print("inputs verify OK:")
+            for rel in sorted(manifest.entries):
+                print(f"  {rel}  sha256={manifest.entries[rel][:16]}...")
+            return 0
+        if args.inputs_cmd == "record":
+            try:
+                manifest = record_manifest(args.dir)
+            except Exception as e:
+                print(f"inputs record FAILED: {e}", file=sys.stderr)
+                return 1
+            print(f"inputs record OK ({len(manifest.entries)} files):")
             for rel in sorted(manifest.entries):
                 print(f"  {rel}  sha256={manifest.entries[rel][:16]}...")
             return 0
