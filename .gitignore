@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Credential/auth diagnostic scripts (token chase leftovers, not repo code)
+scripts/check_pat_*.py
+scripts/gh_test_write.py
+scripts/diag_write.py
+scripts/fix_git_credentials.py
+scripts/inspect_pat_meta.py
