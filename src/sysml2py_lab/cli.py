@@ -10,6 +10,7 @@ from .grammar.inputs import verify_inputs, record_manifest
 from .grammar.spec import build_spec, write_spec
 from .grammar.inline import inline_fragments
 from .grammar.emit_tx import emit_tx
+from .grammar.modifiers import build_modifier_model, modifiers_for_kind, write_modifiers
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,6 +47,25 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument(
         "--out", type=Path, default=Path("spec") / "language_spec.json",
         help="Output path (default: ./spec/language_spec.json)",
+    )
+    # `sysml2py-lab spec modifiers` subcommand
+    sp_mod = sp.add_subparsers(dest="spec_cmd")
+    sp_modifiers = sp_mod.add_parser("modifiers", help="Derive the per-kind modifier model from the inlined spec.")
+    sp_modifiers.add_argument(
+        "--dir", type=Path, default=Path("grammar_inputs"),
+        help="Path to the vendored grammar-inputs directory (default: ./grammar_inputs)",
+    )
+    sp_modifiers.add_argument(
+        "--kind", type=str, default=None,
+        help="Restrict output to one prefix/kind (e.g. RefPrefix, PartUsage).",
+    )
+    sp_modifiers.add_argument(
+        "--out", type=Path, default=Path("spec") / "relationships" / "modifiers.json",
+        help="Output JSON path (default: ./spec/relationships/modifiers.json)",
+    )
+    sp_modifiers.add_argument(
+        "--out-md", type=Path, default=Path("spec") / "relationships" / "modifiers.md",
+        help="Output Markdown matrix path (default: ./spec/relationships/modifiers.md)",
     )
 
     tx = sub.add_parser("tx", help="Regenerate textX .tx grammar from the inlined spec.")
@@ -96,6 +116,23 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     if args.cmd == "spec":
+        if getattr(args, "spec_cmd", None) == "modifiers":
+            try:
+                spec = build_spec(args.dir)
+                # NOTE: build_modifier_model uses the spec's rule table with
+                # fragments intact (the prefix chain is made of fragments).
+                model = build_modifier_model(spec)
+                if args.kind:
+                    rec = modifiers_for_kind(model, args.kind)
+                    print(__import__("json").dumps(rec, indent=2, sort_keys=True))
+                else:
+                    write_modifiers(model, args.out, args.out_md)
+                    print(f"spec modifiers wrote {args.out} + {args.out_md} "
+                          f"({len(model)} kinds)")
+                return 0
+            except Exception as e:
+                print(f"spec modifiers FAILED: {e}", file=sys.stderr)
+                return 1
         try:
             spec = build_spec(args.dir)
             args.out.parent.mkdir(parents=True, exist_ok=True)

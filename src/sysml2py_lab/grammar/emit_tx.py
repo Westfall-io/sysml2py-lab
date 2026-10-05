@@ -9,7 +9,7 @@ committed `sysml2py/src/sysml2py/grammar/*.tx` files.
 The committed `.tx` is NOT byte-reproducible from the `.xtext` because the
 assignment names (`prefix=`, `usage=`, `usageExtension+=`, ...) were hand
 added.  This module makes that curation an explicit, versioned overlay
-(`spec/overlay/assignments.yaml`) instead of hidden regex special-cases.
+(`spec/overlay/assignments.json`) instead of hidden regex special-cases.
 
 Normalization whitelist: when comparing generated output to the committed
 `.tx`, the emitter documents which differences are intended (and why).
@@ -77,12 +77,13 @@ def _el_to_tx(el: dict, indent: int = 0) -> str:
         return ""
     kind = el.get("kind")
     if kind == "seq":
-        return " ".join(_el_to_tx(i, indent) for i in el.get("items", []))
+        inner = " ".join(_el_to_tx(i, indent) for i in el.get("items", []))
+        return "(" + inner + ")" + (el.get("card", "") or "") if el.get("card") else inner
     if kind == "alt":
         return " | ".join(_el_to_tx(c, indent) for c in el.get("choices", []))
     if kind == "group":
         inner = _el_to_tx(el.get("body", {}), indent)
-        return "(" + inner + ")"
+        return "(" + inner + ")" + (el.get("card", "") or "")
     if kind == "lit":
         return el.get("value", "")
     if kind == "call":

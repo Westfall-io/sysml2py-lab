@@ -149,3 +149,31 @@ hidden regexes.  Quirks are recorded, not silently fixed: `FeatureDirection:
 in = 'in '` preserves the trailing space that `classes.py` matches literally.
 `grammar/inline.py` performs fragment inlining; `grammar/emit_tx.py` applies
 the overlay and emits `.tx`.
+
+## Relationship model, part 1: modifiers (issue #5)
+
+`sysml2py-lab spec modifiers` derives the per-prefix modifier model from the
+spec's rule table (fragments intact so the prefix chain can be walked).  For
+each known prefix it records ordered slots, each with `name`, `tokens`,
+`kind` (`flag`/`enum`/`ref`), `cardinality`, `mutually_exclusive_with`, and
+`source_rule`/`source_line` provenance:
+
+```
+spec/relationships/modifiers.json   # machine-readable model
+spec/relationships/modifiers.md     # human-readable matrix
+```
+
+The chain — `RefPrefix` → `BasicUsagePrefix` → `OccurrenceUsagePrefix` — is
+walked in the same order `classes.py` dumps it, so the generated modifier
+order is casting-verified against the emitted library.  Mutual exclusions
+drop out of alternation groups (`isAbstract ?= 'abstract' | isVariation ?=
+'variation'` → both list each other).  Enum rules that were stubs in
+`classes.py` (`PortionKind`, `VisibilityIndicator`) are materialized with
+their real tokens (`snapshot`/`timeslice`, `public`/`private`/`protected`).
+`portionKind = PortionKind` resolves through the enum so consumers see
+`snapshot, timeslice` rather than a bare rule name.
+
+An issue-#5 acceptance spot-check asserts the model recognizes >=15 distinct
+modifier names/tokens from `examples/family.sysml` (`private`, `in`, `out`,
+`end`, `snapshot`, `timeslice`, `variation`, `ref`, `abstract`, `derived`,
+`readonly`, `individual`, `public`, `protected`, `direction`, `visibility`).

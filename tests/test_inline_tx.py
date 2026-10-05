@@ -101,7 +101,26 @@ def test_inline_preserves_cardinality_in_ref_call():
     assert host["body"].get("card") == "*"
 
 
-# --- whole-grammar inline -----------------------------------------------
+def test_emit_group_preserves_cardinality():
+    """A group node with a card (?/*/+) must render it — no silent drop."""
+    spec = {
+        "files": [{"file": "T.xtext"}],
+        "rules": [
+            {"name": "Host", "rule_kind": "rule", "returns": "X",
+             "source": {"file": "T.xtext", "line": 1},
+             "body": {"kind": "seq", "items": [
+                 {"kind": "group", "body": {"kind": "lit", "value": "foo"}, "card": "?"},
+                 {"kind": "group", "body": {"kind": "lit", "value": "bar"}, "card": "*"},
+             ]}},
+        ],
+    }
+    from sysml2py_lab.grammar.emit_tx import emit_tx_str
+    out = emit_tx_str(spec, file="T.xtext")
+    assert "(foo)?" in out
+    assert "(bar)*" in out
+
+
+# --- token-stream comparison --------------------------------------------
 
 def test_whole_grammar_inline_succeeds():
     """The real 713-rule spec inlines without errors and drops fragments."""
