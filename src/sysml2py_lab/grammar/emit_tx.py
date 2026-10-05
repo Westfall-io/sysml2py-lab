@@ -81,9 +81,12 @@ def _el_to_tx(el: dict, indent: int = 0) -> str:
             return f"[{type_}|{ref['name']}]" + card
         return f"[{type_}]" + card
     if kind == "action":
-        # park Xtext actions as a comment so the .tx stays loadable
-        act = " ".join(str(el.get(k, "")) for k in ("type", "assign", "feature"))
-        return f"# action: {act}".strip() if act.strip() else "# action"
+        # Xtext action nodes ({Type.feature = current}) are Xtext-only; they
+        # carry no textX-equivalent inline.  Drop them so the .tx stays
+        # textX-loadable (documented in schema.md — action translation is a
+        # separate follow-up).  We keep a marker only via the rule's returned
+        # type, which textX expresses as the rule header, not inline.
+        return ""
     if kind == "assign":
         name = el.get("name", "")
         op = el.get("op", "=")
@@ -91,12 +94,21 @@ def _el_to_tx(el: dict, indent: int = 0) -> str:
         return f"{name}{op}{val}" + card
     if kind == "pred":
         arrow = el.get("arrow", "=>")
+        neg = el.get("negate", False)
         body = _el_to_tx(el.get("body", {}), indent)
-        return f"{arrow} {body}" + card
+        prefix = "!" if neg else ""
+        return f"{prefix}{arrow} {body}" + card
     if kind == "tok":
         return el.get("value", "")
+    if kind == "ident":
+        return el.get("value", "")
+    if kind == "symbol":
+        return el.get("value", "")
+    if kind == "literal":
+        return _quote_literal(el.get("value", "") + (el.get("card", "") or ""))
     if kind in ("terminal_body", "enum_body"):
-        return " ".join(t.get("value", "") for t in el.get("tokens", []))
+        # quote literals; leave idents/symbols raw:  ident = 'literal' | ...
+        return " ".join(_el_to_tx(t, indent) for t in el.get("tokens", [])).strip()
     return ""
 
 
@@ -133,7 +145,8 @@ def _apply_overlay_to_rule(rule: dict, overlay_entry, global_slots: dict[str, st
 
     Called ONLY on pre-inline rule bodies (the calls must still be present).
     """
-    body = rule.get("body", {})
+    from copy import deepcopy
+    body = deepcopy(rule.get("body", {}))
     if overlay_entry is not None and not isinstance(overlay_entry, dict):
         # string entry: whole-rule body replacement (the 'broken' rules)
         return overlay_entry
@@ -198,11 +211,13 @@ def emit_tx_str(spec: dict, file: str | None = None, original_spec: dict | None 
 
     `original_spec` (optional) carries the pre-inline rule table; overlay-keyed
     rules are rendered from it so the assignment slots (prefix=, usage=, ...)
-    have their fragment calls still present.
+    have their fragment calls still present.  All OTHER rules are rendered
+    from the INLINED body (fragments spliced), so no fragment is referenced
+    but left undefined.
     """
     overlay = _load_overlay()
     global_slots = _global_slot_map(overlay)
-    # prefer original rule bodies for overlay-keyed rules
+    # prefer original rule bodies ONLY for overlay-keyed rules
     orig_by_name = {}
     if original_spec is not None:
         orig_by_name = {r["name"]: r for r in original_spec.get("rules", [])}
@@ -223,10 +238,12 @@ def emit_tx_str(spec: dict, file: str | None = None, original_spec: dict | None 
                 continue
             rname = rule["name"]
             overlay_entry = overlay.get(rname)
-            if overlay_entry is not None or global_slots:
+            if overlay_entry is not None:
+                # overlay-keyed: render from pre-inline body with slot overlay
                 src_rule = orig_by_name.get(rname, rule)
                 parts.append(_rule_to_tx(src_rule, overlay_entry, global_slots))
             else:
+                # all other rules: fully inlined body
                 parts.append(_rule_to_tx(rule, None))
     return "\n".join(parts) + "\n"
 

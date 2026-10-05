@@ -154,7 +154,6 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             print(f"tx FAILED: {e}", file=sys.stderr)
             return 1
-        print(f"tx wrote {args.out} ({spec['counts']['total']} inlined rules)")
         return 0
 
     return 2
