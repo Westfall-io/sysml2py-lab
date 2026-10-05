@@ -41,7 +41,7 @@
     "kind": "Usage",
     "slots": [
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "enum",
         "mutually_exclusive_with": [],
         "name": "direction",
@@ -55,7 +55,7 @@
         "via": "FeatureDirection"
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isVariation"
@@ -68,7 +68,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isAbstract"
@@ -81,7 +81,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isReadOnly",
@@ -92,7 +92,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isDerived",
@@ -103,7 +103,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isEnd",
@@ -114,7 +114,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isReference",
@@ -219,7 +219,7 @@
     "kind": "Membership",
     "slots": [
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "enum",
         "mutually_exclusive_with": [],
         "name": "visibility",
@@ -269,7 +269,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isIndividual",
@@ -291,7 +291,7 @@
     "kind": "OccurrenceUsage",
     "slots": [
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "enum",
         "mutually_exclusive_with": [],
         "name": "direction",
@@ -305,7 +305,7 @@
         "via": "FeatureDirection"
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isVariation"
@@ -318,7 +318,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isAbstract"
@@ -331,7 +331,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isReadOnly",
@@ -342,7 +342,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isDerived",
@@ -353,7 +353,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isEnd",
@@ -364,7 +364,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isReference",
@@ -375,7 +375,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isIndividual",
@@ -386,7 +386,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "enum",
         "mutually_exclusive_with": [],
         "name": "portionKind",
@@ -441,7 +441,7 @@
     "kind": "Usage",
     "slots": [
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "enum",
         "mutually_exclusive_with": [],
         "name": "direction",
@@ -455,7 +455,7 @@
         "via": "FeatureDirection"
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isVariation"
@@ -468,7 +468,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isAbstract"
@@ -481,7 +481,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isReadOnly",
@@ -492,7 +492,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isDerived",
@@ -503,7 +503,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isEnd",
@@ -525,7 +525,7 @@
     "kind": "Usage",
     "slots": [
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "enum",
         "mutually_exclusive_with": [],
         "name": "direction",
@@ -539,7 +539,7 @@
         "via": "FeatureDirection"
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isVariation"
@@ -552,7 +552,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [
           "isAbstract"
@@ -565,7 +565,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isReadOnly",
@@ -576,7 +576,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isDerived",
@@ -587,7 +587,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isEnd",
@@ -598,7 +598,7 @@
         ]
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "kind": "flag",
         "mutually_exclusive_with": [],
         "name": "isReference",

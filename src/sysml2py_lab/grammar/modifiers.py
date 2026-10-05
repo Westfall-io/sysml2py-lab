@@ -27,6 +27,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .inline import _import_order
+
 
 class ModifierError(Exception):
     pass
@@ -217,15 +219,28 @@ def _prefix_chain(rules: list[dict], start: str, by_name: dict[str, dict]):
             elif ek == "group":
                 # a group may hold inner assigns (e.g. ( direction = FeatureDirection )?)
                 gbody = el.get("body")
+                gcard = el.get("card")
                 # alternation group of assigns => mutually exclusive flags
                 if gbody is not None and gbody.get("kind") == "alt":
                     choices = gbody.get("choices", [])
-                    choice_assigns = [c for c in choices if c.get("kind") == "assign"]
-                    if choice_assigns:
-                        names = [c.get("name") for c in choice_assigns]
-                        for c in choice_assigns:
+                    # collect assign slots from direct assigns AND seq choices
+                    # (e.g. isOrdered ?= 'ordered' isNonunique ?= 'nonunique' | ...)
+                    pick_assigns = []
+                    for c in choices:
+                        if c.get("kind") == "assign":
+                            pick_assigns.append(c)
+                        elif c.get("kind") == "seq":
+                            for ci in c.get("items", []):
+                                if ci.get("kind") == "assign":
+                                    pick_assigns.append(ci)
+                    if pick_assigns:
+                        names = [c.get("name") for c in pick_assigns]
+                        for c in pick_assigns:
                             sl = _slots_from_assign(c, name)
                             if sl is not None:
+                                # inherit the group's optionality into the slot
+                                if gcard and not sl.get("cardinality"):
+                                    sl["cardinality"] = gcard
                                 sl["mutually_exclusive_with"] = [
                                     n2 for n2 in names if n2 != c.get("name")
                                 ]
@@ -235,6 +250,8 @@ def _prefix_chain(rules: list[dict], start: str, by_name: dict[str, dict]):
                     if inner.get("kind") == "assign":
                         sl = _slots_from_assign(inner, name)
                         if sl is not None:
+                            if gcard and not sl.get("cardinality"):
+                                sl["cardinality"] = gcard
                             slots.append(sl)
 
     rec(start)
@@ -251,7 +268,29 @@ def build_modifier_model(spec: dict) -> dict:
     fragments are the very nodes being modeled.
     """
     rules = spec.get("rules", [])
+    files = spec.get("files", [])
     by_name = {r["name"]: r for r in rules}
+    # Per-grammar resolution (mirrors C1): build import_order once.
+    import_order = _import_order(files)
+    per_file: dict[str, dict[str, dict]] = {}
+    for r in rules:
+        f = r.get("source", {}).get("file")
+        per_file.setdefault(f, {})[r["name"]] = r
+
+    def scoped_by_name(start: str) -> dict[str, dict]:
+        """Resolve names relative to the start rule's grammar (import chain)."""
+        srule = by_name.get(start)
+        if srule is None:
+            return by_name
+        cur = srule.get("source", {}).get("file")
+        chain = import_order.get(cur, [cur])
+        out = {}
+        for f in chain:
+            out.update(per_file.get(f, {}))
+        # fallback: everything else (unscoped) last-wins
+        for nm, r in by_name.items():
+            out.setdefault(nm, r)
+        return out
 
     # start kinds: all rules that are reachable from the kernels
     # (usage-side: rules whose body references the usage kernels; we take
@@ -273,7 +312,8 @@ def build_modifier_model(spec: dict) -> dict:
 
     model: dict[str, dict] = {}
     for start, kind in start_kinds.items():
-        slots, chain = _prefix_chain(rules, start, by_name)
+        local = scoped_by_name(start)
+        slots, chain = _prefix_chain(rules, start, local)
         model[start] = {
             "kind": kind,
             "chain": chain,
