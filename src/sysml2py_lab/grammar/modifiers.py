@@ -202,11 +202,19 @@ def _prefix_chain(rules: list[dict], start: str, by_name: dict[str, dict]):
             ek = el.get("kind")
             if ek == "call":
                 cname = el.get("name")
+                # N-7: a carded call (BasicDefinitionPrefix?) carries the card
+                # on the call node itself; inherit it into the callee's slots.
+                call_card = el.get("card")
+                n_before = len(slots)
                 if by_name.get(cname, {}).get("rule_kind") == "fragment":
                     rec(cname)
                 else:
                     # a non-fragment call in a prefix position: resolve it
                     rec(cname)
+                if call_card:
+                    for sl in slots[n_before:]:
+                        if not sl.get("cardinality"):
+                            sl["cardinality"] = call_card
             elif ek == "assign":
                 sl = _slots_from_assign(el, name)
                 if sl is not None:

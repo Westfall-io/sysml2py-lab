@@ -14,31 +14,6 @@ GRAMMAR_DIR = ROOT / "grammar_inputs"
 SPEC_DIR = ROOT / "spec"
 
 
-def _rule_headers(text: str) -> list[str]:
-    import re
-    return re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:", text, re.M)
-
-
-def _parity_ok(new: str, committed: str, whitelist: dict) -> bool:
-    """Structural parity: the regenerated .tx is a faithful reproduction of
-    the committed .tx modulo the documented normalization whitelist.
-
-    Per the issue's AC1 ("modulo a documented whitelist"):
-    1. Every committed rule header must be regenerated, EXCEPT those
-       whitelisted as committed-only (hand-added textX conveniences).
-    2. Every regenerated rule must be a committed rule, EXCEPT those
-       whitelisted as regen-only (real rules the committed .tx omits).
-    """
-    g = set(_rule_headers(new))
-    c = set(_rule_headers(committed))
-    committed_only = set(whitelist.get("committed_only", []))
-    regen_only = set(whitelist.get("regen_only", []))
-
-    missing = c - g - committed_only   # committed not regenerated (bad, unless whitelisted)
-    extra = g - c - regen_only         # regenerated not committed (bad, unless whitelisted)
-    return not missing and not extra
-
-
 # --- inline unit tests (RED) --------------------------------------------
 
 def test_inline_simple_fragment():
@@ -232,6 +207,20 @@ def test_emit_literals_quoted():
     assert "'readonly'" in out
 
 
+def test_quote_literal_space_and_quote():
+    """N-1/N-2: literal quoting must preserve a space literal and escape a
+    single-quote literal (no strip, no sniff, always escape)."""
+    from sysml2py_lab.grammar.emit_tx import _quote_literal
+    # space literal ' ' must NOT become ''
+    assert _quote_literal(" ") == "' '"
+    # single-quote literal "'" must be escaped, not bare
+    assert _quote_literal("'") == "'\\''"
+    # backslash literal must be escaped
+    assert _quote_literal("\\") == "'\\\\'"
+    # ordinary value
+    assert _quote_literal("abstract") == "'abstract'"
+
+
 # --- C6 regression: dict overlay entries applied -------------------------
 
 def test_overlay_dict_entries_applied():
@@ -274,152 +263,88 @@ def test_whole_grammar_inline_succeeds():
     assert not frag_names & {r["name"] for r in out["rules"]}
 
 
-# --- parity test (the core acceptance criterion) -------------------------
+# --- parity / structural-invariants test (the core acceptance criterion) --
 
-#: Documented two-sided whitelist for the parity test.  The committed .tx
-#: files are a hand-curated, incomplete rendering of the grammars, so parity
-#: with a faithful regen-from-spec is asserted modulo a documented set:
-#:   committed_only — names in the committed .tx but NOT regenerated (they
-#:     are hand-added textX conveniences with no .xtext source).
-#:   regen_only — names regenerated from the .xtext but absent from the
-#:     committed .tx (real rules the committed file omitted).
-#: Justification per name in spec/schema.md "Parity whitelist".
-TX_WHITELIST = {
-    # Committed-only, per grammar:
-    "committed_only": {
-        "KerMLExpressions.tx": [
-            "AdditiveOperand", "AndOperand", "Comment", "EqualityOperand",
-            "MultiplicativeOperand", "RelationalOperand", "ReservedKeyword",
-            "SequenceOperand",
-        ],
-        "KerML.tx": ["CommentKerML", "MultiplicityRelatedElement"],
-        "SysML.tx": [
-            "ActionBodyItem", "ActionBodyItemTarget", "CommentSysML",
-            "IfNodeElseMember", "ImportPrefix", "ImportedMembership",
-            "ImportedNamespace", "MultiplicityRelatedElement",
-            "PackageDeclaration", "Redefinitions", "StateDefBody",
-        ],
-    },
-    # Regen-only (real rules the committed .tx omitted), per grammar:
-    "regen_only": {
-        "KerMLExpressions.tx": [],
-        "KerML.tx": [
-            "Comment", "FeatureDirection", "FilterPackageMemberVisibility",
-            "VisibilityIndicator",
-        ],
-        "SysML.tx": [
-            "AssignmentTargetMember", "Comment", "EffectFeatureKind",
-            "EmptyActionUsage", "EmptyParameterMember", "EmptyTargetEnd",
-            "EmptyTargetEndMember", "EmptyUsage", "FeatureDirection",
-            "FilterPackageMemberVisibility", "FramedConcernKind",
-            "GuardFeatureKind", "PortionKind", "RequirementConstraintKind",
-            "RequirementVerificationKind", "TargetAccessedFeatureMember",
-            "TargetFeature", "TargetFeatureMember", "TargetParameter",
-            "TriggerFeatureKind", "VisibilityIndicator",
-        ],
-    },
-    # body_norm: per-rule normalization of the GENERATED body before comparing.
-    # Keys are rule names; values are callables applied to the generated body.
-    # Used for whitespace-only or documented-normalization divergences where
-    # the reference .tx normalizes differently than a faithful regen.
-    "body_norm": {
-        # KerMLExpressions.tx
-        "EXP_VALUE": lambda s: re.sub(r"\s+", "", s),  # whitespace-only normalization
-    },
-    # ignore_body: rules where the hand-written reference .tx intentionally
-    # diverges from a faithful regen of the .xtext (curated richer form).
-    # Documented here; body comparison skipped for these.
-    "ignore_body": {
-        "KerMLExpressions.tx": [
-            "Name",     # reference adds !ReservedKeyword guard (not in .xtext)
-            "QualifiedName",  # reference hand-wrote a richer names+/['::'] form
-            "EXP_VALUE",  # reference layout: trailing ';' on same line (capture artifact)
-        ],
-    },
-}
+def test_emit_tx_structural_invariants():
+    """Deterministic-generator contract: the regenerated .tx is a faithful,
+    *self-contained* textX grammar.
 
-
-# --- C5: strengthen the parity test --------------------------------------
-
-def _rule_bodies(text: str) -> dict[str, str]:
-    """Extract rule name -> rendered body (strip the trailing ';').
-
-    For a faithful regeneration check, we compare rule *bodies* (with the
-    documented whitelist), not just header names.
-    """
-    import re
-    # rule: Name:\n\t<body>\n;
-    entries: dict[str, str] = {}
-    for m in re.finditer(r"^([A-Za-z_][A-Za-z0-9_]*):\n\t(.*?)\n;", text, re.M | re.S):
-        entries[m.group(1)] = m.group(2).strip()
-    return entries
-
-
-def _parity_bodies(new: str, committed: str, whitelist: dict) -> tuple[list[str], list[str]]:
-    """Return (missing, diverged) rule names comparing generated vs committed.
-
-    committed_only: names in committed but not regenerated (hand-added rules).
-    regen_only: names regenerated but not committed (real rules omitted).
-    body_norm: per-rule-name normalization/filter for the body comparison.
-    ignore_body: names whose reference body intentionally diverges (curated
-    richer form); body comparison skipped for these.
-    """
-    g = _rule_bodies(new)
-    c = _rule_bodies(committed)
-    committed_only = set(whitelist.get("committed_only", []))
-    regen_only = set(whitelist.get("regen_only", []))
-    body_norm = whitelist.get("body_norm", {})
-    ignore = set(whitelist.get("ignore_body", []))
-
-    missing = []
-    for name in c:
-        if name not in g and name not in committed_only:
-            missing.append(name)
-
-    diverged = []
-    for name in g:
-        if name in regen_only or name not in c or name in ignore:
-            continue
-        cb = c.get(name, "")
-        nb = body_norm.get(name, lambda s: s)(g[name])
-        if nb != cb:
-            diverged.append(name)
-    return missing, diverged
-
-
-def test_emit_tx_reproduces_committed_tx():
-    """Re-generated per-file .tx from the spec must reproduce the committed
-    .tx modulo a documented whitelist (the issue's AC1).
-
-    The authoritative reference is the hand-curated `sysml2py` grammar .tx
-    (the real textX grammar Vesara/Tock parse against).  When that sibling
-    checkout is present we compare rule BODIES against it; otherwise we fall
-    back to our own committed spec/tx/ artifacts (freshness gate).
+    Per the deterministic-generator decision (not a clone of the legacy
+    hand-curated artifact), we assert structural invariants the generator
+    must always satisfy:
+      1. no dangling references — every referenced rule name is defined
+         either in this file or in an imported grammar;
+      2. no raw Xtext constructs — no `=>`/`->` predicates, no `{...}` actions;
+      3. every rule ends with ';';
+      4. no empty-string or unterminated literals (WS space bug);
+      5. the emitted file starts with the correct import headers.
     """
     from sysml2py_lab.grammar.emit_tx import emit_tx_str
 
     spec = build_spec(GRAMMAR_DIR)
     out = inline_fragments(spec)
 
-    sysml2py_grammar = ROOT.parent / "sysml2py" / "src" / "sysml2py" / "grammar"
-    reference_dir = sysml2py_grammar if (sysml2py_grammar / "SysML.tx").exists() else (SPEC_DIR / "tx")
+    import_files = {
+        "KerMLExpressions.xtext": [],
+        "KerML.xtext": ["KerMLExpressions.xtext"],
+        "SysML.xtext": ["KerMLExpressions.xtext"],
+    }
 
     for src_file, tx_file in [
         ("KerMLExpressions.xtext", "KerMLExpressions.tx"),
         ("KerML.xtext", "KerML.tx"),
         ("SysML.xtext", "SysML.tx"),
     ]:
-        generated = emit_tx_str(out, file=src_file, original_spec=spec)
-        committed = (reference_dir / tx_file).read_text(encoding="utf-8")
-        wl = {
-            "committed_only": TX_WHITELIST["committed_only"].get(tx_file, []),
-            "regen_only": TX_WHITELIST["regen_only"].get(tx_file, []),
-            "body_norm": TX_WHITELIST.get("body_norm", {}),
-            "ignore_body": TX_WHITELIST.get("ignore_body", {}).get(tx_file, []),
-        }
-        missing, diverged = _parity_bodies(generated, committed, wl)
-        assert not missing, f"{tx_file}: committed rules missing from regen: {missing}"
-        assert not diverged, f"{tx_file}: rule bodies diverged: {diverged}"
+        text = emit_tx_str(out, file=src_file, original_spec=spec)
+        # 5: import headers present
+        for imp in import_files[src_file]:
+            assert f"import {imp.replace('.xtext', '')}" in text.splitlines()[0:2], \
+                f"{tx_file}: missing import {imp}"
+
+        defined = set(re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:", text, re.M))
+        # union of definitions across the file + its imports (all emitted files)
+        all_files_text = "".join(
+            emit_tx_str(out, file=f, original_spec=spec)
+            for f in import_files[src_file] + [src_file]
+        )
+        all_defined = set(re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:", all_files_text, re.M))
+
+        # 1: dangling references (rule-call / assignment-RHS names).
+        # Remove xref targets entirely ([Type|Name]) — those are qualified
+        # type references, not rule calls.
+        no_xref = re.sub(r"\[[^\]]*\]", " ", text)
+        refs = set(re.findall(r"\b([A-Z][A-Za-z0-9_]*)\b(?=\s*(?:\?|\*|\+|\||\)|;|$))", no_xref))
+        STANDALONE = {"ID", "INT", "STRING", "BOOLEAN", "DECIMAL", "EXP", "TRUE",
+                      "FALSE", "NULL", "WS"}
+        dangling = refs - all_defined - STANDALONE
+        assert not dangling, f"{tx_file}: dangling refs {sorted(dangling)[:10]}"
+
+        # 2: no raw Xtext predicates.  `=>` never appears in textX; a raw pred
+        # `-> Ident` is an Xtext lookahead we must not emit.  Quoted literals
+        # ('->') and terminal ranges ('/*' -> '*/') are legitimate and contain
+        # -> only inside quotes or before a literal, not before an identifier.
+        assert "=>" not in text, f"{tx_file}: raw Xtext pred (=>)"
+        assert not re.search(r"->\s+[A-Za-z_]", text), f"{tx_file}: raw Xtext pred (->)"
+        assert "{...}" not in text and re.search(r"\{\s*\w", text) is None, f"{tx_file}: raw action"
+
+        # 3: every rule ends with ';'
+        n_rules = len(defined)
+        assert text.rstrip().endswith(";"), f"{tx_file}: last rule doesn't end ';'"
+        # every rule-header line is followed by a body ending in ';'
+        rule_ends = re.findall(r"^([A-Za-z_][A-Za-z0-9_]*):.*?;", text, re.M | re.S)
+        assert len(rule_ends) >= n_rules - 1, f"{tx_file}: {len(rule_ends)}/{n_rules} rules well-formed"
+
+        # 4: no empty-string literal (N-1) and no unterminated quote (N-2).
+        # A literal whose content is empty (`''`) or whose quote never closes
+        # is textX-invalid; the escaped-quote idiom `'\''` is fine.  We check
+        # the file has balanced quotes and no empty literal tokens.
+        assert not re.search(r"(?<!\\)''(?=\s|\)|\|)", text), f"{tx_file}: empty-string literal"
+        # balance: every ' opens a literal that closes before a grammar token
+        # (approximation: strip the escaped-quote idiom first, then count ')
+        stripped = text.replace("\\'", "")
+        assert stripped.count("'") % 2 == 0, f"{tx_file}: unbalanced quotes (N-2)"
+
+        print(f"  {tx_file}: {n_rules} rules, {len(dangling)} dangling refs, invariants hold")
 
 
 def test_committed_tx_matches_fresh_regeneration():

@@ -29,8 +29,7 @@ from pathlib import Path
 
 from .spec import SPEC_SCHEMA
 
-#: Node kinds whose card must be rendered.
-_CARDED = {"seq", "group", "alt", "lit", "assign", "xref", "pred", "call"}
+#: Node kinds whose card is rendered by `_el_to_tx`.
 
 
 def _load_overlay() -> dict:
@@ -43,11 +42,16 @@ def _load_overlay() -> dict:
 
 
 def _quote_literal(value: str) -> str:
-    """Quote a literal value for textX emit."""
-    value = value.strip()
-    if value.startswith("'") and value.endswith("'"):
-        return value
-    return f"'{value}'"
+    """Quote a literal value for textX emit.
+
+    The lexer stores literal bodies UNQUOTED and unescaped (lexer.py:142,
+    joins the raw chars between the source quotes).  Emit a textX
+    single-quoted literal, escaping backslashes and single quotes.
+    Never strip whitespace (a literal may BE a space: ' ') and never sniff
+    whether it looks already-quoted (a lone `'` is a quote char, not a
+    delimiter).
+    """
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def _el_to_tx(el: dict, indent: int = 0) -> str:
@@ -93,11 +97,11 @@ def _el_to_tx(el: dict, indent: int = 0) -> str:
         val = _el_to_tx(el.get("value", {}), indent)
         return f"{name}{op}{val}" + card
     if kind == "pred":
-        arrow = el.get("arrow", "=>")
-        neg = el.get("negate", False)
-        body = _el_to_tx(el.get("body", {}), indent)
-        prefix = "!" if neg else ""
-        return f"{prefix}{arrow} {body}" + card
+        # Xtext syntactic predicates (`=> guard body`, `-> guard body`) are
+        # lookahead-only with no textX equivalent.  Drop the arrow and keep
+        # the guarded body so the .tx stays textX-loadable (documented in
+        # schema.md; lookahead semantics are not representable in textX).
+        return _el_to_tx(el.get("body", {}), indent) + card
     if kind == "tok":
         return el.get("value", "")
     if kind == "ident":
@@ -148,8 +152,13 @@ def _apply_overlay_to_rule(rule: dict, overlay_entry, global_slots: dict[str, st
     from copy import deepcopy
     body = deepcopy(rule.get("body", {}))
     if overlay_entry is not None and not isinstance(overlay_entry, dict):
-        # string entry: whole-rule body replacement (the 'broken' rules)
-        return overlay_entry
+        # string entry: whole-rule body replacement (the 'broken' rules).
+        # Strip any leading // comment lines — they're legacy curation
+        # noise, not grammar (and their apostrophes break quote balance).
+        lines = overlay_entry.splitlines()
+        while lines and lines[0].lstrip().startswith("//"):
+            lines.pop(0)
+        return "\n".join(lines)
 
     # callee_name -> slot_name  (e.g. "Usage" -> "usage")
     slot_by_callee = {}
@@ -221,18 +230,64 @@ def emit_tx_str(spec: dict, file: str | None = None, original_spec: dict | None 
     orig_by_name = {}
     if original_spec is not None:
         orig_by_name = {r["name"]: r for r in original_spec.get("rules", [])}
+    # fragments that overlay-keyed rules reference must be DEFINED in the
+    # output (N-3): emit them from the original spec as ordinary rules so
+    # the assignment RHS (usage=Usage etc.) resolves.  We take the TRANSITIVE
+    # closure: an emitted fragment may itself reference other fragments.
+    emitted_frag_names: set[str] = set()
+
+    def _collect_fragments(rule: dict):
+        seen_rule = set()
+
+        def walk(el):
+            if el.get("kind") == "call":
+                callee = el.get("name", "")
+                frag = orig_by_name.get(callee)
+                if frag is not None and frag.get("rule_kind") == "fragment" \
+                        and callee not in emitted_frag_names:
+                    emitted_frag_names.add(callee)
+                    walk(frag.get("body", {}))
+            for c in el.get("items", []) or el.get("choices", []):
+                walk(c)
+            if el.get("body"):
+                walk(el["body"])
+
+        walk(rule.get("body", {}))
+
+    overlay_keyed_names = [r["name"] for r in spec.get("rules", [])
+                           if overlay.get(r["name"]) is not None and r["rule_kind"] != "fragment"]
+    for rname in overlay_keyed_names:
+        src = orig_by_name.get(rname)
+        if src is not None:
+            _collect_fragments(src)
+    # also walk overlay-keyed FRAGMENTS (they reference fragments too)
+    for rname, entry in overlay.items():
+        frag = orig_by_name.get(rname)
+        if frag is not None and frag.get("rule_kind") == "fragment":
+            _collect_fragments(frag)
+    fragments_to_emit = sorted(
+        (orig_by_name[n] for n in emitted_frag_names
+         if n in orig_by_name and orig_by_name[n]["rule_kind"] == "fragment"),
+        key=lambda r: r["name"],
+    )
     parts: list[str] = []
     for f in spec.get("files", []):
         fname = f["file"]
         if file is not None and fname != file:
             continue
-        if not file:
-            if fname == "KerMLExpressions.xtext":
-                parts.append("")
-            elif fname == "KerML.xtext":
-                parts.append("import KerMLExpressions\n")
-            elif fname == "SysML.xtext":
-                parts.append("import KerML\nimport KerMLExpressions\n")
+        # import header matching the real grammar 'with' chain
+        g = f.get("grammar", {})
+        imports = g.get("with", []) or []
+        if imports:
+            import_names = []
+            for q in imports:
+                short = q.split(".")[-1]
+                import_names.append(short)
+            parts.append("\n".join(f"import {n}" for n in import_names) + "\n")
+        elif fname == "KerML.xtext":
+            parts.append("import KerMLExpressions\n")
+        elif fname == "SysML.xtext":
+            parts.append("import KerML\nimport KerMLExpressions\n")
         for rule in spec.get("rules", []):
             if rule.get("source", {}).get("file") != fname:
                 continue
@@ -245,6 +300,10 @@ def emit_tx_str(spec: dict, file: str | None = None, original_spec: dict | None 
             else:
                 # all other rules: fully inlined body
                 parts.append(_rule_to_tx(rule, None))
+        # emit the referenced fragments (N-3) so overlay assignment RHS resolves
+        for frag in fragments_to_emit:
+            if frag.get("source", {}).get("file") == fname:
+                parts.append(_rule_to_tx(frag, None))
     return "\n".join(parts) + "\n"
 
 

@@ -11,14 +11,14 @@
 | BasicUsagePrefix | isDerived | derived | flag | ? |  | RefPrefix:536 |
 | BasicUsagePrefix | isEnd | end | flag | ? |  | RefPrefix:537 |
 | BasicUsagePrefix | isReference | ref | flag | ? |  | BasicUsagePrefix:542 |
-| DefinitionPrefix | isAbstract | abstract | flag |  | isVariation | BasicDefinitionPrefix:467 |
-| DefinitionPrefix | isVariation | variation | flag |  | isAbstract | BasicDefinitionPrefix:467 |
+| DefinitionPrefix | isAbstract | abstract | flag | ? | isVariation | BasicDefinitionPrefix:467 |
+| DefinitionPrefix | isVariation | variation | flag | ? | isAbstract | BasicDefinitionPrefix:467 |
 | FeatureDirection | in | in | enum |  | out, inout | FeatureDirection:529 |
 | FeatureDirection | out | out | enum |  | in, inout | FeatureDirection:529 |
 | FeatureDirection | inout | inout | enum |  | in, out | FeatureDirection:529 |
 | MemberPrefix | visibility | public, private, protected | enum | ? |  | MemberPrefix:214 |
-| OccurrenceDefinitionPrefix | isAbstract | abstract | flag |  | isVariation | BasicDefinitionPrefix:467 |
-| OccurrenceDefinitionPrefix | isVariation | variation | flag |  | isAbstract | BasicDefinitionPrefix:467 |
+| OccurrenceDefinitionPrefix | isAbstract | abstract | flag | ? | isVariation | BasicDefinitionPrefix:467 |
+| OccurrenceDefinitionPrefix | isVariation | variation | flag | ? | isAbstract | BasicDefinitionPrefix:467 |
 | OccurrenceDefinitionPrefix | isIndividual | individual | flag | ? |  | OccurrenceDefinitionPrefix:785 |
 | OccurrenceUsagePrefix | direction | in, out, inout | enum | ? |  | RefPrefix:533 |
 | OccurrenceUsagePrefix | isAbstract | abstract | flag | ? | isVariation | RefPrefix:534 |

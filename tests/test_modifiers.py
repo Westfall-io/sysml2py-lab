@@ -13,7 +13,8 @@ from sysml2py_lab.grammar.modifiers import (
 )
 from sysml2py_lab.grammar.spec import build_spec
 
-INPUTS = Path("grammar_inputs")
+ROOT = Path(__file__).resolve().parents[1]
+INPUTS = ROOT / "grammar_inputs"
 
 
 @pytest.fixture(scope="module")
