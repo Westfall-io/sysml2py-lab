@@ -147,9 +147,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "tx":
         try:
-            spec = build_spec(args.dir)
-            spec = inline_fragments(spec)
-            text = emit_tx(spec, args.out)
+            original = build_spec(args.dir)
+            spec = inline_fragments(original)
+            emit_tx(spec, args.out, original_spec=original)
+            print(f"tx wrote {args.out} ({spec['counts']['total']} inlined rules)")
         except Exception as e:
             print(f"tx FAILED: {e}", file=sys.stderr)
             return 1

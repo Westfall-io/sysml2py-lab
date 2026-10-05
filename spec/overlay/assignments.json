@@ -4,7 +4,7 @@
   "entries": {
     "RefPrefix": {"prefix": "RefPrefix"},
     "BasicUsagePrefix": {"prefix": "BasicUsagePrefix"},
-    "OccurrenceUsagePrefix": {"prefix": "OccurrenceUsagePrefix"},
+    "OccurrenceUsagePrefix": {"prefix": "OccurrenceUsagePrefix", "isIndividual": "?= 'individual'"},
     "OccurrenceDefinitionPrefix": {"prefix": "OccurrenceDefinitionPrefix"},
     "BasicDefinitionPrefix": {"prefix": "BasicDefinitionPrefix"},
 
@@ -22,7 +22,6 @@
     "FeatureMembership": {"ownedRelatedElement": "+= Feature"},
 
     "FeatureDirection": {"direction": "= in | out | inout"},
-    "OccurrenceUsagePrefix": {"isIndividual": "?= 'individual'"},
 
     "LifeClass": "//This doesn't work.\n\t'lifeclass'",
     "EmptyTargetEnd": "//This doesn't work.\n\t'empty target end'",

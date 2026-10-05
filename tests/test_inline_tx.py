@@ -82,7 +82,11 @@ def test_inline_regular_rule_call_untouched():
 
 
 def test_inline_preserves_cardinality_in_ref_call():
-    """`Frag*` in a host must keep the * on the spliced fragment body."""
+    """`Frag*` in a host must keep the * on the spliced fragment body.
+
+    C3: the spliced body is wrapped in a group carrying the card, so the
+    cardinality is preserved AND precedence is safe.
+    """
     spec = {
         "rules": [
             {"name": "Host", "rule_kind": "rule", "returns": "X",
@@ -96,13 +100,17 @@ def test_inline_preserves_cardinality_in_ref_call():
     }
     out = inline_fragments(spec)
     host = [r for r in out["rules"] if r["name"] == "Host"][0]
-    # the fragment body is a seq; Frag* means the WHOLE seq repeats
-    assert host["body"]["kind"] == "seq"
-    assert host["body"].get("card") == "*"
+    # Frag* -> group(seq) with the '*' on the wrapper
+    assert host["body"]["kind"] == "group"
+    assert host["body"]["card"] == "*"
+    assert host["body"]["body"]["kind"] == "seq"
 
 
 def test_emit_group_preserves_cardinality():
-    """A group node with a card (?/*/+) must render it — no silent drop."""
+    """A group node with a card (?/*/+) must render it — no silent drop.
+
+    (Literals are quoted at emit; the value 'foo' renders as 'foo'.)
+    """
     spec = {
         "files": [{"file": "T.xtext"}],
         "rules": [
@@ -116,8 +124,140 @@ def test_emit_group_preserves_cardinality():
     }
     from sysml2py_lab.grammar.emit_tx import emit_tx_str
     out = emit_tx_str(spec, file="T.xtext")
-    assert "(foo)?" in out
-    assert "(bar)*" in out
+    assert "('foo')?" in out
+    assert "('bar')*" in out
+
+
+# --- C2 regression: card on alt/lit/assign/xref/pred ---------------------
+
+def test_emit_card_on_alt_and_lit():
+    """C2: cards on alt/lit nodes must render, not silently drop."""
+    spec = {
+        "files": [{"file": "T.xtext"}],
+        "rules": [
+            {"name": "Host", "rule_kind": "rule", "returns": "X",
+             "source": {"file": "T.xtext", "line": 1},
+             "body": {"kind": "seq", "items": [
+                 {"kind": "alt", "card": "?", "choices": [
+                     {"kind": "lit", "value": "a"},
+                     {"kind": "lit", "value": "b"},
+                 ]},
+                 {"kind": "lit", "value": "c", "card": "*"},
+             ]}},
+        ],
+    }
+    from sysml2py_lab.grammar.emit_tx import emit_tx_str
+    out = emit_tx_str(spec, file="T.xtext")
+    assert "('a' | 'b')?" in out
+    assert "'c'*" in out
+
+
+# --- C1 regression: cross-grammar fragment resolution --------------------
+
+def test_fragment_resolution_scoped_per_grammar():
+    """C1: fragment with same name in two grammars must resolve per-source-file,
+    following the import chain (KerMLExpressions -> KerML -> SysML)."""
+    spec = {
+        "files": [
+            {"file": "KerML.xtext"},
+            {"file": "SysML.xtext"},
+        ],
+        "rules": [
+            {"name": "Host", "rule_kind": "rule", "returns": "X",
+             "source": {"file": "SysML.xtext", "line": 1},
+             "body": {"kind": "call", "name": "Frag", "line": 5}},
+            {"name": "Frag", "rule_kind": "fragment", "returns": "X",
+             "source": {"file": "KerML.xtext", "line": 3},
+             "body": {"kind": "lit", "value": "'kerml'"}},
+            {"name": "Frag", "rule_kind": "fragment", "returns": "X",
+             "source": {"file": "SysML.xtext", "line": 9},
+             "body": {"kind": "lit", "value": "'sysml'"}},
+        ],
+    }
+    out = inline_fragments(spec)
+    host = [r for r in out["rules"] if r["name"] == "Host"][0]
+    # Host lives in SysML.xtext -> must inline the SysML copy
+    assert host["body"]["value"] == "'sysml'", f"got {host['body']['value']}"
+
+
+# --- C3 regression: alt-rooted fragment splice precedence -----------------
+
+def test_alt_rooted_fragment_splice_wrapped():
+    """C3: splicing an alt-rooted fragment into a host seq must wrap in a
+    group, so the fragment's | does not fuse with host alternation."""
+    spec = {
+        "files": [{"file": "T.xtext"}],
+        "rules": [
+            {"name": "Host", "rule_kind": "rule", "returns": "X",
+             "source": {"file": "T.xtext", "line": 1},
+             "body": {"kind": "seq", "items": [
+                 {"kind": "call", "name": "Frag", "line": 2},
+                 {"kind": "lit", "value": ";", "line": 3},
+             ]}},
+            {"name": "Frag", "rule_kind": "fragment", "returns": "X",
+             "source": {"file": "T.xtext", "line": 5},
+             "body": {"kind": "alt", "choices": [
+                 {"kind": "lit", "value": "a"},
+                 {"kind": "lit", "value": "b"},
+             ]}},
+        ],
+    }
+    out = inline_fragments(spec)
+    host = [r for r in out["rules"] if r["name"] == "Host"][0]
+    first = host["body"]["items"][0]
+    # the spliced alt must be wrapped in a group node
+    assert first["kind"] == "group", f"expected group wrapper, got {first['kind']}"
+    assert first["body"]["kind"] == "alt"
+
+
+# --- C4 regression: literals quoted at emit ------------------------------
+
+def test_emit_literals_quoted():
+    """C4: emitted .tx must quote literals (textX requires quotes)."""
+    spec = {
+        "files": [{"file": "T.xtext"}],
+        "rules": [
+            {"name": "Host", "rule_kind": "rule", "returns": "X",
+             "source": {"file": "T.xtext", "line": 1},
+             "body": {"kind": "seq", "items": [
+                 {"kind": "lit", "value": "abstract"},
+                 {"kind": "lit", "value": "readonly"},
+             ]}},
+        ],
+    }
+    from sysml2py_lab.grammar.emit_tx import emit_tx_str
+    out = emit_tx_str(spec, file="T.xtext")
+    assert "'abstract'" in out
+    assert "'readonly'" in out
+
+
+# --- C6 regression: dict overlay entries applied -------------------------
+
+def test_overlay_dict_entries_applied():
+    """C6: dict overlay entries (assignment names) must be applied to the
+    emitted .tx, not discarded."""
+    from sysml2py_lab.grammar.emit_tx import _load_overlay
+    ov = _load_overlay()
+    dict_entries = {k: v for k, v in ov.items() if isinstance(v, dict)}
+    assert dict_entries, "no dict overlay entries found"
+    # a rule whose body references the overlay-keyed fragment directly
+    # (PartUsage's body is a call to Usage; overlay maps it to usage=Usage)
+    spec = {
+        "files": [{"file": "T.xtext"}],
+        "rules": [
+            {"name": "PartUsage", "rule_kind": "rule", "returns": "X",
+             "source": {"file": "T.xtext", "line": 1},
+             "body": {"kind": "call", "name": "Usage", "line": 2}},
+            {"name": "Usage", "rule_kind": "fragment", "returns": "X",
+             "source": {"file": "T.xtext", "line": 5},
+             "body": {"kind": "lit", "value": "'part'"}},
+        ],
+    }
+    from sysml2py_lab.grammar.inline import inline_fragments
+    from sysml2py_lab.grammar.emit_tx import emit_tx_str
+    inlined = inline_fragments(spec)
+    out = emit_tx_str(inlined, file="T.xtext", original_spec=spec)
+    assert "usage=" in out, f"dict overlay not applied: {out}"
 
 
 # --- token-stream comparison --------------------------------------------
@@ -180,28 +320,96 @@ TX_WHITELIST = {
 }
 
 
+# --- C5: strengthen the parity test --------------------------------------
+
+def _rule_bodies(text: str) -> dict[str, str]:
+    """Extract rule name -> rendered body (strip the trailing ';').
+
+    For a faithful regeneration check, we compare rule *bodies* (with the
+    documented whitelist), not just header names.
+    """
+    import re
+    # rule: Name:\n\t<body>\n;
+    entries: dict[str, str] = {}
+    for m in re.finditer(r"^([A-Za-z_][A-Za-z0-9_]*):\n\t(.*?)\n;", text, re.M | re.S):
+        entries[m.group(1)] = m.group(2).strip()
+    return entries
+
+
+def _parity_bodies(new: str, committed: str, whitelist: dict) -> tuple[list[str], list[str]]:
+    """Return (missing, diverged) rule names comparing generated vs committed.
+
+    committed_only: names in committed but not regenerated (hand-added rules).
+    regen_only: names regenerated but not committed (real rules omitted).
+    body_norm: per-rule-name normalization/filter for the body comparison.
+    """
+    g = _rule_bodies(new)
+    c = _rule_bodies(committed)
+    committed_only = set(whitelist.get("committed_only", []))
+    regen_only = set(whitelist.get("regen_only", []))
+    body_norm = whitelist.get("body_norm", {})
+
+    missing = []
+    for name in c:
+        if name not in g and name not in committed_only:
+            missing.append(name)
+
+    diverged = []
+    for name in g:
+        if name in regen_only or name not in c:
+            continue
+        cb = c.get(name, "")
+        nb = body_norm.get(name, lambda s: s)(g[name])
+        if nb != cb:
+            diverged.append(name)
+    return missing, diverged
+
+
 def test_emit_tx_reproduces_committed_tx():
     """Re-generated per-file .tx from the spec must reproduce the committed
-    .tx modulo a documented whitelist (the issue's AC1)."""
+    .tx modulo a documented whitelist (the issue's AC1).
+
+    C5: this now compares rule BODIES (not just headers) and uses OUR
+    committed artifacts in spec/tx/ (no sibling-checkout skip).
+    """
     from sysml2py_lab.grammar.emit_tx import emit_tx_str
 
     spec = build_spec(GRAMMAR_DIR)
     out = inline_fragments(spec)
 
-    # committed .tx files live in the sibling sysml2py repo (read-only ref)
-    sysml2py_grammar = ROOT.parent / "sysml2py" / "src" / "sysml2py" / "grammar"
-    if not (sysml2py_grammar / "SysML.tx").exists():
-        pytest.skip("sibling sysml2py grammar dir not present (read-only ref skips)")
+    # committed .tx artifacts we own (regenerated + committed in this repo)
+    our_tx = SPEC_DIR / "tx"
 
     for src_file, tx_file in [
         ("KerMLExpressions.xtext", "KerMLExpressions.tx"),
         ("KerML.xtext", "KerML.tx"),
         ("SysML.xtext", "SysML.tx"),
     ]:
-        generated = emit_tx_str(out, file=src_file)
-        committed = (sysml2py_grammar / tx_file).read_text(encoding="utf-8")
+        generated = emit_tx_str(out, file=src_file, original_spec=spec)
+        committed = (our_tx / tx_file).read_text(encoding="utf-8")
         wl = {
             "committed_only": TX_WHITELIST["committed_only"].get(tx_file, []),
             "regen_only": TX_WHITELIST["regen_only"].get(tx_file, []),
         }
-        assert _parity_ok(generated, committed, wl), f"parity failed for {tx_file}"
+        missing, diverged = _parity_bodies(generated, committed, wl)
+        assert not missing, f"{tx_file}: committed rules missing from regen: {missing}"
+        assert not diverged, f"{tx_file}: rule bodies diverged: {diverged}"
+
+
+def test_committed_tx_matches_fresh_regeneration():
+    """C5 gate: 'sysml2py-lab tx' output must match the committed spec/tx/*.tx
+    — the committed artifacts can't drift from a fresh regeneration."""
+    from sysml2py_lab.grammar.emit_tx import emit_tx_str
+
+    spec = build_spec(GRAMMAR_DIR)
+    out = inline_fragments(spec)
+
+    for src_file, tx_file in [
+        ("KerMLExpressions.xtext", "KerMLExpressions.tx"),
+        ("KerML.xtext", "KerML.tx"),
+        ("SysML.xtext", "SysML.tx"),
+    ]:
+        generated = emit_tx_str(out, file=src_file, original_spec=spec)
+        committed = (SPEC_DIR / "tx" / tx_file).read_text(encoding="utf-8")
+        assert generated == committed, f"{tx_file}: committed artifact is stale (regenerate!)"
+
