@@ -1,0 +1,298 @@
+OwnedExpressionMember:
+	ownedRelatedElement+=OwnedExpression
+;
+OwnedExpression:
+	ConditionalExpression
+;
+OwnedExpressionReference:
+	ownedRelationship+=OwnedExpressionMember
+;
+ConditionalExpression:
+	NullCoalescingExpression | {SysML :: OperatorExpression} operator=ConditionalOperator operand+=NullCoalescingExpression ? operand+=OwnedExpressionReference else operand+=OwnedExpressionReference
+;
+ConditionalOperator:
+	if
+;
+NullCoalescingExpression:
+	ImpliesExpression ({SysML :: OperatorExpression . operand += current} operator=NullCoalescingOperator operand+=ImpliesExpressionReference)
+;
+NullCoalescingOperator:
+	??
+;
+ImpliesExpressionReference:
+	ownedRelationship+=ImpliesExpressionMember
+;
+ImpliesExpressionMember:
+	ownedRelatedElement+=ImpliesExpression
+;
+ImpliesExpression:
+	OrExpression ({SysML :: OperatorExpression . operand += current} operator=ImpliesOperator operand+=OrExpressionReference)
+;
+ImpliesOperator:
+	implies
+;
+OrExpressionReference:
+	ownedRelationship+=OrExpressionMember
+;
+OrExpressionMember:
+	ownedRelatedElement+=OrExpression
+;
+OrExpression:
+	XorExpression ({SysML :: OperatorExpression . operand += current} (operator=OrOperator operand+=XorExpression | operator=ConditionalOrOperator operand+=XorExpressionReference))
+;
+OrOperator:
+	|
+;
+ConditionalOrOperator:
+	or
+;
+XorExpressionReference:
+	ownedRelationship+=XorExpressionMember
+;
+XorExpressionMember:
+	ownedRelatedElement+=XorExpression
+;
+XorExpression:
+	AndExpression ({SysML :: OperatorExpression . operand += current} operator=XorOperator operand+=AndExpression)
+;
+XorOperator:
+	xor
+;
+AndExpression:
+	EqualityExpression ({SysML :: OperatorExpression . operand += current} (operator=AndOperator operand+=EqualityExpression | operator=ConditionalAndOperator operand+=EqualityExpressionReference))
+;
+AndOperator:
+	&
+;
+ConditionalAndOperator:
+	and
+;
+EqualityExpressionReference:
+	ownedRelationship+=EqualityExpressionMember
+;
+EqualityExpressionMember:
+	ownedRelatedElement+=EqualityExpression
+;
+EqualityExpression:
+	ClassificationExpression ({SysML :: OperatorExpression . operand += current} operator=EqualityOperator operand+=ClassificationExpression)
+;
+EqualityOperator:
+	== | != | === | !==
+;
+ClassificationExpression:
+	RelationalExpression ({SysML :: OperatorExpression . operand += current} operator=ClassificationTestOperator ownedRelationship+=TypeReferenceMember | {SysML :: OperatorExpression . operand += current} operator=CastOperator ownedRelationship+=TypeResultMember) | {SysML :: OperatorExpression} operand+=SelfReferenceExpression operator=ClassificationTestOperator ownedRelationship+=TypeReferenceMember | {SysML :: OperatorExpression} operand+=MetadataReference operator=MetaClassificationTestOperator ownedRelationship+=TypeReferenceMember | {SysML :: OperatorExpression} operand+=SelfReferenceExpression operator=CastOperator ownedRelationship+=TypeResultMember | {SysML :: OperatorExpression} operand+=MetadataReference operator=MetaCastOperator ownedRelationship+=TypeResultMember
+;
+ClassificationTestOperator:
+	hastype | istype | @
+;
+MetaClassificationTestOperator:
+	@@
+;
+CastOperator:
+	as
+;
+MetaCastOperator:
+	meta
+;
+MetadataReference:
+	referencedElement=[SysML::Element|QualifiedName]
+;
+TypeReferenceMember:
+	ownedRelatedElement+=TypeReference
+;
+TypeResultMember:
+	ownedRelatedElement+=TypeReference
+;
+TypeReference:
+	ownedRelationship+=ReferenceTyping
+;
+ReferenceTyping:
+	type=[SysML::Type|QualifiedName]
+;
+SelfReferenceExpression:
+	ownedRelationship+=SelfReferenceMember
+;
+SelfReferenceMember:
+	ownedRelatedElement+=EmptyFeature
+;
+EmptyFeature:
+	//This doesn't work.
+	'empty feature'
+;
+RelationalExpression:
+	RangeExpression ({SysML :: OperatorExpression . operand += current} operator=RelationalOperator operand+=RangeExpression)
+;
+RelationalOperator:
+	< | > | <= | >=
+;
+RangeExpression:
+	AdditiveExpression ({SysML :: OperatorExpression . operand += current} operator=.. operand+=AdditiveExpression)
+;
+AdditiveExpression:
+	MultiplicativeExpression ({SysML :: OperatorExpression . operand += current} operator=AdditiveOperator operand+=MultiplicativeExpression)
+;
+AdditiveOperator:
+	+ | -
+;
+MultiplicativeExpression:
+	ExponentiationExpression ({SysML :: OperatorExpression . operand += current} operator=MultiplicativeOperator operand+=ExponentiationExpression)
+;
+MultiplicativeOperator:
+	* | / | %
+;
+ExponentiationExpression:
+	UnaryExpression ({SysML :: OperatorExpression . operand += current} operator=ExponentiationOperator operand+=UnaryExpression)
+;
+ExponentiationOperator:
+	** | ^
+;
+UnaryExpression:
+	{SysML :: OperatorExpression} operator=UnaryOperator operand+=ExtentExpression | ExtentExpression
+;
+UnaryOperator:
+	+ | - | ~ | not
+;
+ExtentExpression:
+	{SysML :: OperatorExpression} operator=all ownedRelationship+=TypeResultMember | PrimaryExpression
+;
+PrimaryExpression:
+	BaseExpression ({SysML :: FeatureChainExpression . operand += current} . ownedRelationship+=FeatureChainMember) (({SysML :: OperatorExpression . operand += current} operator=# ( operand+=SequenceExpression ) | {SysML :: OperatorExpression . operand += current} operator=[ operand+=SequenceExpression ] | {SysML :: OperatorExpression . operand += current} -> ownedRelationship+=ReferenceTyping (operand+=BodyExpression | operand+=FunctionReferenceExpression | ( (ownedRelationship+=ArgumentMember (, ownedRelationship+=ArgumentMember) | ownedRelationship+=NamedArgumentMember (, ownedRelationship+=NamedArgumentMember)) )) | {SysML :: CollectExpression . operand += current} . operand+=BodyExpression | {SysML :: SelectExpression . operand += current} .? operand+=BodyExpression) ({SysML :: FeatureChainExpression . operand += current} . ownedRelationship+=FeatureChainMember))
+;
+FunctionReferenceExpression:
+	ownedRelationship+=FunctionReferenceMember
+;
+FunctionReferenceMember:
+	ownedRelatedElement+=FunctionReference
+;
+FunctionReference:
+	ownedRelationship+=ReferenceTyping
+;
+FeatureChainMember:
+	memberElement=[SysML::Feature|QualifiedName] | {SysML :: OwningMembership} ownedRelatedElement+=OwnedFeatureChain
+;
+BaseExpression:
+	NullExpression | LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | BodyExpression | ( SequenceExpression )
+;
+BodyExpression:
+	ownedRelationship+=ExpressionBodyMember
+;
+ExpressionBodyMember:
+	ownedRelatedElement+=ExpressionBody
+;
+ExpressionBody:
+	{ (ownedRelationship+=BodyParameterMember ;) ownedRelationship+=ResultExpressionMember }
+;
+ResultExpressionMember:
+	ownedRelatedElement+=OwnedExpression
+;
+BodyParameterMember:
+	in ownedRelatedElement+=BodyParameter
+;
+BodyParameter:
+	declaredName=Name
+;
+SequenceExpression:
+	OwnedExpression (, | {SysML :: OperatorExpression . operand += current} operator=, operand+=SequenceExpression)
+;
+FeatureReferenceExpression:
+	ownedRelationship+=FeatureReferenceMember
+;
+FeatureReferenceMember:
+	memberElement=[SysML::Feature|QualifiedName]
+;
+MetadataAccessExpression:
+	referencedElement=[SysML::Element|QualifiedName] . metadata
+;
+InvocationExpression:
+	ownedRelationship+=OwnedFeatureTyping ( (ownedRelationship+=ArgumentMember (, ownedRelationship+=ArgumentMember) | ownedRelationship+=NamedArgumentMember (, ownedRelationship+=NamedArgumentMember)) )
+;
+OwnedFeatureTyping:
+	type=[SysML::Type|QualifiedName] | ownedRelatedElement+=OwnedFeatureChain
+;
+OwnedFeatureChain:
+	ownedRelationship+=OwnedFeatureChaining (. ownedRelationship+=OwnedFeatureChaining)
+;
+OwnedFeatureChaining:
+	chainingFeature=[SysML::Feature|QualifiedName]
+;
+ArgumentMember:
+	ownedRelatedElement+=Argument
+;
+Argument:
+	ownedRelationship+=ArgumentValue
+;
+NamedArgumentMember:
+	ownedRelatedElement+=NamedArgument
+;
+NamedArgument:
+	ownedRelationship+=ParameterRedefinition = ownedRelationship+=ArgumentValue
+;
+ParameterRedefinition:
+	redefinedFeature=[SysML::Feature|QualifiedName]
+;
+ArgumentValue:
+	ownedRelatedElement+=OwnedExpression
+;
+NullExpression:
+	{SysML :: NullExpression} (null | ( ))
+;
+LiteralExpression:
+	LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity
+;
+LiteralBoolean:
+	value=BooleanValue
+;
+BooleanValue:
+	true | false
+;
+LiteralString:
+	value=STRING_VALUE
+;
+LiteralInteger:
+	value=DECIMAL_VALUE
+;
+LiteralReal:
+	value=RealValue
+;
+RealValue:
+	DECIMAL_VALUE? . (DECIMAL_VALUE | EXP_VALUE) | EXP_VALUE
+;
+LiteralInfinity:
+	{SysML :: LiteralInfinity} *
+;
+Name:
+	ID | UNRESTRICTED_NAME
+;
+Qualification:
+	(Name ::)
+;
+QualifiedName:
+	Qualification? Name
+;
+DECIMAL_VALUE:
+	0 .. 9 ( 0 .. 9 ) *
+;
+EXP_VALUE:
+	DECIMAL_VALUE ( e | E ) ( + | - ) ? DECIMAL_VALUE
+;
+ID:
+	( a .. z | A .. Z | _ ) ( a .. z | A .. Z | _ | 0 .. 9 ) *
+;
+UNRESTRICTED_NAME:
+	\' ( \\ ( b | t | n | f | r | " | ' | \\ ) | ! ( \\ | \' ) ) * \'
+;
+STRING_VALUE:
+	" ( \\ ( b | t | n | f | r | " | ' | \\ ) | ! ( \\ | " ) ) * "
+;
+REGULAR_COMMENT:
+	/* -> */
+;
+ML_NOTE:
+	//* -> */
+;
+SL_NOTE:
+	// ( ! ( \n | \r ) ! ( \n | \r ) * ) ? ( \r ? \n ) ?
+;
+WS:
+	(   | \t | \r | \n ) +
+;
