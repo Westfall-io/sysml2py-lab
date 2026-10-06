@@ -221,6 +221,37 @@ def test_quote_literal_space_and_quote():
     assert _quote_literal("abstract") == "'abstract'"
 
 
+def test_lexer_emit_roundtrip_escapes():
+    """W9 (round-4 regression): tokenize -> _quote_literal round-trip must
+    preserve escape semantics.  The lexer DECODES escapes to real chars;
+    _quote_literal re-escapes them for textX output.  A lexer regression here
+    would otherwise surface as a confusing 'committed artifact is stale'."""
+    from sysml2py_lab.grammar.lexer import tokenize, LITERAL
+    from sysml2py_lab.grammar.emit_tx import _quote_literal
+
+    # source: terminal WS: (' ' | '\t' | '\r' | '\n')+  — the real grammar form
+    src = r"""terminal WS:
+    (' ' | '\t' | '\r' | '\n')+
+    ;"""
+    toks = tokenize(src)
+    lit_vals = [t.value for t in toks if t.kind == LITERAL]
+    # the lexer decoded: space, tab, CR, LF
+    assert lit_vals == [" ", "\t", "\r", "\n"], f"lexer decode wrong: {lit_vals!r}"
+    # re-escape for textX output
+    emitted = [_quote_literal(v) for v in lit_vals]
+    assert emitted == ["' '", "'\\t'", "'\\r'", "'\\n'"], f"re-escape wrong: {emitted!r}"
+
+    # source escape forms for backslash + single-quote round-trip exactly
+    src2 = r"""terminal T:
+    '\\' '\''
+    ;"""
+    toks2 = tokenize(src2)
+    lit2 = [t.value for t in toks2 if t.kind == LITERAL]
+    assert lit2 == ["\\", "'"], f"lexer decode wrong: {lit2!r}"
+    emitted2 = [_quote_literal(v) for v in lit2]
+    assert emitted2 == ["'\\\\'", "'\\''"], f"re-escape wrong: {emitted2!r}"
+
+
 # --- C6 regression: dict overlay entries applied -------------------------
 
 def test_overlay_dict_entries_applied():
@@ -363,4 +394,27 @@ def test_committed_tx_matches_fresh_regeneration():
         generated = emit_tx_str(out, file=src_file, original_spec=spec)
         committed = (SPEC_DIR / "tx" / tx_file).read_text(encoding="utf-8")
         assert generated == committed, f"{tx_file}: committed artifact is stale (regenerate!)"
+
+
+def test_committed_modifiers_matches_fresh():
+    """W7: spec/relationships/modifiers.{json,md} must equal a fresh
+    build_spec -> build_modifier_model -> write_modifiers run, so the
+    modifier golden artifacts can't drift."""
+    from sysml2py_lab.grammar.modifiers import build_modifier_model, write_modifiers
+    import json as _json
+
+    spec = build_spec(GRAMMAR_DIR)
+    model = build_modifier_model(spec)
+    out_dir = Path("/tmp") / "modifiers_fresh"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_modifiers(model, out_dir / "modifiers.json", out_dir / "modifiers.md")
+
+    fresh_json = (out_dir / "modifiers.json").read_text(encoding="utf-8")
+    committed_json = (SPEC_DIR / "relationships" / "modifiers.json").read_text(encoding="utf-8")
+    assert _json.loads(fresh_json) == _json.loads(committed_json), \
+        "spec/relationships/modifiers.json is stale (regenerate 'sysml2py-lab spec modifiers')"
+    fresh_md = (out_dir / "modifiers.md").read_text(encoding="utf-8")
+    committed_md = (SPEC_DIR / "relationships" / "modifiers.md").read_text(encoding="utf-8")
+    assert fresh_md == committed_md, \
+        "spec/relationships/modifiers.md is stale (regenerate 'sysml2py-lab spec modifiers')"
 
