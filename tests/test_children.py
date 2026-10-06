@@ -163,6 +163,69 @@ def test_known_kinds_resolve(model):
         assert items, f"no children for {b}"
 
 
+def test_no_duplicate_child_entries(model):
+    """C1 regression: KerML + SysML same-name rules must not append
+    duplicate entries (MetadataBody/PackageBody had AliasMember+Import twice)."""
+    for body_name, entries in model["bodies"].items():
+        seen = set()
+        for e in entries:
+            key = (e["wrapper"], e["cardinality"])
+            assert key not in seen, f"duplicate {key} in {body_name}"
+            seen.add(key)
+
+
+def test_no_member_leak_as_kind(model):
+    """C2/C3 regression: a member wrapper whose element target resolves must
+    not report its own name as the child kind.  Legit leaves (AliasMember,
+    Import, Expose) are exempt."""
+    LEGIT = {"AliasMember", "Import", "Expose"}
+    for body_name, entries in model["bodies"].items():
+        for e in entries:
+            if e["wrapper"] in LEGIT:
+                continue
+            assert e["kinds"] != [e["wrapper"]], (
+                f"{body_name} {e['wrapper']} leaked wrapper as kind: {e['kinds']}"
+            )
+
+
+def test_transition_members_report_usage_kind(model):
+    """C3 regression: TransitionUsageMember/TargetTransitionUsageMember/
+    EntryTransitionMember must report the *element* kind (not a sub-member
+    like TransitionSourceMember/EmptyParameterMember)."""
+    for body_name in ("StateDefBody", "StateUsageBody"):
+        for e in children_for_body(model, body_name):
+            if e["wrapper"] in ("TransitionUsageMember", "TargetTransitionUsageMember",
+                                 "EntryTransitionMember"):
+                assert e["kinds"], f"{body_name} {e['wrapper']} empty kinds"
+                assert not any(k in e["kinds"] for k in
+                               ("TransitionSourceMember", "EmptyParameterMember")), (
+                    f"{body_name} {e['wrapper']} leaked sub-member: {e['kinds']}"
+                )
+
+
+def test_cardinality_recorded(model):
+    """C4 regression: entries must carry a real card where the grammar
+    repeats them (the '*' on the BodyItem call / enclosing group)."""
+    db = children_for_body(model, "DefinitionBody")
+    assert all(e["cardinality"] == "*" for e in db), [
+        (e["wrapper"], e["cardinality"]) for e in db
+    ]
+    total = sum(len(v) for v in model["bodies"].values())
+    stars = sum(1 for v in model["bodies"].values() for e in v if e["cardinality"] == "*")
+    assert stars > 0, "no entry recorded a '*' cardinality"
+    assert stars < total, "all entries '*' — repetition modeling is meaningless"
+
+
+def test_function_body_present(model):
+    """W1 regression: FunctionBody is a real container and must not be
+    silently dropped (FunctionBodyPart holds members directly, no *BodyItem)."""
+    entries = children_for_body(model, "FunctionBody")
+    assert entries, "FunctionBody dropped"
+    wrappers = {e["wrapper"] for e in entries}
+    assert {"NonFeatureMember", "FeatureMember", "AliasMember", "Import",
+            "ReturnFeatureMember", "ResultExpressionMember"} <= wrappers
+
+
 def test_committed_children_fresh():
     """Casting gate: the committed children.json + parity report must equal a
     fresh regeneration (no drift)."""

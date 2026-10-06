@@ -157,10 +157,13 @@ def _element_kinds(call_name: str, by_name: dict[str, dict], seen: set[str] | No
                    depth: int = 0) -> list[str]:
     """Resolve an element-capability rule down to the concrete element kinds.
 
-    A capability rule (name ends with 'Element', e.g. `StructureUsageElement`,
-    `OccurrenceUsageElement`, `DefinitionElement`) is an alt of calls; expand
-    only those.  A call whose target is NOT a capability is itself a concrete
-    kind (e.g. `PartUsage`, `Package`), so return its name and stop.
+    A rule is a *capability/wrapper node* worth expanding when it is either:
+      * a member/capability rule (name ends in 'Member'/'Element' — e.g.
+        `OccurrenceUsageElement`, `NonFeatureMember`), or
+      * an alt-of-calls dispatch (e.g. `FeatureMember` ->
+        `TypeFeatureMember | OwnedFeatureMember`).
+    Everything else is a concrete child kind (e.g. `PartUsage`, `Package`,
+    `TransitionUsage`, `EnumeratedValue`) — return its name and stop.
     """
     if depth > 12:
         return [call_name]
@@ -175,41 +178,60 @@ def _element_kinds(call_name: str, by_name: dict[str, dict], seen: set[str] | No
         return [call_name]
     k = body.get("kind")
 
-    is_capability = call_name.endswith("Element")
-    if not is_capability:
+    is_dispatch = (k == "alt" and body.get("choices")
+                   and all(c.get("kind") == "call" for c in body.get("choices", [])))
+    is_wrapper = call_name.endswith("Member") or call_name.endswith("Element")
+    if not (is_wrapper or is_dispatch):
         # a concrete kind (or a plain rule) — itself is the answer
         return [call_name]
 
-    # capability: alt of calls
-    if k != "alt":
-        # not an alt after all — treat as opaque concrete kind
-        return [call_name]
-
+    # capability node: flatten its branches
     out: list[str] = []
-    for ch in body.get("choices", []):
-        chk = ch.get("kind")
-        if chk == "call":
-            out.extend(_element_kinds(ch["name"], by_name, seen | {call_name}, depth + 1))
-        elif chk == "seq":
-            for inner in ch.get("items", []):
-                if inner.get("kind") == "call":
-                    out.extend(_element_kinds(inner["name"], by_name, seen | {call_name}, depth + 1))
-                    break
+    if k == "alt":
+        for ch in body.get("choices", []):
+            if ch.get("kind") == "call":
+                out.extend(_element_kinds(ch["name"], by_name, seen | {call_name}, depth + 1))
+            elif ch.get("kind") == "seq":
+                for inner in ch.get("items", []):
+                    if inner.get("kind") == "call":
+                        out.extend(_element_kinds(inner["name"], by_name, seen | {call_name}, depth + 1))
+                        break
+    elif k == "seq":
+        for inner in _walk(body):
+            if inner.get("kind") == "assign" and inner.get("name", "").startswith("owned"):
+                v = inner.get("value")
+                if v is not None and v.get("kind") == "call":
+                    out.extend(_element_kinds(v["name"], by_name, seen | {call_name}, depth + 1))
+                break
+    elif k == "assign":
+        v = body.get("value")
+        if v is not None and v.get("kind") == "call":
+            out.extend(_element_kinds(v["name"], by_name, seen | {call_name}, depth + 1))
+    # a wrapper with no owned call target (e.g. AliasMember: memberElement=xref,
+    # Expose: group-alt + RelationshipBody) is itself the concrete kind
+    if not out:
+        return [call_name]
     return sorted(set(out))
 
 
-def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict]) -> list[dict]:
+def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: str | None = None) -> list[dict]:
     """Expand a bare `*BodyItem`/`*BodyPart` call into the member
     alternatives it permits, as separate child entries.
 
     A `*BodyPart` (e.g. `StateBodyPart`) is a thin wrapper: `=> BodyItem` or
     a seq of `=> BodyItem` + extra members — chase it to the underlying
-    `*BodyItem`.  Handles direct member assigns, seq choices (an optional
-    succession prefix + a member), and pred-guarded choices (=> Import).
+    `*BodyItem` (or, for `FunctionBodyPart`, straight to the member set).
+    Handles direct member assigns, seq choices (an optional succession
+    prefix + a member), and pred-guarded choices (=> Import).
+
+    `parent_card` is the repetition marker attached by the container's
+    calling site (usually '*' on the BodyItem call) — propagated to each
+    entry as its cardinality when the member itself has no explicit card.
     """
     bname = bodyitem_el.get("name", "")
     cur = bname
-    # chase *BodyPart -> *BodyItem
+    # chase *BodyPart -> *BodyItem (or straight to members for BodyParts that
+    # hold members directly, e.g. FunctionBodyPart)
     while cur.endswith("BodyPart"):
         pr = by_name.get(cur)
         if pr is None:
@@ -228,25 +250,45 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict]) -> list[dict]:
     if brule is None:
         return []
     body = brule.get("body")
-    if body is None or body.get("kind") != "alt":
+    if body is None:
         return []
     out = []
-    for ch in body.get("choices", []):
+    # The resolved item rule body is usually an `alt` of member choices
+    # (e.g. DefinitionBodyItem).  For a BodyPart that holds members directly
+    # (FunctionBodyPart: [group{...}*, group(ResultExpressionMember)?]) the
+    # body is a `seq` — walk its items for the same member choices.
+    choices = []
+    if body.get("kind") == "alt":
+        choices = body.get("choices", [])
+    elif body.get("kind") == "seq":
+        for it in body.get("items", []):
+            if it.get("kind") == "group":
+                gb = it.get("body")
+                if gb is not None and gb.get("kind") == "alt":
+                    choices.extend(gb.get("choices", []))
+                elif gb is not None and gb.get("kind") == "assign":
+                    choices.append(gb)
+            elif it.get("kind") == "assign":
+                choices.append(it)
+    if not choices:
+        return []
+    for ch in choices:
         chk = ch.get("kind")
         if chk == "assign" and ch.get("name", "").startswith("owned"):
             # direct member (may also carry succession prefix info)
-            sub = _item_entry(ch, by_name, brule)
+            sub = _item_entry(ch, by_name, brule, parent_card=parent_card)
             out.append(sub)
         elif chk == "call" and ch.get("name", "").endswith("BodyItem"):
             # delegation to a base body (e.g.
             # RequirementBodyItem: DefinitionBodyItem | SubjectMember | ...)
             # — inherit the base's members
-            out.extend(_expand_bodyitem(ch, by_name))
+            out.extend(_expand_bodyitem(ch, by_name, parent_card))
         elif chk == "seq":
             # seq[group(assign(EmptySuccessionMember)?), assign(owned+=Member)]
             # — pick the member assignment that is not a succession prefix
             member = None
             prefixes = []
+            member_card = None
             for inner in ch.get("items", []):
                 for a in _walk(inner):
                     if a.get("kind") == "assign" and a.get("name", "").startswith("owned"):
@@ -254,10 +296,12 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict]) -> list[dict]:
                         if v is not None and v.get("kind") == "call":
                             if v["name"].endswith("Member") and v["name"] != "EmptySuccessionMember":
                                 member = a
+                                member_card = a.get("card") or v.get("card")
                             elif v["name"] == "EmptySuccessionMember":
                                 prefixes.append("EmptySuccessionMember")
             if member is not None:
-                sub = _item_entry(member, by_name, brule)
+                sub = _item_entry(member, by_name, brule,
+                                  parent_card=member_card or parent_card)
                 sub["prefixes"] = sorted(set(sub.get("prefixes", [])) | set(prefixes))
                 out.append(sub)
         elif chk == "pred":
@@ -268,12 +312,13 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict]) -> list[dict]:
                     if a.get("kind") == "assign" and a.get("name", "").startswith("owned"):
                         v = a.get("value")
                         if v is not None and v.get("kind") == "call":
-                            sub = _item_entry(a, by_name, brule)
+                            sub = _item_entry(a, by_name, brule, parent_card=parent_card)
                             out.append(sub)
     return out
 
 
-def _item_entry(item_el: dict, by_name: dict[str, dict], owner_rule: dict | None = None) -> dict:
+def _item_entry(item_el: dict, by_name: dict[str, dict], owner_rule: dict | None = None,
+                parent_card: str | None = None) -> dict:
     # The choice element is typically:
     #   assign(ownedRelationship+=call(MemberRule))         (card may be *)
     #   pred => assign(ownedRelationship+=call(MemberRule))
@@ -333,6 +378,13 @@ def _item_entry(item_el: dict, by_name: dict[str, dict], owner_rule: dict | None
                 wrapper_call = c
                 break
 
+    # C4: the member card may legitimately be None when the repetition
+    # marker lives on the enclosing group / BodyItem call (e.g.
+    # group{...}* ownedRelationship+=AnnotatingMember).  Fall back to the
+    # caller-provided parent card.
+    if wrapper_card is None and parent_card:
+        wrapper_card = parent_card
+
     # chain resolution: the wrapper -> element capability -> concrete kinds
     chain = [wrapper_call]
     seen = set()
@@ -347,35 +399,56 @@ def _item_entry(item_el: dict, by_name: dict[str, dict], owner_rule: dict | None
         if body is None:
             break
         k = body.get("kind")
-        # wrapper members: seq[MemberPrefix, assign(ownedRelatedElement+=call(Element))]
-        if k == "seq":
-            found = False
-            for inner in _walk(body):
-                if inner.get("kind") == "assign" and inner.get("name", "").startswith("owned"):
-                    v = inner.get("value")
-                    if v is not None and v.get("kind") == "call":
-                        nxt = v["name"]
-                        if nxt not in seen:
-                            chain.append(nxt)
-                            cur = nxt
-                            found = True
-                        break
-            if not found:
+        # Follow one hop from a wrapper into its element target.  Returns
+        # ("descend", name) when the target is itself a member/capability
+        # rule, ("kind", name) when the target is a concrete element (its
+        # name IS the child kind), or None when there is no owned target.
+        def next_hop(rbody: dict) -> tuple[str, str] | None:
+            if rbody.get("kind") == "seq":
+                for inner in _walk(rbody):
+                    if inner.get("kind") == "assign" and inner.get("name", "").startswith("owned"):
+                        v = inner.get("value")
+                        if v is not None and v.get("kind") == "call":
+                            return _hop(v["name"])
+                return None
+            if rbody.get("kind") == "assign":
+                v = rbody.get("value")
+                if v is not None and v.get("kind") == "call":
+                    return _hop(v["name"])
+            return None
+
+        def _hop(nxt: str) -> tuple[str, str]:
+            if nxt.endswith("Member") or nxt.endswith("Element"):
+                return ("descend", nxt)
+            return ("kind", nxt)
+
+        moved = False
+        hop = next_hop(body)
+        if hop is not None:
+            verb, nxt = hop
+            if verb == "descend" and nxt not in seen:
+                chain.append(nxt)
+                cur = nxt
+                moved = True
+            elif verb == "kind":
+                # concrete element: its name is the child kind — stop
+                resolved_kinds = [nxt]
                 break
-            continue
-        if k == "alt":
-            # a top-level capability alt: the element rule that decides kinds
-            kinds = _element_kinds(cur, by_name, set())
-            resolved_kinds = kinds
-            # extend the chain with sub-capability rule names (e.g. an
-            # OccurrenceUsageElement whose alt branches are the
-            # StructureUsageElement / BehaviorUsageElement capabilities)
-            for ch in body.get("choices", []):
-                if ch.get("kind") == "call" and ch["name"].endswith("Element"):
-                    if ch["name"] not in chain:
-                        chain.append(ch["name"])
+        if not moved:
+            # an alt body (or a rule with no owned hop): this is the element
+            # capability that decides the child kinds
+            if k == "alt":
+                kinds = _element_kinds(cur, by_name, set())
+                resolved_kinds = kinds
+                # extend the chain with sub-capability rule names (e.g. an
+                # OccurrenceUsageElement whose alt branches are the
+                # StructureUsageElement / BehaviorUsageElement capabilities)
+                for ch in body.get("choices", []):
+                    if ch.get("kind") == "call" and ch["name"].endswith("Element"):
+                        if ch["name"] not in chain:
+                            chain.append(ch["name"])
             break
-        break
+        continue
 
     # resolved_kinds may be empty if we stopped at a call to an element
     # rule whose body is an alt (we set cur to it); fall through to resolve.
@@ -401,9 +474,19 @@ def build_children_model(spec: dict) -> dict:
     files = spec.get("files", [])
     by_name = {r["name"]: r for r in rules}
 
+    # C1: group containers by NAME (KerML and SysML define the same rule
+    # names); `by_name` keeps the last definition (SysML wins, matching the
+    # override direction).  Without grouping, each same-name rule would append
+    # duplicate entries into the same body list.
     containers = [r for r in rules if _is_container(r)]
-    bodies: dict[str, list[dict]] = {}
+    by_container: dict[str, list[dict]] = {}
     for cont in sorted(containers, key=lambda r: r["name"]):
+        by_container.setdefault(cont["name"], []).append(cont)
+
+    bodies: dict[str, list[dict]] = {}
+    for name, cont_rules in sorted(by_container.items()):
+        # use the override (SysML) rule body if present; fall back to KerML
+        cont = cont_rules[-1]
         body = cont.get("body")
         if body is None:
             continue
@@ -417,7 +500,8 @@ def build_children_model(spec: dict) -> dict:
             if el.get("kind") == "assign" and el.get("name", "").startswith("owned"):
                 candidate_els.append(el)
             # bare body-item call (DefinitionBodyItem[*], StateBodyPart) —
-            # expand below
+            # expand below.  Keep its card so the BodyItem repetition (which
+            # the grammar attaches to the enclosing '*' group) is preserved.
             elif el.get("kind") == "call" and (
                 el.get("name", "").endswith("BodyItem")
                 or el.get("name", "").endswith("BodyPart")
@@ -429,7 +513,7 @@ def build_children_model(spec: dict) -> dict:
                 el.get("name", "").endswith("BodyItem")
                 or el.get("name", "").endswith("BodyPart")
             ):
-                for sub in _expand_bodyitem(el, by_name):
+                for sub in _expand_bodyitem(el, by_name, el.get("card")):
                     w = sub.get("wrapper")
                     key = (w, sub.get("cardinality"))
                     if key not in seen_wrappers:
@@ -440,7 +524,7 @@ def build_children_model(spec: dict) -> dict:
             if v is None or v.get("kind") != "call":
                 continue
             wrapper = v.get("name", "")
-            entry = _item_entry(el, by_name, by_name.get(wrapper, {}))
+            entry = _item_entry(el, by_name, by_name.get(wrapper, {}), el.get("card"))
             # the entry's item rule is the *call target* (the member), not
             # this container's rule; fix source provenance to the member rule
             mrule = by_name.get(wrapper) or {"name": wrapper, "source": {}}
