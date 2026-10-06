@@ -44,14 +44,24 @@ def _load_overlay() -> dict:
 def _quote_literal(value: str) -> str:
     """Quote a literal value for textX emit.
 
-    The lexer stores literal bodies UNQUOTED and unescaped (lexer.py:142,
-    joins the raw chars between the source quotes).  Emit a textX
-    single-quoted literal, escaping backslashes and single quotes.
-    Never strip whitespace (a literal may BE a space: ' ') and never sniff
-    whether it looks already-quoted (a lone `'` is a quote char, not a
-    delimiter).
+    The lexer stores literal bodies DECODED (a `\n` escape is stored as a
+    real newline).  Emit a textX single-quoted literal: escape backslashes,
+    single quotes, and control characters (tab/newline/CR) to their `\\t`
+    /`\\n`/`\\r` forms so the output is textX-valid.  Never strip whitespace
+    (a literal may BE a space: ' ') and never sniff whether it already
+    looks quoted (a lone `'` is a quote char, not a delimiter).
     """
-    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+    esc = {
+        "\\": "\\\\",
+        "'": "\\'",
+        "\t": "\\t",
+        "\n": "\\n",
+        "\r": "\\r",
+        "\b": "\\b",
+        "\f": "\\f",
+    }
+    out = "".join(esc.get(ch, ch) for ch in value)
+    return "'" + out + "'"
 
 
 def _el_to_tx(el: dict, indent: int = 0) -> str:

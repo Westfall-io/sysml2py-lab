@@ -128,7 +128,17 @@ def tokenize(text: str) -> list[Token]:
             while j < n:
                 ch = text[j]
                 if ch == "\\" and j + 1 < n:
-                    body.append(text[j : j + 2])
+                    # decode Xtext escapes to their logical character once;
+                    # the emitter re-escapes for textX output.
+                    esc = text[j + 1]
+                    decoded = {
+                        "t": "\t", "r": "\r", "n": "\n", "b": "\b", "f": "\f",
+                        "\\": "\\", "'": "'", '"': '"',
+                    }.get(esc)
+                    if decoded is not None:
+                        body.append(decoded)
+                    else:
+                        body.append(ch)  # unknown escape: keep the backslash
                     j += 2
                     continue
                 if ch == quote:
