@@ -1,0 +1,663 @@
+{
+  "BasicDefinitionPrefix": {
+    "chain": [
+      "BasicDefinitionPrefix"
+    ],
+    "kind": "Definition",
+    "slots": [
+      {
+        "cardinality": null,
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isVariation"
+        ],
+        "name": "isAbstract",
+        "source_line": 467,
+        "source_rule": "BasicDefinitionPrefix",
+        "tokens": [
+          "abstract"
+        ]
+      },
+      {
+        "cardinality": null,
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isAbstract"
+        ],
+        "name": "isVariation",
+        "source_line": 467,
+        "source_rule": "BasicDefinitionPrefix",
+        "tokens": [
+          "variation"
+        ]
+      }
+    ]
+  },
+  "BasicUsagePrefix": {
+    "chain": [
+      "BasicUsagePrefix",
+      "RefPrefix"
+    ],
+    "kind": "Usage",
+    "slots": [
+      {
+        "cardinality": "?",
+        "kind": "enum",
+        "mutually_exclusive_with": [],
+        "name": "direction",
+        "source_line": 533,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "in",
+          "out",
+          "inout"
+        ],
+        "via": "FeatureDirection"
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isVariation"
+        ],
+        "name": "isAbstract",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "abstract"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isAbstract"
+        ],
+        "name": "isVariation",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "variation"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isReadOnly",
+        "source_line": 535,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "readonly"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isDerived",
+        "source_line": 536,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "derived"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isEnd",
+        "source_line": 537,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "end"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isReference",
+        "source_line": 542,
+        "source_rule": "BasicUsagePrefix",
+        "tokens": [
+          "ref"
+        ]
+      }
+    ]
+  },
+  "DefinitionPrefix": {
+    "chain": [
+      "DefinitionPrefix",
+      "BasicDefinitionPrefix",
+      "DefinitionExtensionKeyword"
+    ],
+    "kind": "Definition",
+    "slots": [
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isVariation"
+        ],
+        "name": "isAbstract",
+        "source_line": 467,
+        "source_rule": "BasicDefinitionPrefix",
+        "tokens": [
+          "abstract"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isAbstract"
+        ],
+        "name": "isVariation",
+        "source_line": 467,
+        "source_rule": "BasicDefinitionPrefix",
+        "tokens": [
+          "variation"
+        ]
+      }
+    ]
+  },
+  "FeatureDirection": {
+    "chain": [
+      "FeatureDirection"
+    ],
+    "kind": "enum",
+    "slots": [
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "out",
+          "inout"
+        ],
+        "name": "in",
+        "source_line": 529,
+        "source_rule": "FeatureDirection",
+        "tokens": [
+          "in"
+        ]
+      },
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "in",
+          "inout"
+        ],
+        "name": "out",
+        "source_line": 529,
+        "source_rule": "FeatureDirection",
+        "tokens": [
+          "out"
+        ]
+      },
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "in",
+          "out"
+        ],
+        "name": "inout",
+        "source_line": 529,
+        "source_rule": "FeatureDirection",
+        "tokens": [
+          "inout"
+        ]
+      }
+    ]
+  },
+  "MemberPrefix": {
+    "chain": [
+      "MemberPrefix"
+    ],
+    "kind": "Membership",
+    "slots": [
+      {
+        "cardinality": "?",
+        "kind": "enum",
+        "mutually_exclusive_with": [],
+        "name": "visibility",
+        "source_line": 214,
+        "source_rule": "MemberPrefix",
+        "tokens": [
+          "public",
+          "private",
+          "protected"
+        ],
+        "via": "VisibilityIndicator"
+      }
+    ]
+  },
+  "OccurrenceDefinitionPrefix": {
+    "chain": [
+      "OccurrenceDefinitionPrefix",
+      "BasicDefinitionPrefix",
+      "DefinitionExtensionKeyword"
+    ],
+    "kind": "OccurrenceDefinition",
+    "slots": [
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isVariation"
+        ],
+        "name": "isAbstract",
+        "source_line": 467,
+        "source_rule": "BasicDefinitionPrefix",
+        "tokens": [
+          "abstract"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isAbstract"
+        ],
+        "name": "isVariation",
+        "source_line": 467,
+        "source_rule": "BasicDefinitionPrefix",
+        "tokens": [
+          "variation"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isIndividual",
+        "source_line": 785,
+        "source_rule": "OccurrenceDefinitionPrefix",
+        "tokens": [
+          "individual"
+        ]
+      }
+    ]
+  },
+  "OccurrenceUsagePrefix": {
+    "chain": [
+      "OccurrenceUsagePrefix",
+      "BasicUsagePrefix",
+      "RefPrefix",
+      "UsageExtensionKeyword"
+    ],
+    "kind": "OccurrenceUsage",
+    "slots": [
+      {
+        "cardinality": "?",
+        "kind": "enum",
+        "mutually_exclusive_with": [],
+        "name": "direction",
+        "source_line": 533,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "in",
+          "out",
+          "inout"
+        ],
+        "via": "FeatureDirection"
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isVariation"
+        ],
+        "name": "isAbstract",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "abstract"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isAbstract"
+        ],
+        "name": "isVariation",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "variation"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isReadOnly",
+        "source_line": 535,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "readonly"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isDerived",
+        "source_line": 536,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "derived"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isEnd",
+        "source_line": 537,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "end"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isReference",
+        "source_line": 542,
+        "source_rule": "BasicUsagePrefix",
+        "tokens": [
+          "ref"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isIndividual",
+        "source_line": 815,
+        "source_rule": "OccurrenceUsagePrefix",
+        "tokens": [
+          "individual"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "enum",
+        "mutually_exclusive_with": [],
+        "name": "portionKind",
+        "source_line": 816,
+        "source_rule": "OccurrenceUsagePrefix",
+        "tokens": [
+          "snapshot",
+          "timeslice"
+        ],
+        "via": "PortionKind"
+      }
+    ]
+  },
+  "PortionKind": {
+    "chain": [
+      "PortionKind"
+    ],
+    "kind": "enum",
+    "slots": [
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "timeslice"
+        ],
+        "name": "snapshot",
+        "source_line": 837,
+        "source_rule": "PortionKind",
+        "tokens": [
+          "snapshot"
+        ]
+      },
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "snapshot"
+        ],
+        "name": "timeslice",
+        "source_line": 837,
+        "source_rule": "PortionKind",
+        "tokens": [
+          "timeslice"
+        ]
+      }
+    ]
+  },
+  "RefPrefix": {
+    "chain": [
+      "RefPrefix"
+    ],
+    "kind": "Usage",
+    "slots": [
+      {
+        "cardinality": "?",
+        "kind": "enum",
+        "mutually_exclusive_with": [],
+        "name": "direction",
+        "source_line": 533,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "in",
+          "out",
+          "inout"
+        ],
+        "via": "FeatureDirection"
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isVariation"
+        ],
+        "name": "isAbstract",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "abstract"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isAbstract"
+        ],
+        "name": "isVariation",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "variation"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isReadOnly",
+        "source_line": 535,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "readonly"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isDerived",
+        "source_line": 536,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "derived"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isEnd",
+        "source_line": 537,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "end"
+        ]
+      }
+    ]
+  },
+  "UsagePrefix": {
+    "chain": [
+      "UsagePrefix",
+      "BasicUsagePrefix",
+      "RefPrefix",
+      "UsageExtensionKeyword"
+    ],
+    "kind": "Usage",
+    "slots": [
+      {
+        "cardinality": "?",
+        "kind": "enum",
+        "mutually_exclusive_with": [],
+        "name": "direction",
+        "source_line": 533,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "in",
+          "out",
+          "inout"
+        ],
+        "via": "FeatureDirection"
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isVariation"
+        ],
+        "name": "isAbstract",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "abstract"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [
+          "isAbstract"
+        ],
+        "name": "isVariation",
+        "source_line": 534,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "variation"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isReadOnly",
+        "source_line": 535,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "readonly"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isDerived",
+        "source_line": 536,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "derived"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isEnd",
+        "source_line": 537,
+        "source_rule": "RefPrefix",
+        "tokens": [
+          "end"
+        ]
+      },
+      {
+        "cardinality": "?",
+        "kind": "flag",
+        "mutually_exclusive_with": [],
+        "name": "isReference",
+        "source_line": 542,
+        "source_rule": "BasicUsagePrefix",
+        "tokens": [
+          "ref"
+        ]
+      }
+    ]
+  },
+  "VisibilityIndicator": {
+    "chain": [
+      "VisibilityIndicator"
+    ],
+    "kind": "enum",
+    "slots": [
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "private",
+          "protected"
+        ],
+        "name": "public",
+        "source_line": 293,
+        "source_rule": "VisibilityIndicator",
+        "tokens": [
+          "public"
+        ]
+      },
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "public",
+          "protected"
+        ],
+        "name": "private",
+        "source_line": 293,
+        "source_rule": "VisibilityIndicator",
+        "tokens": [
+          "private"
+        ]
+      },
+      {
+        "cardinality": null,
+        "kind": "enum",
+        "mutually_exclusive_with": [
+          "public",
+          "private"
+        ],
+        "name": "protected",
+        "source_line": 293,
+        "source_rule": "VisibilityIndicator",
+        "tokens": [
+          "protected"
+        ]
+      }
+    ]
+  }
+}

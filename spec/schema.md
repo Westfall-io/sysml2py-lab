@@ -106,3 +106,74 @@ order (source order per file, files sorted by path), stable grammatical
 output.  Two runs over identical vendored inputs are byte-identical; commit
 the output and diff-review it on grammar changes.  A `test_committed_spec_is_current`
 guard asserts a fresh build equals the committed spec.
+
+## .tx regeneration & the parity whitelist (issue #4)
+
+`sysml2py-lab spec` produces `language_spec.json`; `sysml2py-lab tx` inlines
+fragments and emits per-grammar textX `.tx` into `spec/tx/`.  The committed
+hand-maintained `.tx` files are **not byte-reproducible** from the `.xtext`
+(assignment slot names like `prefix=`/`usage=` were hand-added).  Fidelity is
+asserted as *structural parity modulo a documented whitelist*
+(`tests/test_inline_tx.py`) — every committed rule is regenerated, and every
+regenerated rule is committed, except the documented sets below.
+
+### Parity whitelist (documented deviations — never silent)
+
+**Committed-only** (names in the committed `.tx` with NO `.xtext` source —
+hand-added textX conveniences/aliases; a faithful regen cannot invent them):
+- `KerMLExpressions.tx`: `AdditiveOperand, AndOperand, Comment, EqualityOperand,
+  MultiplicativeOperand, RelationalOperand, ReservedKeyword, SequenceOperand`
+- `KerML.tx`: `CommentKerML, MultiplicityRelatedElement`
+- `SysML.tx`: `ActionBodyItem, ActionBodyItemTarget, CommentSysML, IfNodeElseMember,
+  ImportPrefix, ImportedMembership, ImportedNamespace, MultiplicityRelatedElement,
+  PackageDeclaration, Redefinitions, StateDefBody`
+
+**Regen-only** (real rules the committed `.tx` omitted — the committed file is
+an incomplete curation; the regenerator correctly includes them):
+- `KerMLExpressions.tx`: *(none)*
+- `KerML.tx`: `Comment, FeatureDirection, FilterPackageMemberVisibility,
+  VisibilityIndicator`
+- `SysML.tx`: `AssignmentTargetMember, Comment, EffectFeatureKind, EmptyActionUsage,
+  EmptyParameterMember, EmptyTargetEnd, EmptyTargetEndMember, EmptyUsage,
+  FeatureDirection, FilterPackageMemberVisibility, FramedConcernKind, GuardFeatureKind,
+  PortionKind, RequirementConstraintKind, RequirementVerificationKind,
+  TargetAccessedFeatureMember, TargetFeature, TargetFeatureMember, TargetParameter,
+  TriggerFeatureKind, VisibilityIndicator`
+
+### Assignment overlay (`spec/overlay/assignments.json`)
+
+The curated assignment slot names that the committed `.tx` bolted in by hand
+(`prefix=`, `usage=`, `usageExtension+=`, `declaration=`, `body=`, etc.) are
+captured as explicit, reviewed entries — replacing the old `xtext_to_textx.py`
+hidden regexes.  Quirks are recorded, not silently fixed: `FeatureDirection:
+in = 'in '` preserves the trailing space that `classes.py` matches literally.
+`grammar/inline.py` performs fragment inlining; `grammar/emit_tx.py` applies
+the overlay and emits `.tx`.
+
+## Relationship model, part 1: modifiers (issue #5)
+
+`sysml2py-lab spec modifiers` derives the per-prefix modifier model from the
+spec's rule table (fragments intact so the prefix chain can be walked).  For
+each known prefix it records ordered slots, each with `name`, `tokens`,
+`kind` (`flag`/`enum`/`ref`), `cardinality`, `mutually_exclusive_with`, and
+`source_rule`/`source_line` provenance:
+
+```
+spec/relationships/modifiers.json   # machine-readable model
+spec/relationships/modifiers.md     # human-readable matrix
+```
+
+The chain — `RefPrefix` → `BasicUsagePrefix` → `OccurrenceUsagePrefix` — is
+walked in the same order `classes.py` dumps it, so the generated modifier
+order is casting-verified against the emitted library.  Mutual exclusions
+drop out of alternation groups (`isAbstract ?= 'abstract' | isVariation ?=
+'variation'` → both list each other).  Enum rules that were stubs in
+`classes.py` (`PortionKind`, `VisibilityIndicator`) are materialized with
+their real tokens (`snapshot`/`timeslice`, `public`/`private`/`protected`).
+`portionKind = PortionKind` resolves through the enum so consumers see
+`snapshot, timeslice` rather than a bare rule name.
+
+An issue-#5 acceptance spot-check asserts the model recognizes >=15 distinct
+modifier names/tokens from `examples/family.sysml` (`private`, `in`, `out`,
+`end`, `snapshot`, `timeslice`, `variation`, `ref`, `abstract`, `derived`,
+`readonly`, `individual`, `public`, `protected`, `direction`, `visibility`).

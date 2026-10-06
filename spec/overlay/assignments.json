@@ -1,0 +1,34 @@
+{
+  "schema": "sysml2py.grammar.assignment_overlay/1",
+  "note": "Curated assignment-name overlay for .tx regeneration (issue #4). This is the explicit, reviewed, versioned home for the hand-curation that historically lived as hidden regexes in xtext_to_textx.py. Every entry is justified by its key/comment. Keys are rule names; values are either a string (whole-rule body replacement for the 'broken' empty rules the committed .tx renders as keyword literals) or a dict of {assign_name: slot_token}. Prefer this JSON form (stdlib) over the YAML form to avoid a runtime pyyaml dependency.",
+  "entries": {
+    "RefPrefix": {"prefix": "RefPrefix"},
+    "BasicUsagePrefix": {"prefix": "BasicUsagePrefix"},
+    "OccurrenceUsagePrefix": {"prefix": "OccurrenceUsagePrefix", "isIndividual": "?= 'individual'"},
+    "OccurrenceDefinitionPrefix": {"prefix": "OccurrenceDefinitionPrefix"},
+    "BasicDefinitionPrefix": {"prefix": "BasicDefinitionPrefix"},
+
+    "PartUsage": {"usage": "Usage"},
+    "AttributeUsage": {"usage": "Usage"},
+    "ItemUsage": {"usage": "Usage"},
+    "PortUsage": {"usage": "Usage"},
+    "EnumerationUsage": {"usage": "Usage"},
+    "StructureUsage": {"usage": "Usage"},
+
+    "AttributeDefinition": {"definition": "Definition"},
+    "PartDefinition": {"definition": "Definition"},
+
+    "Membership": {"ownedRelatedElement": "+= Element"},
+    "FeatureMembership": {"ownedRelatedElement": "+= Feature"},
+
+    "FeatureDirection": {"direction": "= in | out | inout"},
+
+    "LifeClass": "//This doesn't work.\n\t'lifeclass'",
+    "EmptyTargetEnd": "//This doesn't work.\n\t'empty target end'",
+    "PortConjugation": "//This doesn't work.\n\t'portconjugation'",
+    "EmptySourceEnd": "//This doesn't work.\n\t'empty source end'",
+    "EmptyUsage": "//This doesn't work.\n\t'empty usage'",
+    "EmptyActionUsage": "//This doesn't work.\n\t'empty action usage'",
+    "EmptyFeature": "//This doesn't work.\n\t'empty feature'"
+  }
+}
