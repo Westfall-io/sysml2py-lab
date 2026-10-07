@@ -12,6 +12,8 @@ from .grammar.inline import inline_fragments
 from .grammar.emit_tx import emit_tx
 from .grammar.modifiers import build_modifier_model, modifiers_for_kind, write_modifiers
 from .grammar.children import build_children_model, children_for_body, write_children
+from .ir import parse_ir, ir_to_json, render_ir, ir_fidelity_summary
+from .lexer import tokenize_sysml
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -99,6 +101,25 @@ def main(argv: list[str] | None = None) -> int:
     tx.add_argument(
         "--out", type=Path, default=Path("spec") / "tx",
         help="Output directory for regenerated .tx files (default: ./spec/tx)",
+    )
+
+    irp = sub.add_parser("ir", help="Parse a SysML text file into a loss-minimizing IR (JSON or re-rendered text).")
+    irp.add_argument("file", type=Path, help="Path to a .sysml text file")
+    irp.add_argument(
+        "--model", type=Path, default=None,
+        help="Path to issue-6 children.json used to classify kind/fidelity (default: repo spec/relationships/children.json)",
+    )
+    irp.add_argument(
+        "--out", type=Path, default=None,
+        help="Write IR JSON here instead of stdout (default: prints JSON to stdout)",
+    )
+    irp.add_argument(
+        "--tokens", action="store_true",
+        help="Emit the token stream instead of IR JSON.",
+    )
+    irp.add_argument(
+        "--summary", action="store_true",
+        help="Also print the per-file fidelity summary to stderr.",
     )
 
     args = p.parse_args(argv)
@@ -193,5 +214,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"tx FAILED: {e}", file=sys.stderr)
             return 1
         return 0
+
+    if args.cmd == "ir":
+        try:
+            text = args.file.read_text(encoding="utf-8")
+            if args.tokens:
+                for t in tokenize_sysml(text):
+                    print(f"{t.start:>5}:{t.end:<5} {t.kind:<18} {t.text!r}")
+                return 0
+            root = parse_ir(text, model_path=str(args.model) if args.model else None)
+            if args.summary:
+                import json as _json
+                print(_json.dumps(ir_fidelity_summary(root), indent=2), file=sys.stderr)
+            payload = ir_to_json(root)
+            if args.out:
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text(__import__("json").dumps(payload, indent=2) + "\n", encoding="utf-8")
+                print(f"ir wrote {args.out}")
+            else:
+                print(__import__("json").dumps(payload, indent=2))
+            return 0
+        except Exception as e:
+            print(f"ir FAILED: {e}", file=sys.stderr)
+            return 1
 
     return 2
