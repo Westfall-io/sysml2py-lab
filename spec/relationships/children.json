@@ -625,8 +625,8 @@
         ],
         "prefixes": [],
         "relationship": "ownedRelationship",
-        "source_line": 1906,
-        "source_rule": "CalculationBodyItem",
+        "source_line": 1901,
+        "source_rule": "CalculationBodyPart",
         "wrapper": "ResultExpressionMember"
       }
     ],
@@ -1578,8 +1578,8 @@
         ],
         "prefixes": [],
         "relationship": "ownedRelationship",
-        "source_line": 1906,
-        "source_rule": "CalculationBodyItem",
+        "source_line": 1901,
+        "source_rule": "CalculationBodyPart",
         "wrapper": "ResultExpressionMember"
       }
     ],

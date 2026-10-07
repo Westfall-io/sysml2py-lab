@@ -228,66 +228,113 @@ def test_function_body_present(model):
 
 
 def test_no_missing_owned_members(model):
-    """C5 regression: every grammar-reachable owned member (through *BodyItem
-    / *BodyPart delegation) must appear as a wrapper or prefix in that body."""
+    """C5 regression: every grammar-reachable owned member (transitively,
+    following *BodyItem / *BodyPart / *Body delegation) must appear as a
+    wrapper or prefix in that body.
+
+    This is the completeness gate the round-2 reviewer asked for (W10):
+    `test_function_body_present`-style direct checks miss delegating bodies,
+    which contain NO owned assigns of their own (e.g. ActionBody delegates to
+    ActionBodyItem).  We walk through the delegation graph.
+    """
     import json
     with (ROOT / "spec" / "language_spec.json").open() as specf:
         spec = json.load(specf)
     by = {r["name"]: r for r in spec["rules"]}
-    for body_name, entries in model["bodies"].items():
-        present = {e["wrapper"] for e in entries} | {
-            p for e in entries for p in e["prefixes"]}
-        rule = by.get(body_name)
-        if not rule:
-            continue
-        owned = []
+    _ALLOWED_UNMODELLED = {"EmptySuccessionMember"}  # a prefix, not a wrapper
 
-        def walk_owned(el):
+    def owned_calls(rule_name: str) -> set[str]:
+        """Transitively collect owned-= member call names reachable from a
+        rule (through *BodyItem / *BodyPart / *Body delegation)."""
+        out: set[str] = set()
+        seen: set[str] = set()
+
+        def walk_owned(el, origin: str):
             if not isinstance(el, dict):
                 return
+            # chase BARE *BodyItem / *BodyPart / *Body delegation calls too
+            # (ActionBody: '{' => call(ActionBodyItem) '}' — the BodyItem call
+            # is a bare pred-guarded call, NOT an owned-assign value)
+            if el.get("kind") == "call" and el.get("name", "").endswith(
+                    ("BodyItem", "BodyPart", "Body")):
+                tn = el["name"]
+                target = by.get(tn)
+                if target and tn not in seen:
+                    seen.add(tn)
+                    walk_owned(target.get("body"), tn)
             if el.get("kind") == "assign" and el.get("name", "").startswith("owned"):
                 v = el.get("value")
                 if isinstance(v, dict):
                     if v.get("kind") == "call":
-                        owned.append(v["name"])
+                        out.add(v["name"])
+                        target = by.get(v["name"])
+                        if target and v["name"].endswith(
+                                ("BodyItem", "BodyPart", "Body")) and v["name"] not in seen:
+                            seen.add(v["name"])
+                            walk_owned(target.get("body"), v["name"])
                     elif v.get("kind") == "group" and isinstance(v.get("body"), dict) \
                             and v["body"].get("kind") == "alt":
                         for ch in v["body"].get("choices", []):
                             if ch.get("kind") == "call":
-                                owned.append(ch["name"])
+                                out.add(ch["name"])
             for key in ("value", "body"):
                 v = el.get(key)
                 if isinstance(v, dict):
-                    walk_owned(v)
+                    walk_owned(v, origin)
             for key in ("items", "choices"):
                 for x in el.get(key, []) or []:
-                    walk_owned(x)
-        walk_owned(rule.get("body"))
-        missing = {n for n in owned if n not in present
-                   and n.endswith(("Member", "BodyPart")) and n != "EmptySuccessionMember"}
+                    walk_owned(x, origin)
+
+        rule = by.get(rule_name)
+        if rule:
+            walk_owned(rule.get("body"), rule_name)
+        return out
+
+    for body_name, entries in model["bodies"].items():
+        present = {e["wrapper"] for e in entries} | {
+            p for e in entries for p in e["prefixes"]}
+        reachable = owned_calls(body_name)
+        missing = {n for n in reachable if n not in present
+                   and n.endswith(("Member", "BodyPart")) and n not in _ALLOWED_UNMODELLED}
         assert not missing, f"{body_name} missing grammar members: {missing}"
 
 
 def test_cardinality_audited(model):
-    """C6 regression: no body may be ALL null cardinality — repetition markers
-    in the grammar must flow to entries; and every body that starts with a
-    repetition marker on its item rule must carry '*'."""
+    """C6 regression (positive shape, W11): every entry is '*' EXCEPT the
+    genuinely-optional ResultExpressionMember in CalculationBody, CaseBody,
+    ExpressionBody, FunctionBody (which carry '?').  This catches wrong (not
+    just absent) cards — e.g. everything set to '?' would previously pass."""
+    OPTIONAL = {
+        ("CalculationBody", "ResultExpressionMember"),
+        ("CaseBody", "ResultExpressionMember"),
+        ("ExpressionBody", "ResultExpressionMember"),
+        ("FunctionBody", "ResultExpressionMember"),
+    }
     for body_name, entries in model["bodies"].items():
-        cards = {e["cardinality"] for e in entries}
-        assert cards != {None}, (
-            f"{body_name} has no cardinality at all — repetition markers lost"
-        )
-        # a body whose item rule repeats must NOT have all entries null
-        assert any(e["cardinality"] for e in entries), \
-            f"{body_name} has all-null cards but grammar repeats its items"
+        for e in entries:
+            if (body_name, e["wrapper"]) in OPTIONAL:
+                assert e["cardinality"] == "?", (
+                    f"{body_name} {e['wrapper']} expected '?' got {e['cardinality']}"
+                )
+            else:
+                assert e["cardinality"] == "*", (
+                    f"{body_name} {e['wrapper']} expected '*' got {e['cardinality']}"
+                )
 
 
 def test_expression_body_mirrors_calculation(model):
     """C7 regression: ExpressionBody's winning rule is the SysML override
     (CalculationBody alias) — it must expose the same wrappers as
     CalculationBody (NOT the superseded KerMLExpressions default's
-    BodyParameterMember)."""
+    BodyParameterMember).  W12: assert the ABSOLUTE wrapper set too, so
+    dropping a member from BOTH bodies fails."""
     calc = {e["wrapper"] for e in children_for_body(model, "CalculationBody")}
+    assert calc == {
+        "Import", "AliasMember", "DefinitionMember", "VariantUsageMember",
+        "NonOccurrenceUsageMember", "StructureUsageMember", "InitialNodeMember",
+        "TargetSuccessionMember", "BehaviorUsageMember", "ActionNodeMember",
+        "GuardedSuccessionMember", "ReturnParameterMember", "ResultExpressionMember",
+    }, f"CalculationBody wrapper set changed: {calc}"
     expr = {e["wrapper"] for e in children_for_body(model, "ExpressionBody")}
     assert calc == expr, (
         f"ExpressionBody != CalculationBody: {expr ^ calc}"

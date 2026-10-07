@@ -36,8 +36,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .inline import _import_order
-
 
 class ChildrenError(Exception):
     pass
@@ -276,6 +274,9 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
     # CalculationBodyPart: [=> CalculationBodyItem* (ownedRelationship +=
     # ResultExpressionMember)?]) — collect those part-level members too (C5).
     part_members: list[dict] = []
+    part_member_cards: list[str | None] = []  # parallel to part_members (W13:
+    # no _card stamps into the shared spec — carry cards separately)
+    part_rule: dict | None = None  # N3: the declaring *BodyPart for provenance
     # C6: a *BodyPart often carries no card itself; the repetition lives on
     # the *BodyItem *inside* it (CalculationBodyPart: [=> BodyItem* ...]).
     # Thread that inner card out to the expansion so members inherit '*'.
@@ -284,6 +285,7 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
         pr = by_name.get(cur)
         if pr is None:
             return []
+        part_rule = pr
         pbody = pr.get("body")
         nxt = None
         if pbody is not None:
@@ -296,9 +298,10 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
                 elif el.get("kind") == "assign" and el.get("name", "").startswith("owned"):
                     v = el.get("value")
                     if v is not None and v.get("kind") == "call" and v["name"] != "EmptySuccessionMember":
-                        # carry the enclosing group's card with the member
-                        el["_card"] = inh or el.get("card")
+                        # carry the enclosing group's card alongside, not onto
+                        # the element (avoid mutating the shared spec dict)
                         part_members.append(el)
+                        part_member_cards.append(inh or el.get("card"))
         if not nxt:
             break
         cur = nxt
@@ -313,36 +316,33 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
     # (e.g. DefinitionBodyItem).  For a BodyPart that holds members directly
     # (FunctionBodyPart: [group{...}*, group(ResultExpressionMember)?]) the
     # body is a `seq` — walk its items for the same member choices.
-    choices = []
+    # (W13) collect (choice, card) pairs so we never mutate the shared spec:
+    choices: list[tuple[dict, str | None]] = []
     if body.get("kind") == "alt":
-        choices = body.get("choices", [])
+        choices = [(c, c.get("card")) for c in body.get("choices", [])]
     elif body.get("kind") == "seq":
         for it in body.get("items", []):
             if it.get("kind") == "group":
                 gb = it.get("body")
                 if gb is not None and gb.get("kind") == "alt":
                     # C6: the group carries the repetition (group(alt(members))[*])
-                    # — stamp its card onto each choice so _item_entry sees it
+                    group_card = it.get("card")
                     for gc in gb.get("choices", []):
-                        if gc.get("card") is None and it.get("card"):
-                            gc["card"] = it.get("card")
-                        choices.append(gc)
+                        choices.append((gc, gc.get("card") or group_card))
                 elif gb is not None and gb.get("kind") == "assign":
-                    if gb.get("card") is None and it.get("card"):
-                        gb["card"] = it.get("card")
-                    choices.append(gb)
+                    choices.append((gb, gb.get("card") or it.get("card")))
             elif it.get("kind") == "assign":
-                choices.append(it)
+                choices.append((it, it.get("card")))
     if not choices:
         return []
     # C6: prefer the *BodyPart's inner *BodyItem card ('*') as the default
     # repetition for members of the delegated item rule.
     eff_parent = part_item_card or parent_card
-    for ch in choices:
+    for ch, ch_card in choices:
         chk = ch.get("kind")
         if chk == "assign" and ch.get("name", "").startswith("owned"):
             # direct member (may also carry succession prefix info)
-            sub = _item_entry(ch, by_name, brule, parent_card=eff_parent)
+            sub = _item_entry(ch, by_name, brule, parent_card=ch_card or eff_parent)
             out.append(sub)
         elif chk == "call" and ch.get("name", "").endswith("BodyItem"):
             # delegation to a base body (e.g.
@@ -417,10 +417,12 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
                             out.append(sub)
     # C5: also expand the *BodyPart's own member assigns (e.g.
     # ResultExpressionMember in CalculationBodyPart) unless already present.
+    # (N3) their provenance is the declaring *BodyPart rule, not the resolved
+    # *BodyItem rule.
     have = {e["wrapper"] for e in out}
-    for pm in part_members:
-        sub = _item_entry(pm, by_name, brule,
-                          parent_card=pm.get("_card") or part_item_card or parent_card)
+    for pm, pmc in zip(part_members, part_member_cards):
+        sub = _item_entry(pm, by_name, part_rule or brule,
+                          parent_card=pmc or part_item_card or parent_card)
         if sub["wrapper"] not in have:
             out.append(sub)
             have.add(sub["wrapper"])
