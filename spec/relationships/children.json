@@ -183,6 +183,20 @@
       {
         "cardinality": "*",
         "chain": [
+          "InitialNodeMember"
+        ],
+        "kinds": [
+          "InitialNodeMember"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "InitialNodeMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
           "TargetSuccessionMember"
         ],
         "kinds": [
@@ -193,6 +207,54 @@
         "source_line": 1336,
         "source_rule": "ActionBodyItem",
         "wrapper": "TargetSuccessionMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "BehaviorUsageMember",
+          "BehaviorUsageElement"
+        ],
+        "kinds": [
+          "ActionUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConstraintUsage",
+          "ExhibitStateUsage",
+          "IncludeUseCaseUsage",
+          "PerformActionUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "UseCaseUsage",
+          "VerificationCaseUsage",
+          "ViewpointUsage"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "BehaviorUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "ActionNodeMember"
+        ],
+        "kinds": [
+          "ActionNode"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "ActionNodeMember"
       },
       {
         "cardinality": "*",
@@ -211,7 +273,7 @@
     ],
     "ActionNodeBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AnnotatingMember",
           "AnnotatingElement"
@@ -231,7 +293,7 @@
     ],
     "CalculationBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -245,7 +307,7 @@
         "wrapper": "Import"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -259,7 +321,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "DefinitionMember",
           "DefinitionElement",
@@ -307,7 +369,7 @@
         "wrapper": "DefinitionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "VariantUsageMember",
           "VariantUsageElement",
@@ -358,7 +420,7 @@
         "wrapper": "VariantUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "NonOccurrenceUsageMember",
           "NonOccurrenceUsageElement"
@@ -379,7 +441,7 @@
         "wrapper": "NonOccurrenceUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "StructureUsageMember",
           "StructureUsageElement"
@@ -410,7 +472,21 @@
         "wrapper": "StructureUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
+        "chain": [
+          "InitialNodeMember"
+        ],
+        "kinds": [
+          "InitialNodeMember"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "InitialNodeMember"
+      },
+      {
+        "cardinality": "*",
         "chain": [
           "TargetSuccessionMember"
         ],
@@ -424,7 +500,55 @@
         "wrapper": "TargetSuccessionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
+        "chain": [
+          "BehaviorUsageMember",
+          "BehaviorUsageElement"
+        ],
+        "kinds": [
+          "ActionUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConstraintUsage",
+          "ExhibitStateUsage",
+          "IncludeUseCaseUsage",
+          "PerformActionUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "UseCaseUsage",
+          "VerificationCaseUsage",
+          "ViewpointUsage"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "BehaviorUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "ActionNodeMember"
+        ],
+        "kinds": [
+          "ActionNode"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "ActionNodeMember"
+      },
+      {
+        "cardinality": "*",
         "chain": [
           "GuardedSuccessionMember"
         ],
@@ -438,7 +562,7 @@
         "wrapper": "GuardedSuccessionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "ReturnParameterMember",
           "UsageElement",
@@ -490,6 +614,20 @@
         "source_line": 1906,
         "source_rule": "CalculationBodyItem",
         "wrapper": "ReturnParameterMember"
+      },
+      {
+        "cardinality": "?",
+        "chain": [
+          "ResultExpressionMember"
+        ],
+        "kinds": [
+          "OwnedExpression"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1906,
+        "source_rule": "CalculationBodyItem",
+        "wrapper": "ResultExpressionMember"
       }
     ],
     "CaseBody": [
@@ -675,6 +813,20 @@
       {
         "cardinality": "*",
         "chain": [
+          "InitialNodeMember"
+        ],
+        "kinds": [
+          "InitialNodeMember"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "InitialNodeMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
           "TargetSuccessionMember"
         ],
         "kinds": [
@@ -685,6 +837,54 @@
         "source_line": 1336,
         "source_rule": "ActionBodyItem",
         "wrapper": "TargetSuccessionMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "BehaviorUsageMember",
+          "BehaviorUsageElement"
+        ],
+        "kinds": [
+          "ActionUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConstraintUsage",
+          "ExhibitStateUsage",
+          "IncludeUseCaseUsage",
+          "PerformActionUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "UseCaseUsage",
+          "VerificationCaseUsage",
+          "ViewpointUsage"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "BehaviorUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "ActionNodeMember"
+        ],
+        "kinds": [
+          "ActionNode"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "ActionNodeMember"
       },
       {
         "cardinality": "*",
@@ -797,7 +997,7 @@
         "wrapper": "ObjectiveMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "chain": [
           "ResultExpressionMember"
         ],
@@ -1012,7 +1212,7 @@
     ],
     "EnumerationBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AnnotatingMember",
           "AnnotatingElement"
@@ -1030,7 +1230,7 @@
         "wrapper": "AnnotatingMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "EnumerationUsageMember"
         ],
@@ -1046,21 +1246,330 @@
     ],
     "ExpressionBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
-          "BodyParameterMember"
+          "Import"
         ],
         "kinds": [
-          "BodyParameter"
+          "Import"
         ],
         "prefixes": [],
         "relationship": "ownedRelationship",
-        "source_line": 376,
-        "source_rule": "BodyParameterMember",
-        "wrapper": "BodyParameterMember"
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "Import"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
+        "chain": [
+          "AliasMember"
+        ],
+        "kinds": [
+          "AliasMember"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "AliasMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "DefinitionMember",
+          "DefinitionElement",
+          "AnnotatingElement"
+        ],
+        "kinds": [
+          "ActionDefinition",
+          "AllocationDefinition",
+          "AnalysisCaseDefinition",
+          "AttributeDefinition",
+          "CalculationDefinition",
+          "CaseDefinition",
+          "Comment",
+          "ConcernDefinition",
+          "ConnectionDefinition",
+          "ConstraintDefinition",
+          "Dependency",
+          "Documentation",
+          "EnumerationDefinition",
+          "ExtendedDefinition",
+          "FlowConnectionDefinition",
+          "IndividualDefinition",
+          "InterfaceDefinition",
+          "ItemDefinition",
+          "LibraryPackage",
+          "MetadataDefinition",
+          "MetadataUsage",
+          "OccurrenceDefinition",
+          "Package",
+          "PartDefinition",
+          "PortDefinition",
+          "RenderingDefinition",
+          "RequirementDefinition",
+          "StateDefinition",
+          "TextualRepresentation",
+          "UseCaseDefinition",
+          "VerificationCaseDefinition",
+          "ViewDefinition",
+          "ViewpointDefinition"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "DefinitionMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "VariantUsageMember",
+          "VariantUsageElement",
+          "BehaviorUsageElement"
+        ],
+        "kinds": [
+          "ActionUsage",
+          "AllocationUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "AttributeUsage",
+          "BindingConnector",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConnectionUsage",
+          "ConstraintUsage",
+          "EventOccurrenceUsage",
+          "ExhibitStateUsage",
+          "FlowConnectionUsage",
+          "IncludeUseCaseUsage",
+          "IndividualUsage",
+          "InterfaceUsage",
+          "ItemUsage",
+          "Message",
+          "OccurrenceUsage",
+          "PartUsage",
+          "PerformActionUsage",
+          "PortUsage",
+          "PortionUsage",
+          "ReferenceUsage",
+          "RenderingUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "Succession",
+          "SuccessionFlowConnectionUsage",
+          "UseCaseUsage",
+          "VariantReference",
+          "VerificationCaseUsage",
+          "ViewUsage",
+          "ViewpointUsage"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "VariantUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "NonOccurrenceUsageMember",
+          "NonOccurrenceUsageElement"
+        ],
+        "kinds": [
+          "AttributeUsage",
+          "BindingConnector",
+          "DefaultReferenceUsage",
+          "EnumerationUsage",
+          "ExtendedUsage",
+          "ReferenceUsage",
+          "Succession"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "NonOccurrenceUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "StructureUsageMember",
+          "StructureUsageElement"
+        ],
+        "kinds": [
+          "AllocationUsage",
+          "ConnectionUsage",
+          "EventOccurrenceUsage",
+          "FlowConnectionUsage",
+          "IndividualUsage",
+          "InterfaceUsage",
+          "ItemUsage",
+          "Message",
+          "OccurrenceUsage",
+          "PartUsage",
+          "PortUsage",
+          "PortionUsage",
+          "RenderingUsage",
+          "SuccessionFlowConnectionUsage",
+          "ViewUsage"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "StructureUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "InitialNodeMember"
+        ],
+        "kinds": [
+          "InitialNodeMember"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "InitialNodeMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "TargetSuccessionMember"
+        ],
+        "kinds": [
+          "ActionTargetSuccession"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "TargetSuccessionMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "BehaviorUsageMember",
+          "BehaviorUsageElement"
+        ],
+        "kinds": [
+          "ActionUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConstraintUsage",
+          "ExhibitStateUsage",
+          "IncludeUseCaseUsage",
+          "PerformActionUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "UseCaseUsage",
+          "VerificationCaseUsage",
+          "ViewpointUsage"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "BehaviorUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "ActionNodeMember"
+        ],
+        "kinds": [
+          "ActionNode"
+        ],
+        "prefixes": [
+          "EmptySuccessionMember"
+        ],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "ActionNodeMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "GuardedSuccessionMember"
+        ],
+        "kinds": [
+          "GuardedSuccession"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1336,
+        "source_rule": "ActionBodyItem",
+        "wrapper": "GuardedSuccessionMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "ReturnParameterMember",
+          "UsageElement",
+          "NonOccurrenceUsageElement",
+          "OccurrenceUsageElement"
+        ],
+        "kinds": [
+          "ActionUsage",
+          "AllocationUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "AttributeUsage",
+          "BindingConnector",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConnectionUsage",
+          "ConstraintUsage",
+          "DefaultReferenceUsage",
+          "EnumerationUsage",
+          "EventOccurrenceUsage",
+          "ExhibitStateUsage",
+          "ExtendedUsage",
+          "FlowConnectionUsage",
+          "IncludeUseCaseUsage",
+          "IndividualUsage",
+          "InterfaceUsage",
+          "ItemUsage",
+          "Message",
+          "OccurrenceUsage",
+          "PartUsage",
+          "PerformActionUsage",
+          "PortUsage",
+          "PortionUsage",
+          "ReferenceUsage",
+          "RenderingUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "Succession",
+          "SuccessionFlowConnectionUsage",
+          "UseCaseUsage",
+          "VerificationCaseUsage",
+          "ViewUsage",
+          "ViewpointUsage"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1906,
+        "source_rule": "CalculationBodyItem",
+        "wrapper": "ReturnParameterMember"
+      },
+      {
+        "cardinality": "?",
         "chain": [
           "ResultExpressionMember"
         ],
@@ -1069,14 +1578,14 @@
         ],
         "prefixes": [],
         "relationship": "ownedRelationship",
-        "source_line": 1917,
-        "source_rule": "ResultExpressionMember",
+        "source_line": 1906,
+        "source_rule": "CalculationBodyItem",
         "wrapper": "ResultExpressionMember"
       }
     ],
     "FunctionBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "NonFeatureMember",
           "MemberElement",
@@ -1124,7 +1633,7 @@
         "wrapper": "NonFeatureMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "FeatureMember"
         ],
@@ -1147,7 +1656,7 @@
         "wrapper": "FeatureMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -1161,7 +1670,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -1175,7 +1684,7 @@
         "wrapper": "Import"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "ReturnFeatureMember",
           "FeatureElement"
@@ -1199,7 +1708,7 @@
         "wrapper": "ReturnFeatureMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "?",
         "chain": [
           "ResultExpressionMember"
         ],
@@ -1413,7 +1922,7 @@
     ],
     "MetadataBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "DefinitionMember",
           "DefinitionElement",
@@ -1461,7 +1970,7 @@
         "wrapper": "DefinitionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "MetadataBodyUsageMember"
         ],
@@ -1475,7 +1984,7 @@
         "wrapper": "MetadataBodyUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -1489,7 +1998,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -1505,7 +2014,7 @@
     ],
     "NamespaceBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "NamespaceMember"
         ],
@@ -1560,7 +2069,7 @@
         "wrapper": "NamespaceMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -1574,7 +2083,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -1590,7 +2099,7 @@
     ],
     "PackageBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "PackageMember",
           "DefinitionElement",
@@ -1638,7 +2147,7 @@
         "wrapper": "PackageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "ElementFilterMember"
         ],
@@ -1652,7 +2161,7 @@
         "wrapper": "ElementFilterMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -1666,7 +2175,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -1965,7 +2474,7 @@
     ],
     "StateDefBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -1979,7 +2488,7 @@
         "wrapper": "Import"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -1993,7 +2502,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "DefinitionMember",
           "DefinitionElement",
@@ -2041,7 +2550,7 @@
         "wrapper": "DefinitionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "VariantUsageMember",
           "VariantUsageElement",
@@ -2092,7 +2601,7 @@
         "wrapper": "VariantUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "NonOccurrenceUsageMember",
           "NonOccurrenceUsageElement"
@@ -2113,7 +2622,7 @@
         "wrapper": "NonOccurrenceUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "StructureUsageMember",
           "StructureUsageElement"
@@ -2144,12 +2653,28 @@
         "wrapper": "StructureUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
-          "TargetTransitionUsageMember"
+          "BehaviorUsageMember",
+          "BehaviorUsageElement"
         ],
         "kinds": [
-          "TargetTransitionUsage"
+          "ActionUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConstraintUsage",
+          "ExhibitStateUsage",
+          "IncludeUseCaseUsage",
+          "PerformActionUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "UseCaseUsage",
+          "VerificationCaseUsage",
+          "ViewpointUsage"
         ],
         "prefixes": [
           "EmptySuccessionMember"
@@ -2157,10 +2682,24 @@
         "relationship": "ownedRelationship",
         "source_line": 1704,
         "source_rule": "StateBodyItem",
+        "wrapper": "BehaviorUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "TargetTransitionUsageMember"
+        ],
+        "kinds": [
+          "TargetTransitionUsage"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1704,
+        "source_rule": "StateBodyItem",
         "wrapper": "TargetTransitionUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "TransitionUsageMember"
         ],
@@ -2174,7 +2713,21 @@
         "wrapper": "TransitionUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
+        "chain": [
+          "EntryActionMember"
+        ],
+        "kinds": [
+          "StateActionUsage"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1704,
+        "source_rule": "StateBodyItem",
+        "wrapper": "EntryActionMember"
+      },
+      {
+        "cardinality": "*",
         "chain": [
           "EntryTransitionMember"
         ],
@@ -2188,7 +2741,7 @@
         "wrapper": "EntryTransitionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "DoActionMember"
         ],
@@ -2202,7 +2755,7 @@
         "wrapper": "DoActionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "ExitActionMember"
         ],
@@ -2218,7 +2771,7 @@
     ],
     "StateUsageBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -2232,7 +2785,7 @@
         "wrapper": "Import"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -2246,7 +2799,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "DefinitionMember",
           "DefinitionElement",
@@ -2294,7 +2847,7 @@
         "wrapper": "DefinitionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "VariantUsageMember",
           "VariantUsageElement",
@@ -2345,7 +2898,7 @@
         "wrapper": "VariantUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "NonOccurrenceUsageMember",
           "NonOccurrenceUsageElement"
@@ -2366,7 +2919,7 @@
         "wrapper": "NonOccurrenceUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "StructureUsageMember",
           "StructureUsageElement"
@@ -2397,12 +2950,28 @@
         "wrapper": "StructureUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
-          "TargetTransitionUsageMember"
+          "BehaviorUsageMember",
+          "BehaviorUsageElement"
         ],
         "kinds": [
-          "TargetTransitionUsage"
+          "ActionUsage",
+          "AnalysisCaseUsage",
+          "AssertConstraintUsage",
+          "CalculationUsage",
+          "CaseUsage",
+          "ConcernUsage",
+          "ConstraintUsage",
+          "ExhibitStateUsage",
+          "IncludeUseCaseUsage",
+          "PerformActionUsage",
+          "RequirementUsage",
+          "SatisfyRequirementUsage",
+          "StateUsage",
+          "UseCaseUsage",
+          "VerificationCaseUsage",
+          "ViewpointUsage"
         ],
         "prefixes": [
           "EmptySuccessionMember"
@@ -2410,10 +2979,24 @@
         "relationship": "ownedRelationship",
         "source_line": 1704,
         "source_rule": "StateBodyItem",
+        "wrapper": "BehaviorUsageMember"
+      },
+      {
+        "cardinality": "*",
+        "chain": [
+          "TargetTransitionUsageMember"
+        ],
+        "kinds": [
+          "TargetTransitionUsage"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1704,
+        "source_rule": "StateBodyItem",
         "wrapper": "TargetTransitionUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "TransitionUsageMember"
         ],
@@ -2427,7 +3010,21 @@
         "wrapper": "TransitionUsageMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
+        "chain": [
+          "EntryActionMember"
+        ],
+        "kinds": [
+          "StateActionUsage"
+        ],
+        "prefixes": [],
+        "relationship": "ownedRelationship",
+        "source_line": 1704,
+        "source_rule": "StateBodyItem",
+        "wrapper": "EntryActionMember"
+      },
+      {
+        "cardinality": "*",
         "chain": [
           "EntryTransitionMember"
         ],
@@ -2441,7 +3038,7 @@
         "wrapper": "EntryTransitionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "DoActionMember"
         ],
@@ -2455,7 +3052,7 @@
         "wrapper": "DoActionMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "ExitActionMember"
         ],
@@ -2471,7 +3068,7 @@
     ],
     "TypeBody": [
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "NonFeatureMember",
           "MemberElement",
@@ -2519,7 +3116,7 @@
         "wrapper": "NonFeatureMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "FeatureMember"
         ],
@@ -2542,7 +3139,7 @@
         "wrapper": "FeatureMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "AliasMember"
         ],
@@ -2556,7 +3153,7 @@
         "wrapper": "AliasMember"
       },
       {
-        "cardinality": null,
+        "cardinality": "*",
         "chain": [
           "Import"
         ],
@@ -3039,5 +3636,5 @@
       }
     ]
   },
-  "parity_report": "# classes.py parity report (issue #6)\n\nCompares the grammar-derived children/body model against the current\nhand-curated `sysml2py/grammar/classes.py` (266 classes, 265 `dump()`,\n72 `get_definition()`, 73 `NotImplementedError` sites).\n\n## Missing definition kinds (implemented-but-unmodelled)\n\nThe grammar's `DefinitionElement` allows these kinds, but `classes.py`'s\n`DefinitionElement` dispatch does not handle them:\n\n| Kind | Class in classes.py |\n| --- | --- |\n| ActionDefinition | yes |\n| AllocationDefinition | **NO** |\n| AnalysisCaseDefinition | yes |\n| AnnotatingElement | yes |\n| AttributeDefinition | yes |\n| CalculationDefinition | yes |\n| CaseDefinition | **NO** |\n| ConcernDefinition | **NO** |\n| ConnectionDefinition | yes |\n| ConstraintDefinition | yes |\n| Dependency | **NO** |\n| EnumerationDefinition | yes |\n| ExtendedDefinition | **NO** |\n| FlowConnectionDefinition | yes |\n| IndividualDefinition | **NO** |\n| InterfaceDefinition | yes |\n| ItemDefinition | yes |\n| LibraryPackage | **NO** |\n| MetadataDefinition | **NO** |\n| OccurrenceDefinition | **NO** |\n| Package | yes |\n| PartDefinition | yes |\n| PortDefinition | yes |\n| RenderingDefinition | **NO** |\n| RequirementDefinition | yes |\n| StateDefinition | yes |\n| UseCaseDefinition | **NO** |\n| VerificationCaseDefinition | **NO** |\n| ViewDefinition | **NO** |\n| ViewpointDefinition | **NO** |\n\n### Issue-mandated missing kinds\n\n| Missing definition kind | In classes.py dispatch? |\n| --- | --- |\n| UseCaseDefinition | **MISSING** |\n| OccurrenceDefinition | **MISSING** |\n| ViewDefinition | **MISSING** |\n| VerificationCaseDefinition | **MISSING** |\n| MetadataDefinition | **MISSING** |\n\n## Modelled kinds (this model's child-kind vocabulary)\n\n127 distinct element kinds are modeled across all bodies:\n\n```\nActionDefinition ActionTargetSuccession ActionUsage ActorUsage AliasMember AllocationDefinition AllocationUsage AnalysisCaseDefinition AnalysisCaseUsage AssertConstraintUsage Association AssociationStructure AttributeDefinition AttributeUsage Behavior BindingConnector BodyParameter BooleanExpression CalculationDefinition CalculationUsage CaseDefinition CaseUsage Class Classifier Comment ConcernDefinition ConcernUsage ConjugatedPortTyping Conjugation ConnectionDefinition ConnectionUsage Connector ConstraintDefinition ConstraintUsage DataType DefaultInterfaceEnd DefaultReferenceUsage Dependency Disjoining Documentation EnumeratedValue EnumerationDefinition EnumerationUsage EventOccurrenceUsage ExhibitStateUsage Expose Expression ExtendedDefinition ExtendedUsage Feature FeatureInverting FlowConnectionDefinition FlowConnectionUsage FramedConcernUsage Function GuardedSuccession GuardedTargetSuccession Import IncludeUseCaseUsage IndividualDefinition IndividualUsage Interaction InterfaceDefinition InterfaceUsage Invariant ItemDefinition ItemFlow ItemUsage LibraryPackage Message Metaclass MetadataBodyUsage MetadataDefinition MetadataUsage MultiplicityRange MultiplicitySubset Namespace ObjectiveRequirementUsage OccurrenceDefinition OccurrenceUsage OwnedExpression OwnedFeatureTyping Package PartDefinition PartUsage PerformActionUsage PortDefinition PortUsage PortionUsage Predicate Redefinition ReferenceUsage RenderingDefinition RenderingUsage RequirementConstraintUsage RequirementDefinition RequirementUsage RequirementVerificationUsage SatisfyRequirementUsage Specialization StakeholderUsage StateActionUsage StateDefinition StateUsage Step Structure Subclassification SubjectUsage Subsetting Succession SuccessionFlowConnectionUsage SuccessionItemFlow TargetTransitionUsage TextualRepresentation TransitionUsage Type TypeFeaturing UseCaseDefinition UseCaseUsage VariantReference VerificationCaseDefinition VerificationCaseUsage ViewDefinition ViewRenderingUsage ViewUsage ViewpointDefinition ViewpointUsage\n```\n\n"
+  "parity_report": "# classes.py parity report (issue #6)\n\nCompares the grammar-derived children/body model against the current\nhand-curated `sysml2py/grammar/classes.py` (266 classes, 265 `dump()`,\n72 `get_definition()`, 73 `NotImplementedError` sites).\n\n## Missing definition kinds (implemented-but-unmodelled)\n\nThe grammar's `DefinitionElement` allows these kinds, but `classes.py`'s\n`DefinitionElement` dispatch does not handle them:\n\n| Kind | Class in classes.py |\n| --- | --- |\n| ActionDefinition | yes |\n| AllocationDefinition | **NO** |\n| AnalysisCaseDefinition | yes |\n| AnnotatingElement | yes |\n| AttributeDefinition | yes |\n| CalculationDefinition | yes |\n| CaseDefinition | **NO** |\n| ConcernDefinition | **NO** |\n| ConnectionDefinition | yes |\n| ConstraintDefinition | yes |\n| Dependency | **NO** |\n| EnumerationDefinition | yes |\n| ExtendedDefinition | **NO** |\n| FlowConnectionDefinition | yes |\n| IndividualDefinition | **NO** |\n| InterfaceDefinition | yes |\n| ItemDefinition | yes |\n| LibraryPackage | **NO** |\n| MetadataDefinition | **NO** |\n| OccurrenceDefinition | **NO** |\n| Package | yes |\n| PartDefinition | yes |\n| PortDefinition | yes |\n| RenderingDefinition | **NO** |\n| RequirementDefinition | yes |\n| StateDefinition | yes |\n| UseCaseDefinition | **NO** |\n| VerificationCaseDefinition | **NO** |\n| ViewDefinition | **NO** |\n| ViewpointDefinition | **NO** |\n\n### Issue-mandated missing kinds\n\n| Missing definition kind | In classes.py dispatch? |\n| --- | --- |\n| UseCaseDefinition | **MISSING** |\n| OccurrenceDefinition | **MISSING** |\n| ViewDefinition | **MISSING** |\n| VerificationCaseDefinition | **MISSING** |\n| MetadataDefinition | **MISSING** |\n\n## Modelled kinds (this model's child-kind vocabulary)\n\n128 distinct element kinds are modeled across all bodies:\n\n```\nActionDefinition ActionNode ActionTargetSuccession ActionUsage ActorUsage AliasMember AllocationDefinition AllocationUsage AnalysisCaseDefinition AnalysisCaseUsage AssertConstraintUsage Association AssociationStructure AttributeDefinition AttributeUsage Behavior BindingConnector BooleanExpression CalculationDefinition CalculationUsage CaseDefinition CaseUsage Class Classifier Comment ConcernDefinition ConcernUsage ConjugatedPortTyping Conjugation ConnectionDefinition ConnectionUsage Connector ConstraintDefinition ConstraintUsage DataType DefaultInterfaceEnd DefaultReferenceUsage Dependency Disjoining Documentation EnumeratedValue EnumerationDefinition EnumerationUsage EventOccurrenceUsage ExhibitStateUsage Expose Expression ExtendedDefinition ExtendedUsage Feature FeatureInverting FlowConnectionDefinition FlowConnectionUsage FramedConcernUsage Function GuardedSuccession GuardedTargetSuccession Import IncludeUseCaseUsage IndividualDefinition IndividualUsage InitialNodeMember Interaction InterfaceDefinition InterfaceUsage Invariant ItemDefinition ItemFlow ItemUsage LibraryPackage Message Metaclass MetadataBodyUsage MetadataDefinition MetadataUsage MultiplicityRange MultiplicitySubset Namespace ObjectiveRequirementUsage OccurrenceDefinition OccurrenceUsage OwnedExpression OwnedFeatureTyping Package PartDefinition PartUsage PerformActionUsage PortDefinition PortUsage PortionUsage Predicate Redefinition ReferenceUsage RenderingDefinition RenderingUsage RequirementConstraintUsage RequirementDefinition RequirementUsage RequirementVerificationUsage SatisfyRequirementUsage Specialization StakeholderUsage StateActionUsage StateDefinition StateUsage Step Structure Subclassification SubjectUsage Subsetting Succession SuccessionFlowConnectionUsage SuccessionItemFlow TargetTransitionUsage TextualRepresentation TransitionUsage Type TypeFeaturing UseCaseDefinition UseCaseUsage VariantReference VerificationCaseDefinition VerificationCaseUsage ViewDefinition ViewRenderingUsage ViewUsage ViewpointDefinition ViewpointUsage\n```\n\n"
 }

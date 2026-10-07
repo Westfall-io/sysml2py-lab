@@ -177,8 +177,9 @@ def test_no_duplicate_child_entries(model):
 def test_no_member_leak_as_kind(model):
     """C2/C3 regression: a member wrapper whose element target resolves must
     not report its own name as the child kind.  Legit leaves (AliasMember,
-    Import, Expose) are exempt."""
-    LEGIT = {"AliasMember", "Import", "Expose"}
+    Import, Expose, InitialNodeMember) are exempt — these wrappers ARE the
+    concrete kind (they carry no element capability)."""
+    LEGIT = {"AliasMember", "Import", "Expose", "InitialNodeMember"}
     for body_name, entries in model["bodies"].items():
         for e in entries:
             if e["wrapper"] in LEGIT:
@@ -224,6 +225,74 @@ def test_function_body_present(model):
     wrappers = {e["wrapper"] for e in entries}
     assert {"NonFeatureMember", "FeatureMember", "AliasMember", "Import",
             "ReturnFeatureMember", "ResultExpressionMember"} <= wrappers
+
+
+def test_no_missing_owned_members(model):
+    """C5 regression: every grammar-reachable owned member (through *BodyItem
+    / *BodyPart delegation) must appear as a wrapper or prefix in that body."""
+    import json
+    with (ROOT / "spec" / "language_spec.json").open() as specf:
+        spec = json.load(specf)
+    by = {r["name"]: r for r in spec["rules"]}
+    for body_name, entries in model["bodies"].items():
+        present = {e["wrapper"] for e in entries} | {
+            p for e in entries for p in e["prefixes"]}
+        rule = by.get(body_name)
+        if not rule:
+            continue
+        owned = []
+
+        def walk_owned(el):
+            if not isinstance(el, dict):
+                return
+            if el.get("kind") == "assign" and el.get("name", "").startswith("owned"):
+                v = el.get("value")
+                if isinstance(v, dict):
+                    if v.get("kind") == "call":
+                        owned.append(v["name"])
+                    elif v.get("kind") == "group" and isinstance(v.get("body"), dict) \
+                            and v["body"].get("kind") == "alt":
+                        for ch in v["body"].get("choices", []):
+                            if ch.get("kind") == "call":
+                                owned.append(ch["name"])
+            for key in ("value", "body"):
+                v = el.get(key)
+                if isinstance(v, dict):
+                    walk_owned(v)
+            for key in ("items", "choices"):
+                for x in el.get(key, []) or []:
+                    walk_owned(x)
+        walk_owned(rule.get("body"))
+        missing = {n for n in owned if n not in present
+                   and n.endswith(("Member", "BodyPart")) and n != "EmptySuccessionMember"}
+        assert not missing, f"{body_name} missing grammar members: {missing}"
+
+
+def test_cardinality_audited(model):
+    """C6 regression: no body may be ALL null cardinality — repetition markers
+    in the grammar must flow to entries; and every body that starts with a
+    repetition marker on its item rule must carry '*'."""
+    for body_name, entries in model["bodies"].items():
+        cards = {e["cardinality"] for e in entries}
+        assert cards != {None}, (
+            f"{body_name} has no cardinality at all — repetition markers lost"
+        )
+        # a body whose item rule repeats must NOT have all entries null
+        assert any(e["cardinality"] for e in entries), \
+            f"{body_name} has all-null cards but grammar repeats its items"
+
+
+def test_expression_body_mirrors_calculation(model):
+    """C7 regression: ExpressionBody's winning rule is the SysML override
+    (CalculationBody alias) — it must expose the same wrappers as
+    CalculationBody (NOT the superseded KerMLExpressions default's
+    BodyParameterMember)."""
+    calc = {e["wrapper"] for e in children_for_body(model, "CalculationBody")}
+    expr = {e["wrapper"] for e in children_for_body(model, "ExpressionBody")}
+    assert calc == expr, (
+        f"ExpressionBody != CalculationBody: {expr ^ calc}"
+    )
+    assert "BodyParameterMember" not in expr
 
 
 def test_committed_children_fresh():

@@ -70,6 +70,42 @@ def _walk(node: dict):
             yield from _walk(node["body"])
 
 
+def _walk_cards(node: dict, inherited: str | None = None):
+    """Yield (element, inherited_card) depth-first, where inherited_card is
+    the repetition marker of the nearest enclosing group/pred that repeats
+    its content (C6).
+
+    The grammar attaches repetition to the *enclosing* node, e.g.
+        '{' ( owned+=A | owned+=B )* '}'   <- the '*' is on the group, not A/B
+        '{' BodyItem* '}'                  <- '*' is on the BodyItem call
+        CalculationBodyPart: [=> BodyItem* (owned+=R)?]  <- '*' inside the Part
+    Reading only the member's own card misses the enclosing marker.  Carry
+    the group/pred repeat down: a group/pred's '*'/'?'/'+' means its content
+    (every member inside) repeats.  A seq/alt's card repeats the *whole*
+    production (not each child), so it is NOT inherited by children.
+    """
+    if not isinstance(node, dict):
+        return
+    kind = node.get("kind")
+    card = node.get("card") or inherited if kind in ("group", "pred") else inherited
+    yield node, card
+    if kind == "seq":
+        for it in node.get("items", []):
+            yield from _walk_cards(it, card)
+    elif kind == "alt":
+        for ch in node.get("choices", []):
+            yield from _walk_cards(ch, card)
+    elif kind == "group":
+        if node.get("body") is not None:
+            yield from _walk_cards(node["body"], card)
+    elif kind == "assign":
+        if node.get("value") is not None:
+            yield from _walk_cards(node["value"], card)
+    elif kind == "pred":
+        if node.get("body") is not None:
+            yield from _walk_cards(node["body"], card)
+
+
 def _collect_calls(el: dict, acc: list[str]):
     """Collect every call target name in the tree (dedup'd, ordered)."""
     if not isinstance(el, dict):
@@ -235,7 +271,15 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
     bname = bodyitem_el.get("name", "")
     cur = bname
     # chase *BodyPart -> *BodyItem (or straight to members for BodyParts that
-    # hold members directly, e.g. FunctionBodyPart)
+    # hold members directly, e.g. FunctionBodyPart).  A *BodyPart may ALSO
+    # carry its own member assigns beside the delegated *BodyItem (e.g.
+    # CalculationBodyPart: [=> CalculationBodyItem* (ownedRelationship +=
+    # ResultExpressionMember)?]) — collect those part-level members too (C5).
+    part_members: list[dict] = []
+    # C6: a *BodyPart often carries no card itself; the repetition lives on
+    # the *BodyItem *inside* it (CalculationBodyPart: [=> BodyItem* ...]).
+    # Thread that inner card out to the expansion so members inherit '*'.
+    part_item_card: str | None = None
     while cur.endswith("BodyPart"):
         pr = by_name.get(cur)
         if pr is None:
@@ -243,10 +287,18 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
         pbody = pr.get("body")
         nxt = None
         if pbody is not None:
-            for el in _walk(pbody):
+            # use _walk_cards so the group's own '*' (FunctionBodyPart's
+            # group(alt(members))[*]) flows to the member assigns (C6)
+            for el, inh in _walk_cards(pbody):
                 if el.get("kind") == "call" and el["name"].endswith("BodyItem"):
                     nxt = el["name"]
-                    break
+                    part_item_card = el.get("card") or inh
+                elif el.get("kind") == "assign" and el.get("name", "").startswith("owned"):
+                    v = el.get("value")
+                    if v is not None and v.get("kind") == "call" and v["name"] != "EmptySuccessionMember":
+                        # carry the enclosing group's card with the member
+                        el["_card"] = inh or el.get("card")
+                        part_members.append(el)
         if not nxt:
             break
         cur = nxt
@@ -269,45 +321,90 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
             if it.get("kind") == "group":
                 gb = it.get("body")
                 if gb is not None and gb.get("kind") == "alt":
-                    choices.extend(gb.get("choices", []))
+                    # C6: the group carries the repetition (group(alt(members))[*])
+                    # — stamp its card onto each choice so _item_entry sees it
+                    for gc in gb.get("choices", []):
+                        if gc.get("card") is None and it.get("card"):
+                            gc["card"] = it.get("card")
+                        choices.append(gc)
                 elif gb is not None and gb.get("kind") == "assign":
+                    if gb.get("card") is None and it.get("card"):
+                        gb["card"] = it.get("card")
                     choices.append(gb)
             elif it.get("kind") == "assign":
                 choices.append(it)
     if not choices:
         return []
+    # C6: prefer the *BodyPart's inner *BodyItem card ('*') as the default
+    # repetition for members of the delegated item rule.
+    eff_parent = part_item_card or parent_card
     for ch in choices:
         chk = ch.get("kind")
         if chk == "assign" and ch.get("name", "").startswith("owned"):
             # direct member (may also carry succession prefix info)
-            sub = _item_entry(ch, by_name, brule, parent_card=parent_card)
+            sub = _item_entry(ch, by_name, brule, parent_card=eff_parent)
             out.append(sub)
         elif chk == "call" and ch.get("name", "").endswith("BodyItem"):
             # delegation to a base body (e.g.
             # RequirementBodyItem: DefinitionBodyItem | SubjectMember | ...)
             # — inherit the base's members
-            out.extend(_expand_bodyitem(ch, by_name, parent_card))
+            out.extend(_expand_bodyitem(ch, by_name, eff_parent))
         elif chk == "seq":
-            # seq[group(assign(EmptySuccessionMember)?), assign(owned+=Member)]
-            # — pick the member assignment that is not a succession prefix
-            member = None
-            prefixes = []
-            member_card = None
+            # seq branch: a succession of member assignments, with an
+            # optional EmptySuccessionMember prefix on the FIRST member, and
+            # possible pred-guarded repeats (e.g.
+            #   [group(EmptySuccessionMember)?, assign(owned+=StructureUsageMember)]
+            #   [assign(owned+=InitialNodeMember),
+            #     group(pred=>assign(owned+=TargetSuccessionMember))*]
+            #   [group(EmptySuccessionMember)?,
+            #     assign(owned+=group(alt(BehaviorUsageMember|ActionNodeMember)))]
+            # C5: collect EVERY owned member assign (do not overwrite); a
+            # group-of-alts value yields one entry per alt branch; a prefix
+            # attaches to the member it syntactically precedes.
+            prefix_queue = []
             for inner in ch.get("items", []):
                 for a in _walk(inner):
-                    if a.get("kind") == "assign" and a.get("name", "").startswith("owned"):
-                        v = a.get("value")
-                        if v is not None and v.get("kind") == "call":
-                            if v["name"].endswith("Member") and v["name"] != "EmptySuccessionMember":
-                                member = a
-                                member_card = a.get("card") or v.get("card")
-                            elif v["name"] == "EmptySuccessionMember":
-                                prefixes.append("EmptySuccessionMember")
-            if member is not None:
-                sub = _item_entry(member, by_name, brule,
-                                  parent_card=member_card or parent_card)
-                sub["prefixes"] = sorted(set(sub.get("prefixes", [])) | set(prefixes))
-                out.append(sub)
+                    if a.get("kind") != "assign" or not a.get("name", "").startswith("owned"):
+                        continue
+                    v = a.get("value")
+                    if v is None:
+                        continue
+                    if v.get("kind") == "call":
+                        vname = v["name"]
+                        if vname == "EmptySuccessionMember":
+                            prefix_queue.append(vname)
+                            continue
+                        if vname.endswith("Member") or vname.endswith("BodyItem"):
+                            sub = _item_entry(
+                                a, by_name, brule,
+                                parent_card=a.get("card") or v.get("card") or eff_parent)
+                            sub["prefixes"] = sorted(set(sub.get("prefixes", [])) | set(prefix_queue))
+                            out.append(sub)
+                            prefix_queue = []
+                    elif v.get("kind") == "group":
+                        gb = v.get("body")
+                        gname = None
+                        if isinstance(gb, dict) and gb.get("kind") == "alt":
+                            # group(alt(call1 | call2)): one entry per branch
+                            for gc in gb.get("choices", []):
+                                if gc.get("kind") == "call" and gc["name"].endswith("Member"):
+                                    synth = dict(gc)
+                                    synth["card"] = a.get("card") or gb.get("card")
+                                    sub = _item_entry(
+                                        {"kind": "assign", "name": a["name"], "op": a.get("op", "+="),
+                                         "value": synth},
+                                        by_name, brule,
+                                        parent_card=a.get("card") or gb.get("card") or eff_parent)
+                                    sub["prefixes"] = sorted(set(sub.get("prefixes", [])) | set(prefix_queue))
+                                    out.append(sub)
+                            prefix_queue = []
+                        elif isinstance(gb, dict) and gb.get("kind") == "call" and gb["name"].endswith("Member"):
+                            sub = _item_entry(
+                                a, by_name, brule,
+                                parent_card=a.get("card") or gb.get("card") or eff_parent)
+                            sub["prefixes"] = sorted(set(sub.get("prefixes", [])) | set(prefix_queue))
+                            out.append(sub)
+                            prefix_queue = []
         elif chk == "pred":
             # pred => assign(owned+=call(Import))
             pb = ch.get("body")
@@ -318,6 +415,15 @@ def _expand_bodyitem(bodyitem_el: dict, by_name: dict[str, dict], parent_card: s
                         if v is not None and v.get("kind") == "call":
                             sub = _item_entry(a, by_name, brule, parent_card=parent_card)
                             out.append(sub)
+    # C5: also expand the *BodyPart's own member assigns (e.g.
+    # ResultExpressionMember in CalculationBodyPart) unless already present.
+    have = {e["wrapper"] for e in out}
+    for pm in part_members:
+        sub = _item_entry(pm, by_name, brule,
+                          parent_card=pm.get("_card") or part_item_card or parent_card)
+        if sub["wrapper"] not in have:
+            out.append(sub)
+            have.add(sub["wrapper"])
     return out
 
 
@@ -496,10 +602,35 @@ def build_children_model(spec: dict) -> dict:
         by_container.setdefault(cont["name"], []).append(cont)
 
     bodies: dict[str, list[dict]] = {}
-    for name, cont_rules in sorted(by_container.items()):
-        # use the override (SysML) rule body if present; fall back to KerML
-        cont = cont_rules[-1]
+    for name in sorted(by_container):
+        # C7: the correct rule for a container name is the LAST definition in
+        # by_name (the declared override winner — SysML overrides KerML,
+        # which overrides KerMLExpressions).  `_is_container` must be
+        # evaluated on THIS rule, not on the pre-filtered `containers` list:
+        # the SysML ExpressionBody override is `call(CalculationBody)`, which
+        # contains no Member/BodyItem/BodyPart call and so was filtered out
+        # of `containers`, leaving the superseded KerMLExpressions default.
+        cont = by_name.get(name)
+        if cont is None:
+            continue
         body = cont.get("body")
+        if body is None:
+            continue
+        # follow single-call aliases (ExpressionBody -> CalculationBody),
+        # mirroring the existing UsageBody -> DefinitionBody alias handling:
+        # a container whose winning body is `call(X)` inherits X's container
+        # behavior; only a true alias (X not itself named *Body) is dropped.
+        while body is not None and body.get("kind") == "call":
+            target = body.get("name")
+            if not target:
+                break
+            if target in by_container or target.endswith(_CONTAINER_SUFFIX):
+                # alias to a real container: reuse its entries
+                alias_body = by_name.get(target)
+                body = alias_body.get("body") if alias_body else None
+                break
+            # non-container alias (UsageBody -> DefinitionBody): omit
+            break
         if body is None:
             continue
         entries: list[dict] = []
@@ -507,10 +638,11 @@ def build_children_model(spec: dict) -> dict:
         # seq[lit('{'), BodyItem*, lit('}')]; gather every assign-of-member
         # call and its card from the tree, plus pred-guarded imports.
         candidate_els = []
-        for el in _walk(body):
-            # assigned member (ownedRelationship+=call(Member))
+        for el, inh in _walk_cards(body):
+            # assigned member (ownedRelationship+=call(Member)); inherit the
+            # enclosing group/pred card (C6: '{' (A|B)* '}')
             if el.get("kind") == "assign" and el.get("name", "").startswith("owned"):
-                candidate_els.append(el)
+                candidate_els.append((el, inh))
             # bare body-item call (DefinitionBodyItem[*], StateBodyPart) —
             # expand below.  Keep its card so the BodyItem repetition (which
             # the grammar attaches to the enclosing '*' group) is preserved.
@@ -518,14 +650,15 @@ def build_children_model(spec: dict) -> dict:
                 el.get("name", "").endswith("BodyItem")
                 or el.get("name", "").endswith("BodyPart")
             ):
-                candidate_els.append(el)
+                # for a BodyItem call, its own '*' is the repetition marker
+                candidate_els.append((el, el.get("card") or inh))
         seen_wrappers = set()
-        for el in candidate_els:
+        for el, inh in candidate_els:
             if el.get("kind") == "call" and (
                 el.get("name", "").endswith("BodyItem")
                 or el.get("name", "").endswith("BodyPart")
             ):
-                for sub in _expand_bodyitem(el, by_name, el.get("card")):
+                for sub in _expand_bodyitem(el, by_name, inh):
                     w = sub.get("wrapper")
                     key = (w, sub.get("cardinality"))
                     if key not in seen_wrappers:
@@ -536,13 +669,18 @@ def build_children_model(spec: dict) -> dict:
             if v is None or v.get("kind") != "call":
                 continue
             wrapper = v.get("name", "")
-            entry = _item_entry(el, by_name, by_name.get(wrapper, {}), el.get("card"))
+            entry = _item_entry(el, by_name, by_name.get(wrapper, {}),
+                                inh or el.get("card"))
             # the entry's item rule is the *call target* (the member), not
             # this container's rule; fix source provenance to the member rule
             mrule = by_name.get(wrapper) or {"name": wrapper, "source": {}}
             entry["source_rule"] = wrapper
             entry["source_line"] = mrule.get("source", {}).get("line")
-            key = (wrapper, entry["cardinality"])
+            # C5 knock-on 2: dedupe on (wrapper, cardinality, prefixes) so a
+            # distinct prefixed variant is not dropped (ActionBodyItem's
+            # TargetSuccessionMember has an EmptySuccessionMember-prefixed
+            # branch AND a plain branch).
+            key = (wrapper, entry["cardinality"], tuple(sorted(entry["prefixes"])))
             if key not in seen_wrappers:
                 bodies.setdefault(cont["name"], []).append(entry)
                 seen_wrappers.add(key)
