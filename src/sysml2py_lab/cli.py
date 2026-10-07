@@ -11,6 +11,7 @@ from .grammar.spec import build_spec, write_spec
 from .grammar.inline import inline_fragments
 from .grammar.emit_tx import emit_tx
 from .grammar.modifiers import build_modifier_model, modifiers_for_kind, write_modifiers
+from .grammar.children import build_children_model, children_for_body, write_children
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -66,6 +67,28 @@ def main(argv: list[str] | None = None) -> int:
     sp_modifiers.add_argument(
         "--out-md", type=Path, default=Path("spec") / "relationships" / "modifiers.md",
         help="Output Markdown matrix path (default: ./spec/relationships/modifiers.md)",
+    )
+    # `sysml2py-lab spec children` subcommand
+    sp_children = sp_mod.add_parser("children", help="Derive the per-container children/body-membership model from the spec.")
+    sp_children.add_argument(
+        "--dir", type=Path, default=Path("grammar_inputs"),
+        help="Path to the vendored grammar-inputs directory (default: ./grammar_inputs)",
+    )
+    sp_children.add_argument(
+        "--body", type=str, default=None,
+        help="Restrict output to one body container (e.g. DefinitionBody, RequirementBody).",
+    )
+    sp_children.add_argument(
+        "--out", type=Path, default=Path("spec") / "relationships" / "children.json",
+        help="Output JSON path (default: ./spec/relationships/children.json)",
+    )
+    sp_children.add_argument(
+        "--out-md", type=Path, default=Path("spec") / "relationships" / "children.md",
+        help="Output Markdown matrix path (default: ./spec/relationships/children.md)",
+    )
+    sp_children.add_argument(
+        "--out-parity", type=Path, default=Path("spec") / "reports" / "classes_parity.md",
+        help="Output parity report path (default: ./spec/reports/classes_parity.md)",
     )
 
     tx = sub.add_parser("tx", help="Regenerate textX .tx grammar from the inlined spec.")
@@ -132,6 +155,21 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             except Exception as e:
                 print(f"spec modifiers FAILED: {e}", file=sys.stderr)
+                return 1
+        if getattr(args, "spec_cmd", None) == "children":
+            try:
+                spec = build_spec(args.dir)
+                model = build_children_model(spec)
+                if args.body:
+                    rec = children_for_body(model, args.body)
+                    print(__import__("json").dumps(rec, indent=2, sort_keys=True))
+                else:
+                    write_children(model, args.out, args.out_md, args.out_parity)
+                    print(f"spec children wrote {args.out} + {args.out_md} + "
+                          f"{args.out_parity} ({len(model['bodies'])} bodies)")
+                return 0
+            except Exception as e:
+                print(f"spec children FAILED: {e}", file=sys.stderr)
                 return 1
         try:
             spec = build_spec(args.dir)
