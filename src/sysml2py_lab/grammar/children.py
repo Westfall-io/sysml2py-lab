@@ -12,7 +12,11 @@ Each child entry records:
       "wrapper": "OccurrenceUsageMember",   # the membership node
       "relationship": "ownedRelationship",  # how the wrapper attaches
       "chain": ["OccurrenceUsageMember", "OccurrenceUsageElement",
-                "StructureUsageElement"],   # wrapper -> element chain
+                "StructureUsageElement"],   # wrapper -> element resolution
+                                           # trail (NOT a strict linear path:
+                                           # a capability alt's branches are
+                                           # siblings; the trail lists them
+                                           # in source order)
       "kinds": ["PartUsage", "ItemUsage", ...],  # concrete element kinds
       "cardinality": "*" | "?" | "+" | null,
       "prefixes": ["EmptySuccessionMember"],   # ordering/succession prefixes
@@ -377,6 +381,14 @@ def _item_entry(item_el: dict, by_name: dict[str, dict], owner_rule: dict | None
             if c.endswith("Member"):
                 wrapper_call = c
                 break
+
+    # W9: never emit a None wrapper (would crash the markdown matrix join).
+    # If resolution genuinely finds no member, fall back to a stable name so
+    # the entry is still usable; kinds will resolve to that name as a leaf.
+    if wrapper_call is None:
+        fallback = (item_el.get("value") or {}).get("name") \
+            if isinstance(item_el.get("value"), dict) else None
+        wrapper_call = fallback or "(unnamed-member)"
 
     # C4: the member card may legitimately be None when the repetition
     # marker lives on the enclosing group / BodyItem call (e.g.

@@ -227,16 +227,16 @@ def test_function_body_present(model):
 
 
 def test_committed_children_fresh():
-    """Casting gate: the committed children.json + parity report must equal a
-    fresh regeneration (no drift)."""
-    from sysml2py_lab.grammar.children import write_children  # noqa: F401  (kept: write path must stay importable)
-    import pathlib, subprocess, sys, tempfile, os
+    """Casting gate: committed children.json + children.md + parity report must
+    equal fresh regeneration (no drift).  The generator is invoked via the
+    venv's sysml2py-lab console script; if that is missing the gate FAILS
+    (never silently skips — a green no-op would defeat the casting gate)."""
+    import pathlib, subprocess, tempfile
     root = pathlib.Path(__file__).resolve().parent.parent
     venv_bin = root / ".venv" / "bin"
     exe = venv_bin / "sysml2py-lab"
     if not exe.exists():
-        import pytest
-        pytest.skip("no sysml2py-lab console script")
+        pytest.fail(f"sysml2py-lab console script missing at {exe} — casting gate cannot run")
     tmp = tempfile.mkdtemp()
     run = subprocess.run(
         [str(exe), "spec", "children",
@@ -245,10 +245,12 @@ def test_committed_children_fresh():
          "--out-parity", str(pathlib.Path(tmp) / "parity.md")],
         capture_output=True, text=True, cwd=root)
     assert run.returncode == 0, run.stderr
-    for name in ["children.json", "parity.md"]:
+    for name in ["children.json", "children.md", "parity.md"]:
         fresh = pathlib.Path(tmp) / name
-        comm = root / "spec" / ("relationships" if name == "children.json" else "reports") / {
+        subdir = "relationships" if name != "parity.md" else "reports"
+        comm = root / "spec" / subdir / {
             "children.json": "children.json",
+            "children.md": "children.md",
             "parity.md": "classes_parity.md",
         }[name]
         assert fresh.read_text() == comm.read_text(), \
