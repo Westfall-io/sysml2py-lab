@@ -68,14 +68,19 @@ class PartDefinition:
     def get_definition(self) -> dict: ... # reconstruct the dict shape
 ```
 
-- `__init__(definition=None)` keeps the old dict-shape contract:
-  `valid_definition(definition, <ClassName>)` semantics are preserved
-  (name must match), plus optional `raw_text` for unsupported fragments.
-- `dump()` emits modifiers in **spec order** (from the rule body's
-  prefix-call chain), then the keyword literal, then declaration/body —
-  matching what the hand-written dump() did, but derived.
+- `__init__(definition=None)` keeps the old dict-shape contract and adds an
+  IR mode: a dict with `"kind"` is IR-JSON (children re-dispatched into
+  generated nodes); a dict without `"kind"` is textX-mode
+  (`valid_definition(definition, <ClassName>)` semantics preserved); `None`
+  is empty construction with the class name.
+- `dump()` is loss-minimizing: prefers the node's own `raw_text` verbatim
+  (newline-terminated for `//` line comments so a comment cannot swallow its
+  siblings — the issue-#8 render_ir lesson), then recurses into children.
+  textX-mode dicts reconstruct via `_dump_textx` (modifiers, keyword, name,
+  body).  A bare kind with no name emits nothing (no malformed SysML).
 - `get_definition()` returns the dict-shaped reconstruction (the builder
-  direction), closing the 265-vs-72 gap.
+  direction): for IR-built nodes it emits the original IR coarse kind via
+  `ir_kind` — closing the 265-vs-72 gap and preserving round-trip identity.
 
 ## Dispatch (replaces elif ladders)
 
@@ -84,20 +89,22 @@ class PartDefinition:
 
 ```python
 MEMBERSHIP_DISPATCH = {
-    "PackageBody": {
-        "PartDefinition": PartDefinition,
-        "AttributeDefinition": AttributeDefinition,
-        ...
-    },
+    "PackageBody": {"PartDefinition": "PartDefinition", ...},
     ...
 }
+CLASS_TO_BODY = {"Package": "PackageBody", "PartUsage": "UsageBody", ...}
 
-def dispatch_member(parent_kind: str, member_kind: str):
-    """Return the class handling `member_kind` inside `parent_kind`, or
+def dispatch_member(parent_body: str, member_kind: str):
+    """Return the class handling `member_kind` inside `parent_body`, or
     Unsupported if the grammar allows it but no modelled class exists."""
-    table = MEMBERSHIP_DISPATCH.get(parent_kind, {})
-    return table.get(member_kind, Unsupported)
+    cls_name = MEMBERSHIP_DISPATCH.get(parent_body, {}).get(member_kind)
+    return getattr(ast_classes, cls_name, Unsupported) if cls_name else Unsupported
 ```
+
+`CLASS_TO_BODY` maps each class to the body it **owns** (derived from the
+grammar rule's own `XxxBody` reference, following fragments — `PartUsage`
+owns `UsageBody` via `Usage`).  `Node.from_ir` dispatches children under the
+parent's owned body, so the table is genuinely exercised by the cast.
 
 - Generated from `children.json` `kinds` sets + `wrapper`/`chain` — no
   hand-written elif ladders.

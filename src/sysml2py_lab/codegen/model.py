@@ -99,6 +99,7 @@ class NodeKind:
     name: str
     rule: Rule | None
     is_composite: bool = False
+    owned_body: str | None = None  # XxxBody this rule contains (dispatch ctx)
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,8 @@ class CodegenModel:
         self._by_name: dict[str, dict] = {}
         for r in spec.get("rules", []):
             self._by_name[r["name"]] = r
+        self._node_kinds_cache: list[NodeKind] | None = None
+        self._owned_body_cache: dict[str, str | None] = {}
 
     # -- construction -----------------------------------------------------
 
@@ -172,6 +175,8 @@ class CodegenModel:
         them all.  ``Unsupported`` is excluded because the template defines it
         by hand (it is a loss-minimizing fallback, not a grammar node).
         """
+        if self._node_kinds_cache is not None:
+            return self._node_kinds_cache
         kinds: list[NodeKind] = []
         seen: set[str] = set()
         for r in self._spec.get("rules", []):
@@ -185,6 +190,19 @@ class CodegenModel:
                 continue
             seen.add(name)
             kinds.append(NodeKind(name=name, rule=self.rule(name), is_composite=True))
+        # Attach owned-body (dispatch context) to every node kind: build fresh
+        # NodeKind instances carrying their owned-body, since the dataclass is
+        # immutable.
+        kinds = [
+            NodeKind(
+                name=k.name,
+                rule=k.rule,
+                is_composite=k.is_composite,
+                owned_body=self.owned_body_for(k.name),
+            )
+            for k in kinds
+        ]
+        self._node_kinds_cache = kinds
         return kinds
 
     def body_slots(self, body: str) -> list[BodySlot]:
@@ -204,6 +222,53 @@ class CodegenModel:
 
     def body_names(self) -> list[str]:
         return sorted(self._children_bodies.keys())
+
+    # -- owned-body (dispatch context) ------------------------------------
+
+    @staticmethod
+    def _collect_calls(body: dict, out: list[str]) -> None:
+        """Collect call-target names referenced in a rule body (recursive)."""
+        if not isinstance(body, dict):
+            return
+        if body.get("kind") == "call":
+            out.append(body.get("name", ""))
+        for v in body.values():
+            if isinstance(v, dict):
+                CodegenModel._collect_calls(v, out)
+            elif isinstance(v, list):
+                for x in v:
+                    if isinstance(x, dict):
+                        CodegenModel._collect_calls(x, out)
+
+    def owned_body_for(self, cls_name: str, _depth: int = 0) -> str | None:
+        """The body rule this class OWNS (contained ``XxxBody``), or None.
+
+        Follows the rule's call references (and through fragment rules) to the
+        ``XxxBody`` the construct is defined to contain.  ``PartUsage`` owns
+        ``UsageBody`` via ``Usage``; ``Package`` owns ``PackageBody`` directly.
+        """
+        if cls_name in self._owned_body_cache:
+            return self._owned_body_cache[cls_name]
+        res = self._owned_body_for(cls_name, _depth)
+        self._owned_body_cache[cls_name] = res
+        return res
+
+    def _owned_body_for(self, cls_name: str, _depth: int) -> str | None:
+        if _depth > 15:
+            return None
+        r = self._by_name.get(cls_name)
+        if r is None:
+            return None
+        calls: list[str] = []
+        self._collect_calls(r.get("body", {}), calls)
+        for c in calls:
+            if c.endswith("Body") and c in self._by_name:
+                return c
+            if c in self._by_name:
+                res = self.owned_body_for(c, _depth + 1)
+                if res is not None:
+                    return res
+        return None
 
     def modifier_slots(self, prefix: str) -> list[ModifierSlot]:
         out = []
@@ -242,6 +307,10 @@ class CodegenModel:
                     table[kind] = child
             out[body] = table
         return out
+
+    def owned_body_map(self) -> dict[str, str]:
+        """``{class_name: owned_body}`` for every node kind (dispatch context)."""
+        return {k.name: k.owned_body for k in self.node_kinds() if k.owned_body}
 
     # -- provenance -------------------------------------------------------
 

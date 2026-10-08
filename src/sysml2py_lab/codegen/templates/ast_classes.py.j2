@@ -101,10 +101,12 @@ class Unsupported:
         children=None,
         source_span=(0, 0),
         fidelity="modelled",
+        ir_kind=None,
     ):
         self.definition = definition
         self.raw_text = raw_text
         self.kind = kind
+        self.ir_kind = ir_kind
         self.name = name
         self.short_name = short_name
         self.modifiers = list(modifiers or [])
@@ -135,15 +137,22 @@ class Unsupported:
 
     @classmethod
     def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> "Unsupported":
-        """Construct an Unsupported node from an IR JSON dict (loss-minimizing)."""
+        """Construct an Unsupported node from an IR JSON dict (loss-minimizing).
+
+        Children are re-dispatched through ``Node.from_ir`` so a collapse to
+        Unsupported at one level does NOT swallow descendants (review W2):
+        an anonymous ``block`` gets its own raw_text, but any child that is a
+        modelled kind still lifts to its generated class.
+        """
         return cls(
             kind=d.get("kind", ""),
+            ir_kind=d.get("kind", ""),
             name=d.get("name", ""),
             raw_text=d.get("raw_text"),
             modifiers=list(d.get("modifiers", [])),
             type_refs=list(d.get("type_refs", [])),
             multiplicity=d.get("multiplicity"),
-            children=[cls.from_ir(c, parent_kind) for c in d.get("children", [])],
+            children=[Node.from_ir(c, parent_kind) for c in d.get("children", [])],
             source_span=tuple(d.get("source_span", (0, 0))),
             fidelity=d.get("fidelity", "unsupported"),
         )
@@ -182,33 +191,21 @@ class Node:
 
         kind = d.get("kind", "")
         cls_name = IR_KIND_ALIASES.get(kind, kind)
-        node_cls = KIND_REGISTRY.get(cls_name)
-        if node_cls is None:
-            # An IR kind with a known alias but no generated class is a
-            # codegen defect, not an unsupported construct.
-            if cls_name in IR_KIND_ALIASES.values() or (cls_name == kind and kind != "unknown"):
-                raise LookupError(
-                    f"IR kind {kind!r} aliases to {cls_name!r} but no generated class exists"
-                )
-            node_cls = Unsupported
-        # Dispatch children under the parent's body context (children.json):
-        # the generated dispatch is load-bearing for the cast.  Fall back to
-        # the alias registry when the parent class is not a body member.
+        node_cls = KIND_REGISTRY.get(cls_name, Unsupported)
+        # Dispatch children under the parent's OWNED body context (derived
+        # from the grammar rule, not membership inversion).
         parent_body = CLASS_TO_BODY.get(cls_name, "")
         children: list[Node] = []
         for c in d.get("children", []):
             child_kind = c.get("kind", "")
             child_cls_name = IR_KIND_ALIASES.get(child_kind, child_kind)
-            # Body-context dispatch first (the load-bearing children.json
-            # table); fall back to the global registry when the parent has no
-            # body or the body does not model this member.
             dispatched = Unsupported
             if parent_body:
                 dispatched = dispatch_member(parent_body, child_cls_name)
             if dispatched is Unsupported:
                 dispatched = KIND_REGISTRY.get(child_cls_name, Unsupported)
-            children.append(dispatched.from_ir(c, cls_name))
-        return node_cls(
+            children.append(dispatched.from_ir(c, parent_kind))
+        result = node_cls(
             kind=kind,
             name=d.get("name", ""),
             short_name=d.get("short_name", ""),
@@ -221,6 +218,11 @@ class Node:
             fidelity=d.get("fidelity", "modelled"),
             ir_kind=kind,
         )
+        # record the body context used to dispatch this node's children — lets
+        # the cast prove the children.json membership table was actually
+        # consulted (load-bearing, review C1/C2).
+        result._dispatch_body = parent_body
+        return result
 
     def dump(self) -> str:
         """Emit this node as SysML text (loss-minimizing).
@@ -289,9 +291,21 @@ class {{ kind.name }}(Node):
             self.kind = "{{ kind.name }}"
         elif isinstance(definition, dict) and "kind" in definition:
             # IR-JSON dict
-            super().__init__(**{k: v for k, v in definition.items() if k != "kind"})
-            self.kind = definition.get("kind") or "{{ kind.name }}"
-            self.ir_kind = definition.get("kind")
+            ir_kind = definition.get("kind") or "{{ kind.name }}"
+            # children arrive as IR dicts; dispatch them into generated nodes
+            # (body context resolved in Node.from_ir) rather than leaving raw
+            # dicts that dump()/get_definition() would break on.
+            kid_dicts = definition.get("children") or []
+            kids = [
+                Node.from_ir(c) if isinstance(c, dict) else c
+                for c in kid_dicts
+            ]
+            super().__init__(
+                **{k: v for k, v in definition.items() if k != "kind" and k != "children"},
+                children=kids,
+            )
+            self.kind = ir_kind
+            self.ir_kind = ir_kind
             if raw_text is not None:
                 self.raw_text = raw_text
         else:

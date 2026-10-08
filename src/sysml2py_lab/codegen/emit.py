@@ -42,32 +42,12 @@ def _template_env() -> Environment:
     return env
 
 
-def _simplify_body(body: dict | None) -> str:
-    """One-line description of a rule body for docstrings."""
-    if not body:
-        return ""
-    kind = body.get("kind", "")
-    items = body.get("items") or body.get("choices") or []
-    names = []
-    for it in items:
-        if it.get("kind") == "call":
-            names.append(it.get("name", "?"))
-        elif it.get("kind") == "lit":
-            names.append(repr(it.get("value", "")))
-        elif it.get("kind") == "assign":
-            names.append(it.get("name", "?"))
-        elif it.get("kind") in ("seq", "alt"):
-            names.append(f"<{it.get('kind')}>")
-    return f"{kind} " + " ".join(names) if names else kind
-
-
 def _emit_ast_classes(model: CodegenModel) -> str:
     env = _template_env()
     kinds = model.node_kinds()
     return env.get_template("ast_classes.py.j2").render(
         header=_HEADER,
         node_kinds=kinds,
-        simplify_body=_simplify_body,
         ir_kind_aliases=IR_KIND_ALIASES,
     )
 
@@ -75,20 +55,11 @@ def _emit_ast_classes(model: CodegenModel) -> str:
 def _emit_ast_dispatch(model: CodegenModel) -> str:
     env = _template_env()
     dispatch = model.dispatch_map()
-    # first-body-wins for CLASS_TO_BODY (a member kind may appear in several
-    # bodies; deterministic resolution avoids repeated dict keys / F601)
-    class_to_body_seen: dict[str, bool] = {}
-    for table in dispatch.values():
-        for member_kind in table:
-            if member_kind not in class_to_body_seen:
-                class_to_body_seen[member_kind] = False
-            elif not class_to_body_seen[member_kind]:
-                class_to_body_seen[member_kind] = True
     return env.get_template("ast_dispatch.py.j2").render(
         header=_HEADER,
         dispatch_map=dispatch,
         ir_kind_aliases=IR_KIND_ALIASES,
-        class_to_body_seen=class_to_body_seen,
+        class_to_body=model.owned_body_map(),
     )
 
 

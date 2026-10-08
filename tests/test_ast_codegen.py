@@ -293,6 +293,7 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
         failed = []
         histogram: dict[str, int] = {}
         unsupported_for_aliased: set[str] = set()
+        dispatched_bodies: set[str] = set()
         for f in files:
             src = f.read_text(encoding="utf-8")
             try:
@@ -312,8 +313,15 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
                     and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
                 ):
                     unsupported_for_aliased.add(f"{f.name}:{ir_kind}")
+                body = getattr(node, "_dispatch_body", None)
+                if body:
+                    dispatched_bodies.add(body)
             if not canonical_equals(dumped, src):
                 failed.append((str(f.relative_to(corpus)), "canonical mismatch"))
+        assert dispatched_bodies, (
+            "cast never consulted the children.json membership table "
+            "(dispatch_member dead / body context never used)"
+        )
         assert not unsupported_for_aliased, (
             f"cast collapsed aliased kinds to Unsupported: {sorted(unsupported_for_aliased)}"
         )
@@ -323,6 +331,12 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
         )
         assert not failed, f"CAST FAILED {len(failed)}/{len(files)}:\n" + "\n".join(
             f"  - {n}: {w}" for n, w in failed
+        )
+        # Load-bearing (C1/C2): the children.json membership table must be
+        # consulted during the cast — a real owned-body dispatch context.
+        assert dispatched_bodies, (
+            "cast never consulted the children.json membership table "
+            "(dispatch_member dead / body context never used)"
         )
     finally:
         sys.path.remove(str(pkg / "src"))

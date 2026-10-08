@@ -1,14 +1,19 @@
 """Casting for issue #9: corpus -> IR -> generated classes -> dump -> canonical.
 
 Proves the generated AST classes faithfully represent every corpus model:
-parse each .sysml with the lab IR, build a generated-class tree via the
-membership dispatch (``Node.from_ir``), dump() it, and canonical-compare
-against the original source (the issue-#8 round-trip gate, now over
-generated classes).
+parse each .sysml with the lab IR, lift the whole IR tree into generated
+classes (``Node.from_ir``, body-context dispatch), dump() it, and
+canonical-compare against the original source (the issue-#8 round-trip gate,
+now over generated classes).
 
-Load-bearing (issue-#9 review C1): the cast exits nonzero if any aliased IR
-kind collapses to ``Unsupported`` (the generated classes must be exercised,
-not bypassed), and prints an instantiated-class histogram.
+Load-bearing (issue-#9 review): the exit code fails if:
+  - any file's dump does not canonical-equal its source, OR
+  - any aliased IR kind collapses to ``Unsupported`` (per-file), OR
+  - any aliased class is never instantiated across the corpus, OR
+  - **no real owned-body context was ever used for dispatch** (i.e. the
+    children.json membership table is dead — dispatch_member never consulted).
+
+The generated classes + dispatch table are therefore exercised, not bypassed.
 """
 from __future__ import annotations
 
@@ -16,47 +21,54 @@ import sys
 from pathlib import Path
 
 LAB = Path(__file__).resolve().parents[1]
-GEN = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else LAB / "out" / "sysml2py"
+GEN = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else LAB / "out" / "sysml2py" / "src"
 CORPUS = LAB / "corpus"
 
 sys.path.insert(0, str(LAB / "src"))
 sys.path.insert(0, str(GEN))
 
-import sysml2py  # noqa: E402
+import sysml2py
 
-from sysml2py_lab.ir import ir_to_json, parse_ir  # noqa: E402
-from sysml2py_lab.normalize import canonical_equals  # noqa: E402
+from sysml2py_lab.ir import ir_to_json, parse_ir
+from sysml2py_lab.normalize import canonical_equals
 
 
-def cast_file(path: Path) -> tuple[bool, str]:
+def cast_file(path):
+    """Return (ok, message, hist, unsup, dispatch_bodies) for one file."""
     src = path.read_text(encoding="utf-8")
     try:
         root = parse_ir(src)
         j = ir_to_json(root)
     except Exception as exc:  # noqa: BLE001
-        return (False, f"parse/IR failed: {exc.__class__.__name__}: {exc}")
-    # build generated tree from IR JSON
+        return (False, f"parse/IR failed: {exc.__class__.__name__}: {exc}", {}, set(), set())
+    if not isinstance(j, dict):
+        return (False, f"IR JSON root not a dict: {type(j).__name__}", {}, set(), set())
+    hist: dict[str, int] = {}
+    unsup: set[str] = set()
+    dispatch_bodies: set[str] = set()
     try:
-        if not isinstance(j, dict):
-            return (False, f"IR JSON root not a dict: {type(j).__name__}")
-        # Lift the whole IR tree into generated nodes via from_ir (which maps
-        # coarse IR kinds through IR_KIND_ALIASES and recurses), then dump()
-        # the generated tree — proving the classes + dispatch round-trip the
-        # source losslessly.
         tree = sysml2py.Node.from_ir(j)
         dumped = tree.dump()
     except Exception as exc:  # noqa: BLE001
-        return (False, f"generated-class build failed: {exc.__class__.__name__}: {exc}")
+        return (False, f"generated-class build failed: {exc.__class__.__name__}: {exc}", {}, set(), set())
     if not canonical_equals(dumped, src):
-        return (False, "canonical mismatch between dumped and source")
-    return (True, "")
-
-
-def walk(node) -> list[object]:
-    out = [node]
-    for c in getattr(node, "children", []) or []:
-        out.extend(walk(c))
-    return out
+        return (False, "canonical mismatch between dumped and source", {}, set(), set())
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        hist[type(node).__name__] = hist.get(type(node).__name__, 0) + 1
+        ir_kind = getattr(node, "ir_kind", None)
+        if (
+            type(node).__name__ == "Unsupported"
+            and ir_kind in sysml2py.IR_KIND_ALIASES
+            and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
+        ):
+            unsup.add(f"{path.name}:{ir_kind}")
+        body = getattr(node, "_dispatch_body", None)
+        if body:
+            dispatch_bodies.add(body)
+        stack.extend(getattr(node, "children", []) or [])
+    return (True, "", hist, unsup, dispatch_bodies)
 
 
 def main() -> None:
@@ -66,30 +78,18 @@ def main() -> None:
     waivers: list[tuple[str, str]] = []
     histogram: dict[str, int] = {}
     unsupported_for_aliased: set[str] = set()
+    dispatch_bodies_all: set[str] = set()
     for f in files:
-        ok, why = cast_file(f)
+        ok, why, hist, unsup, bodies = cast_file(f)
         if ok:
             passed += 1
+            for cls, n in hist.items():
+                histogram[cls] = histogram.get(cls, 0) + n
+            unsupported_for_aliased |= unsup
+            dispatch_bodies_all |= bodies
         else:
             failed += 1
             waivers.append((str(f.relative_to(CORPUS)), why))
-            continue
-        # Load-bearing: count instantiated classes, flag aliased->Unsupported.
-        try:
-            root = parse_ir(f.read_text(encoding="utf-8"))
-            tree = sysml2py.Node.from_ir(ir_to_json(root))
-            for node in walk(tree):
-                histogram[type(node).__name__] = histogram.get(type(node).__name__, 0) + 1
-                ir_kind = getattr(node, "ir_kind", None)
-                if (
-                    type(node).__name__ == "Unsupported"
-                    and ir_kind in sysml2py.IR_KIND_ALIASES
-                    and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
-                ):
-                    unsupported_for_aliased.add(f"{f.name}:{ir_kind}")
-        except Exception as exc:  # noqa: BLE001
-            failed += 1
-            waivers.append((str(f.relative_to(CORPUS)), f"histogram walk failed: {exc}"))
     print(f"CAST: {passed}/{len(files)} passed, {failed} failed")
     if unsupported_for_aliased:
         print(f"UNSUPPORTED-FOR-ALIASED: {sorted(unsupported_for_aliased)}")
@@ -100,6 +100,14 @@ def main() -> None:
     if missing:
         print(f"MISSING-ALIASED-CLASSES: {missing}")
         failed += len(missing)
+    # The dispatch table must actually be consulted (load-bearing): route
+    # through a body context.  Fail if never used.
+    real_bodies = {b for b in dispatch_bodies_all if b in getattr(sysml2py, "MEMBERSHIP_DISPATCH", {})}
+    if not real_bodies:
+        print("NO-DISPATCH-BODY-USED: the children.json membership table was never consulted")
+        failed += 1
+    else:
+        print(f"DISPATCH-BODIES-USED: {sorted(real_bodies)[:8]}")
     top = sorted(histogram.items(), key=lambda kv: -kv[1])[:12]
     print("TOP:", ", ".join(f"{k}={v}" for k, v in top))
     if waivers:
