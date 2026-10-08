@@ -8,8 +8,6 @@ generated library can never diverge."""
 import runpy
 from pathlib import Path
 
-import pytest
-
 from sysml2py_lab.codegen.emit import emit_sysml2py, EmitOptions
 from sysml2py_lab.discover import DiscoveryResult
 

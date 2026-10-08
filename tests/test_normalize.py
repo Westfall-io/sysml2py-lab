@@ -40,6 +40,17 @@ def test_comments_are_trivia():
     assert canonical_equals("part x; // trailing", "part x;")
 
 
+def test_multi_char_symbols_stay_single_tokens():
+    """Review W4: `::`, `&&`, `**` etc. must not split into singles."""
+    from sysml2py_lab.normalize import canonical_tokens
+    assert canonical_tokens("import Package2::*;") == ["import", "Package2", "::", "*", ";"]
+    assert canonical_tokens("a && b;") == ["a", "&&", "b", ";"]
+    assert canonical_tokens("a ** b;") == ["a", "**", "b", ";"]
+    assert canonical_tokens("a || b;") == ["a", "||", "b", ";"]
+    assert canonical_tokens("a << b;") == ["a", "<<", "b", ";"]
+    assert canonical_tokens("a .. b;") == ["a", "..", "b", ";"]
+
+
 def test_aliases_resolve_synonyms_by_default():
     assert canonical_equals("a specializes b;", "a :> b;")
     assert canonical_equals("a subsets b;", "a :> b;")

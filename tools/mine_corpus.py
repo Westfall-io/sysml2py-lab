@@ -18,8 +18,6 @@ Usage:
 
 import argparse
 import ast
-import hashlib
-import json
 import re
 import sys
 from pathlib import Path
@@ -27,7 +25,6 @@ from pathlib import Path
 SOURCE_NAME = "SysML-v2-Release"
 SOURCE_URL = "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src"
 LICENSE = "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2"
-WINDTRADER = "unverified"  # Windtrader adapter is issue #12, not yet wired
 
 # NOTE: no literal triple-quote sequences appear in any docstring below to
 # avoid breaking Python parsing.
@@ -54,45 +51,78 @@ def active_strings(path: Path) -> list[tuple[str, str]]:
 
 
 def commented_strings(path: Path) -> list[tuple[str, str]]:
-    """Extract commented-out text-assignment blocks (defined-test style).
+    """Extract commented-out text-assignment blocks faithfully.
 
-    Heuristic: a commented `def test_X():` records the function name; a
-    commented `# text = "` opens a block; the matching closing quote-run
-    ends it.  Leading comment markers (`# `) on continuation lines are
-    removed.  Model-string content (comments inside the examples) is
-    preserved verbatim.
+    The source comments out whole tests like::
+
+        # def test_package():
+        #     text = "package Package1;"
+        ...
+        # def test_subpackage():
+        #     text = \"\"\"
+        #     package Package1 {
+        #         package Package2;
+        #     }\"\"\"
+
+    This handles BOTH the single-quoted one-liner form and the triple-quoted
+    form (with same-line or multiline close), stripping the leading comment
+    marker from each line so the captured string is exactly what `text`
+    would have held.  Returns (function_name, model_string) pairs, each
+    named `<fn>__commented`.
     """
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
     out: list[tuple[str, str]] = []
-    current_fn: str | None = None
     i = 0
+    current_fn: str | None = None
     while i < len(lines):
-        m = re.match(r"\s*#\s*def test_(\w+)\(\):", lines[i])
-        if m:
-            current_fn = m.group(1)
+        line = lines[i]
+        m_fn = re.match(r"\s*#\s*def test_(\w+)\(\):\s*$", line)
+        if m_fn:
+            current_fn = m_fn.group(1)
             i += 1
             continue
-        m2 = re.match(r"\s*#\s*text\s*=\s*" + '"""', lines[i])
-        if m2 and current_fn:
+        m = re.match(r'\s*#\s*text\s*=\s*("""|")', line)
+        if m and current_fn:
+            delim = m.group(1)
+            rest = line[m.end():]  # content on the opener line after the quote
             buf: list[str] = []
-            i += 1
-            closed = False
-            while i < len(lines):
-                raw = lines[i]
-                stripped = re.sub(r"^\s*#\s?", "", raw)
-                buf.append(stripped)
-                if '"""' in stripped:
-                    closed = True
+            if delim == '"':
+                # single-quoted: everything to the closing quote on this line
+                if '"' in rest:
+                    body = rest.split('"', 1)[0]
+                    if body:
+                        buf.append(body)
+            else:  # '"""'
+                close_re = r'"""'
+                if close_re in rest:
+                    # same-line close: content before the closing '"""'
+                    body = rest.split('"""', 1)[0]
+                    if body:
+                        buf.append(body.rstrip("\n"))
+                else:
+                    # opener line may carry content (e.g. `# text = """package Package1 {`)
+                    if rest.strip():
+                        buf.append(rest.rstrip("\n"))
+                    # scan forward for the closing '"""'
                     i += 1
-                    break
-                i += 1
-            if closed:
-                s = "".join(buf)
-                s = s.replace('"""', "", 2) if s.count('"""') >= 2 else s
-                out.append((f"{current_fn}__commented", s))
+                    closed = False
+                    while i < len(lines):
+                        raw = lines[i]
+                        stripped = re.sub(r"^\s*#\s?", "", raw).rstrip("\n")
+                        if '"""' in stripped:
+                            before = stripped.split('"""', 1)[0]
+                            if before:
+                                buf.append(before.rstrip("\n"))
+                            closed = True
+                            i += 1
+                            break
+                        buf.append(stripped)
+                        i += 1
+                    if not closed:
+                        continue
+            out.append((f"{current_fn}__commented", "\n".join(buf).strip()))
             current_fn = None
-            continue
         i += 1
     return out
 
@@ -102,6 +132,7 @@ def main() -> int:
     ap.add_argument("--repo", type=Path, required=True, help="path to sysml2py repo")
     ap.add_argument("--out", type=Path, required=True, help="corpus output dir")
     ap.add_argument("--include-commented", action="store_true")
+    ap.add_argument("--model", type=Path, default=None, help="children.json path")
     args = ap.parse_args()
 
     src = args.repo / "tests" / "grammar_test.py"
@@ -113,34 +144,33 @@ def main() -> int:
     if args.include_commented:
         items += commented_strings(src)
 
+    # Write the mined .sysml files, then route EVERY entry through
+    # corpus.add_file so the manifest is merged (never clobbered) and each
+    # entry carries fidelity + node_kinds.  This keeps `corpus verify` green
+    # after mining (C3) and guarantees a reproducible manifest.
+    from sysml2py_lab.corpus import add_file
+
     out_dir = args.out / "grammar-2023-07"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    entry = {}
     for fn, text in items:
-        safe = fn
-        fpath = out_dir / f"{safe}.sysml"
-        fpath.write_text(text, encoding="utf-8")
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        entry[f"grammar-2023-07/{safe}.sysml"] = {
-            "source": SOURCE_NAME,
-            "source_url": SOURCE_URL,
-            "license": LICENSE,
-            "sha256": digest,
-            "windtrader": WINDTRADER,
-            "function": fn,
-        }
+        fpath = out_dir / f"{fn}.sysml"
+        # write only if the bytes changed (idempotent, deterministic)
+        if not fpath.exists() or fpath.read_text(encoding="utf-8") != text:
+            fpath.write_text(text, encoding="utf-8")
+        rel = add_file(
+            args.out,
+            fpath,
+            source=SOURCE_NAME,
+            source_url=SOURCE_URL,
+            license=LICENSE,
+            dest_subdir="grammar-2023-07",
+            model_path=str(args.model) if args.model else None,
+        )
+        assert rel == f"grammar-2023-07/{fn}.sysml"
 
-    manifest = {
-        "format": 1,
-        "generated_by": "mine_corpus.py",
-        "files": entry,
-    }
-    (args.out / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
-    )
-    print(f"mined {len(entry)} files -> {out_dir}")
-    print(f"manifest -> {args.out / 'manifest.json'}")
+    print(f"mined {len(items)} files -> {out_dir}")
+    print(f"manifest -> {args.out / 'manifest.json'} (merged, {len(items)} grammar entries)")
     return 0
 
 

@@ -285,8 +285,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.corpus_cmd == "stats":
                 stats = corpus_stats(args.corpus, model_path=str(args.model) if args.model else None)
                 print(f"corpus stats: {stats['files']} files")
-                print("kinds used:")
-                for k, v in stats["kinds_used"].items():
+                print(f"model_loaded: {stats['model_loaded']}")
+                print("files containing each kind:")
+                for k, v in stats["files_with_kind"].items():
                     print(f"  {k:16s} {v}")
                 print("kinds with ZERO corpus coverage:")
                 for k in stats["kinds_zero_coverage"]:

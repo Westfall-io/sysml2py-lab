@@ -1,5 +1,5 @@
-    package Package1 {
+package Package1 {
         package Package2;
         part def Part2;
         part part2 : Part2;
-    }"""
+    }

@@ -36,33 +36,62 @@
     },
     "grammar-2023-07/attribute_def_subusage__commented.sysml": {
       "fidelity": {
-        "modelled": 3,
-        "opaque": 1,
+        "modelled": 5,
+        "opaque": 0,
         "partial": 0
       },
       "function": "attribute_def_subusage__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
-        "attribute",
-        "unknown"
+        "attribute"
       ],
-      "sha256": "6c58965b8db5c40eac31143c98e232ec5cac6a52858931112fb001e2018343ca",
+      "sha256": "d513da2fff216e348664fce79a3a76980e6f21992eba6456b9c6c8568700dc50",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
       "windtrader": "unverified"
     },
     "grammar-2023-07/attribute_definition__commented.sysml": {
       "fidelity": {
-        "modelled": 1,
-        "opaque": 1,
+        "modelled": 2,
+        "opaque": 0,
         "partial": 0
       },
       "function": "attribute_definition__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
-        "unknown"
+        "attribute"
       ],
-      "sha256": "071e258cc27beb9a00393483c4becf9c03fade3da61eddf5950317cf05114822",
+      "sha256": "ce33fe5100a3d6c540a5dd107cd076dbd0d000ad192aacc60e83f036500f66de",
+      "source": "SysML-v2-Release",
+      "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
+      "windtrader": "unverified"
+    },
+    "grammar-2023-07/attribute_usage__commented.sysml": {
+      "fidelity": {
+        "modelled": 2,
+        "opaque": 0,
+        "partial": 0
+      },
+      "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
+      "node_kinds": [
+        "attribute"
+      ],
+      "sha256": "659ec2eb4572246baeb8d3c7b2eb4d1e41d38bf9ce0543831d948dd3dc92cd23",
+      "source": "SysML-v2-Release",
+      "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
+      "windtrader": "unverified"
+    },
+    "grammar-2023-07/package__commented.sysml": {
+      "fidelity": {
+        "modelled": 2,
+        "opaque": 0,
+        "partial": 0
+      },
+      "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
+      "node_kinds": [
+        "package"
+      ],
+      "sha256": "8b6cc7f3ec057ea6d05fc9fea77880bfef6337dfdf7480fde80626c2b50a73a3",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
       "windtrader": "unverified"
@@ -70,52 +99,50 @@
     "grammar-2023-07/package_owned_members__commented.sysml": {
       "fidelity": {
         "modelled": 7,
-        "opaque": 1,
+        "opaque": 0,
         "partial": 0
       },
       "function": "package_owned_members__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
         "package",
-        "part",
-        "unknown"
+        "part"
       ],
-      "sha256": "109eb135fd64d697767acee4ab82a6959cd4221ef29198c7fd33e9e8719050e4",
+      "sha256": "5b8a21543847e513282d67c831b199e2d8228c2bf42e29e340d6d82983881fc0",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
       "windtrader": "unverified"
     },
     "grammar-2023-07/package_with_alias_member__commented.sysml": {
       "fidelity": {
-        "modelled": 4,
-        "opaque": 1,
+        "modelled": 6,
+        "opaque": 0,
         "partial": 0
       },
       "function": "package_with_alias_member__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
         "alias",
-        "package",
-        "unknown"
+        "package"
       ],
-      "sha256": "88e23fb66f1634d2a3250570828298a37f31e4ae2b0db57c1f3a164cf3079fb1",
+      "sha256": "aa791a9662c7f3b82399b56ce4193e3d0925e8694ad6ed15de80d8106233757a",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
       "windtrader": "unverified"
     },
     "grammar-2023-07/package_with_imported_package__commented.sysml": {
       "fidelity": {
-        "modelled": 4,
-        "opaque": 1,
+        "modelled": 6,
+        "opaque": 0,
         "partial": 0
       },
       "function": "package_with_imported_package__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
         "import",
-        "unknown"
+        "package"
       ],
-      "sha256": "7e8964103865f42414470c86615484ecc34b7fb535049fa962a7f1c475f6d421",
+      "sha256": "ac80094c20e5cc422e8e10dffa74ea0396594825803b6c1997b89716c9695786",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
       "windtrader": "unverified"
@@ -123,16 +150,15 @@
     "grammar-2023-07/subpackage__commented.sysml": {
       "fidelity": {
         "modelled": 5,
-        "opaque": 1,
+        "opaque": 0,
         "partial": 0
       },
       "function": "subpackage__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
-        "package",
-        "unknown"
+        "package"
       ],
-      "sha256": "1a52ca6922646e688cb1dad87cc0aed95e49d81af442cef6f9dee4687dd8f46c",
+      "sha256": "5b9a8ca4c57305341f080ae60d606c1317e1f4aa1b2bd72e135d9f9ebe50e324",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
       "windtrader": "unverified"

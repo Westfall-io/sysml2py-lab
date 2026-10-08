@@ -41,8 +41,8 @@ def discover_corpus(corpus_dir: Path) -> DiscoveryResult:
 
     for p in files:
         text = p.read_text(encoding="utf-8")
-        text = normalize_text(text)
-        root = parse_brace_blocks(text)
+        norm = normalize_text(text)
+        root = parse_brace_blocks(norm)
 
         for b in root.walk_blocks():
             for child in b.children:
@@ -52,7 +52,7 @@ def discover_corpus(corpus_dir: Path) -> DiscoveryResult:
                         counts[tok] = counts.get(tok, 0) + 1
 
         # relationship-aware: node kinds from the IR classification layer
-        ir_root = parse_ir(p.read_text(encoding="utf-8"))
+        ir_root = parse_ir(text)
         for n in ir_root.walk():
             if n.kind not in ("root", "brace_open", "brace_close", "block", "comment"):
                 kind_counts[n.kind] = kind_counts.get(n.kind, 0) + 1

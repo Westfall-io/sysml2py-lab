@@ -14,7 +14,6 @@ The corpus is a provenance-tracked set of SysML v2 example files under
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -95,9 +94,12 @@ def add_file(
     dest.mkdir(parents=True, exist_ok=True)
     rel = f"{dest_subdir}/{src.name}"
     out = corpus_dir / rel
-    out.write_bytes(src.read_bytes())
-    digest = _sha256(out)
-    kinds, summ = analyze_file(out, model_path=model_path)
+    # Analyze BEFORE writing (review W10): if analysis raises, no orphan file
+    # is left behind under the corpus with a missing manifest entry.
+    body = src.read_bytes()
+    digest = hashlib.sha256(body).hexdigest()
+    kinds, summ = analyze_file(src, model_path=model_path)
+    out.write_bytes(body)
     manifest = load_manifest(corpus_dir)
 
     entry = manifest["files"].get(rel, {})
@@ -158,26 +160,30 @@ def verify_corpus(corpus_dir: Path, *, model_path: str | None = None) -> dict:
 def corpus_stats(corpus_dir: Path, *, model_path: str | None = None) -> dict:
     """Aggregate node-kind coverage against the relationship model.
 
-    Returns: per-kind occurrence counts, and the set of model kinds with
-    ZERO corpus coverage (the acceptance-criteria "names kinds with zero
-    corpus coverage").
+    Returns: `files_with_kind` — the number of corpus files containing each
+    node kind (set-based; a kind present in 60 files maxes at 60), the set of
+    model kinds with ZERO corpus coverage, and fidelity totals.  `unknown`
+    (the opaque bucket) is excluded — it is not a vocabulary member.
     """
     vocab = set(_kind_vocab_from_model(model_path))
+    model_loaded = bool(vocab)
     used: dict[str, int] = {}
     per_file: dict[str, list[str]] = {}
     fidelity_total = {"modelled": 0, "partial": 0, "opaque": 0}
     for p in iter_corpus_files(corpus_dir):
         kinds, summ = analyze_file(p, model_path=model_path)
-        per_file[p.relative_to(corpus_dir).as_posix()] = kinds["node_kinds"]
-        for k in kinds["node_kinds"]:
+        klist = [k for k in kinds["node_kinds"] if k != "unknown"]
+        per_file[p.relative_to(corpus_dir).as_posix()] = klist
+        for k in klist:
             used[k] = used.get(k, 0) + 1
         for f in fidelity_total:
             fidelity_total[f] += summ["node_counts"][f]
     # kinds the relationship model knows but the corpus never shows
-    zero = sorted(vocab - set(used))
+    zero = sorted(vocab - set(used)) if model_loaded else []
     return {
         "files": len(per_file),
-        "kinds_used": dict(sorted(used.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "model_loaded": model_loaded,
+        "files_with_kind": dict(sorted(used.items(), key=lambda kv: (-kv[1], kv[0]))),
         "kinds_zero_coverage": zero,
         "fidelity_totals": fidelity_total,
         "per_file": per_file,

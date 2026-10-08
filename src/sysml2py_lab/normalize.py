@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Canonical SysMLv2 normalizer (issue #8).
 
 Resolves the normalization conflict described in issue #8.  Two incompatible
@@ -31,6 +29,8 @@ criterion).  The tokenizer here is a minimal, comment/string-aware splitter
 that mirrors the lexer's significant-token categories; the full lexer (with
 spans and 100% byte coverage) remains the property of the IR layer.
 """
+
+from __future__ import annotations
 
 import re
 
@@ -79,7 +79,10 @@ def normalize_text(text: str) -> str:
 _WORD = re.compile(r"[A-Za-z0-9_]+")
 
 # Multi-char symbols that must stay a single token (longest first).
-_MULTI_SYMS = ("::>", ":>>", ":>", "=>", ":=", "==", "->", "<=", ">=", "!=")
+_MULTI_SYMS = (
+    "::>", ":>>", "::", ":>", "**", "&&", "||", "<<", ">>",
+    "=>", ":=", "==", "->", "<=", ">=", "!=", "..",
+)
 
 
 def _split_significant(text: str) -> list[str]:

@@ -1,4 +1,5 @@
+package Package1 {
         package Package2;
         alias Package2Alias
             for Package2;
-    }"""
+    }
