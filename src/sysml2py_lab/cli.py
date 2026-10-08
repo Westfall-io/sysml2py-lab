@@ -122,6 +122,24 @@ def main(argv: list[str] | None = None) -> int:
         help="Also print the per-file fidelity summary to stderr.",
     )
 
+    cp = sub.add_parser("corpus", help="Manage the SysML corpus: add / verify / stats.")
+    cp_sub = cp.add_subparsers(dest="corpus_cmd", required=True)
+    cp_add = cp_sub.add_parser("add", help="Add a .sysml file to the corpus and update the manifest.")
+    cp_add.add_argument("file", type=Path, help="Path to the .sysml file to add")
+    cp_add.add_argument("--corpus", type=Path, default=Path("corpus"), help="Corpus root (default: ./corpus)")
+    cp_add.add_argument("--source", default="local", help="Source name for provenance")
+    cp_add.add_argument("--source-url", default="", help="Source URL for provenance")
+    cp_add.add_argument("--license", default="", help="License string")
+    cp_add.add_argument("--dest", default="local", help="Destination subdir under the corpus root")
+    cp_add.add_argument("--function", default=None, help="Source test function name (provenance)")
+    cp_add.add_argument("--model", type=Path, default=None, help="children.json path")
+    cp_verify = cp_sub.add_parser("verify", help="Verify sha256 + parseability of every corpus file.")
+    cp_verify.add_argument("--corpus", type=Path, default=Path("corpus"), help="Corpus root (default: ./corpus)")
+    cp_verify.add_argument("--model", type=Path, default=None, help="children.json path")
+    cp_stats = cp_sub.add_parser("stats", help="Report node-kind coverage vs the relationship model.")
+    cp_stats.add_argument("--corpus", type=Path, default=Path("corpus"), help="Corpus root (default: ./corpus)")
+    cp_stats.add_argument("--model", type=Path, default=None, help="children.json path")
+
     args = p.parse_args(argv)
 
     if args.cmd == "discover":
@@ -129,6 +147,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"files_scanned={res.files_scanned}")
         for k, v in sorted(res.statement_prefix_counts.items(), key=lambda kv: (-kv[1], kv[0])):
             print(f"{k}: {v}")
+        if res.node_kind_counts:
+            print("node_kinds (relationship-aware):")
+            for k, v in sorted(res.node_kind_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+                print(f"  {k}: {v}")
         return 0
 
     if args.cmd == "generate":
@@ -240,6 +262,42 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         except Exception as e:
             print(f"ir FAILED: {e}", file=sys.stderr)
+            return 1
+
+    if args.cmd == "corpus":
+        import json as _json
+        from .corpus import add_file, verify_corpus, corpus_stats
+        try:
+            if args.corpus_cmd == "add":
+                rel = add_file(
+                    args.corpus, args.file,
+                    source=args.source, source_url=args.source_url,
+                    license=args.license, dest_subdir=args.dest,
+                    model_path=str(args.model) if args.model else None,
+                    function=args.function,
+                )
+                print(f"corpus add OK: {rel}")
+                return 0
+            if args.corpus_cmd == "verify":
+                report = verify_corpus(args.corpus, model_path=str(args.model) if args.model else None)
+                print(f"corpus verify: {report['checked']} files checked, {len(report['ok'])} ok")
+                for e in report["errors"]:
+                    print(f"  ERROR {e}")
+                return 1 if report["errors"] else 0
+            if args.corpus_cmd == "stats":
+                stats = corpus_stats(args.corpus, model_path=str(args.model) if args.model else None)
+                print(f"corpus stats: {stats['files']} files")
+                print(f"model_loaded: {stats['model_loaded']}")
+                print("files containing each kind:")
+                for k, v in stats["files_with_kind"].items():
+                    print(f"  {k:16s} {v}")
+                print("kinds with ZERO corpus coverage:")
+                for k in stats["kinds_zero_coverage"]:
+                    print(f"  {k}")
+                print("fidelity totals: " + _json.dumps(stats["fidelity_totals"]))
+                return 0
+        except Exception as e:
+            print(f"corpus {args.corpus_cmd} FAILED: {e}", file=sys.stderr)
             return 1
 
     return 2
