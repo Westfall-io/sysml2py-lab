@@ -411,6 +411,28 @@ def test_no_reserved_kind_from_model():
     assert summ["node_counts"]["opaque"] >= 1, f"C1 repro must not be all-modelled: {summ}"
 
 
+def test_kind_match_is_case_sensitive():
+    """Round-5 C1 regression: SysML is case-sensitive — CamelCase identifiers
+    (`Part`, `Actor`) are TYPE NAMES, not keywords.  Case-insensitive vocab
+    matching over-classified them as kinds (kind='Part', known=True) and
+    suppressed the parent's `partial`, hiding a loss.  `Part x;` must stay
+    unknown/opaque, and a loss inside a block must still flag the parent."""
+    from sysml2py_lab.ir import _parse_header, _kind_vocab_from_model, ir_fidelity_summary
+    vocab = set(_kind_vocab_from_model())
+    assert "part" in vocab, "precondition: part in model vocab"
+    # CamelCase type names must NOT derive as kinds
+    for bad in ("Part a;", "PART a;", "Actor x;", "State s;", "Message m;"):
+        h = _parse_header(tokenize_sysml(bad), vocab=vocab)
+        assert h["known"] is False, f"case-insensitive over-classification: {bad!r} -> {h}"
+    # lowercase keywords still derive
+    assert _parse_header(tokenize_sysml("part a;"), vocab=vocab)["kind"] == "part"
+    assert _parse_header(tokenize_sysml("actor x;"), vocab=vocab)["kind"] == "actor"
+    # the loss-flag shape: `Part x;` inside a block must NOT be all-modelled
+    root = parse_ir("part def P { Part x; }")
+    fids = {n.fidelity for n in root.walk()}
+    assert "opaque" in fids, f"C1 repro must flag a loss, got fidelities {fids}"
+
+
 def test_opener_not_statement_terminated():
     """Round-3 W-A/W-B regression: a `;`-terminated or already-closed
     statement must NOT adopt a following block (structural misattribution is

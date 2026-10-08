@@ -55,6 +55,12 @@ TRANSITION = "transition"
 ACTION = "action"
 REQUIREMENT = "requirement"
 USE_CASE = "use_case"
+
+# Structural IR kinds that must never be produced by kind-derivation from the
+# relationship model — the model vocab contains `comment`, and deriving it
+# would collide with the structural comment node kind, turning a flagged loss
+# into a clean `modelled` report (round-4 C1).
+_RESERVED_KINDS = frozenset({"root", "brace_open", "brace_close", "block", "comment", "unknown"})
 INTERFACE = "interface"
 CONSTRAINT = "constraint"
 OCCURRENCE = "occurrence"
@@ -80,6 +86,12 @@ _KIND_KEYWORDS = {
     "occurrence": "occurrence",
     "import": "import",
 }
+
+# No static keyword may be a reserved structural kind — if a future addition
+# overlaps, the derivation guard (which runs first) still wins, but the
+# contradiction is a bug worth failing fast on (round-5 W2).
+assert not (_RESERVED_KINDS & set(_KIND_KEYWORDS)), \
+    f"reserved structural kinds overlap static keywords: {sorted(_RESERVED_KINDS & set(_KIND_KEYWORDS))}"
 
 
 def _kind_vocab_from_model(model_path: str | None = None) -> set[str]:
@@ -228,27 +240,27 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
     `modelled` (the relationship model says that member kind is valid).
     """
     words = [t.text for t in tokens if t.kind in (WORD, UNRESTRICTED_NAME, SYMBOL, STRING)]
-    # The derived kind vocabulary excludes the RESERVED structural IR kinds —
-    # the children-model vocab contains `comment`, which would collide with
-    # the structural comment node kind and turn a flagged loss into a clean
-    # `modelled` report (round-4 C1).
-    _RESERVED_KINDS = {"root", "brace_open", "brace_close", "block", "comment", "unknown"}
-    # header words are single tokens (never contain spaces); compare
-    # case-insensitively against the model stems.  No underscore stripping:
-    # the model vocab has no underscored stems and stripping would let
-    # snake_case identifiers be claimed as kinds (round-4 W1/W2).
-    norm_vocab = {v.lower() for v in vocab} if vocab else None
+    # The derived vocabulary is the model's OWN stems, matched case-sensitively:
+    # `_kind_vocab_from_model` already lowercases every stem, and the language is
+    # case-sensitive — `Part`/`Actor` are CamelCase TYPE NAMES, not keywords.
+    # Case-insensitive matching would over-classify identifiers as kinds and
+    # suppress the parent's `partial`, hiding a loss (round-5 C1).  Quoted
+    # names (`'Agree on adoption'`) retain their delimiters, so they cannot
+    # collide with a bare vocab stem (round-5 W3).
+    norm_vocab = set(vocab) if vocab else None
 
     def _is_kind_word(w: str) -> bool:
         # a kind token is either a static keyword OR a recognized stem from
         # the relationship-model vocabulary (round-3 C1: derive, don't just
         # validate — `actor`/`subject`/`message`/... are real model kinds
         # that must not be downgraded to opaque).
-        if w in _KIND_KEYWORDS:
-            return True
+        # The reserved-structural guard runs FIRST so no future overlap with
+        # _KIND_KEYWORDS can bypass it (round-5 W2).
         if w.lower() in _RESERVED_KINDS:
             return False
-        return norm_vocab is not None and w.lower() in norm_vocab
+        if w in _KIND_KEYWORDS:
+            return True
+        return norm_vocab is not None and w in norm_vocab
 
     kind = None
     name = ""
