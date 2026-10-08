@@ -324,3 +324,32 @@ def test_span_tiling_no_overlap():
             c.update(range(s, e))
     overlaps = {pos: cnt for pos, cnt in c.items() if cnt > 1}
     assert not overlaps, f"overlapping IR spans at byte positions: {list(overlaps)[:10]}"
+    # the anonymous-block path must also tile cleanly (r2 W2: the W4 fix and
+    # its residual span duplication are NOT exercised by family.sysml)
+    for probe in ("{ part a; }", "{}{}", "part a { x; } { y; }"):
+        p = parse_ir(probe)
+        pc = Counter()
+        for n in p.walk():
+            if n.kind == "root":
+                continue
+            s, e = n.source_span
+            if e > s:
+                pc.update(range(s, e))
+        assert not {pos: cnt for pos, cnt in pc.items() if cnt > 1}, \
+            f"overlapping spans in {probe!r}"
+
+
+def test_no_opaque_with_known_kind():
+    """Round-2 C1 regression: a node with a recognized kind must NEVER report
+    `opaque` fidelity — 'opaque' means "could not be classified", so an
+    opaque node with kind != 'unknown' is a fidelity lie.  (Round 1's lesson:
+    a green test standing next to a real loss; `use case` was classified
+    correctly but reported opaque because of a sep-normalization bug.)"""
+    fam = (Path(__file__).resolve().parents[1] / "examples" / "family.sysml")
+    if not fam.exists():
+        pytest.skip("family.sysml not present")
+    root = parse_ir(fam.read_text(encoding="utf-8"))
+    lies = [(n.kind, n.name, n.raw_text[:40]) for n in root.walk()
+            if n.fidelity == "opaque" and n.kind != "unknown"
+            and n.kind not in ("root", "brace_open", "brace_close", "block", "comment")]
+    assert not lies, f"opaque nodes with known kind: {lies}"

@@ -48,7 +48,6 @@ PART = "part"
 ITEM = "item"
 VALUE = "value"
 ATTRIBUTE = "attribute"
-VARIATION = "variation"
 CONNECTION = "connection"
 PORT = "port"
 STATE = "state"
@@ -300,11 +299,21 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
     # back to the static _KIND_KEYWORDS table (known iff not unknown).
     known = kind != "unknown"
     if vocab:
-        # compare space-normalized stems so two-word kinds ('use case') match
-        # the vocabulary's 'usecase'-family stems (W3)
-        stem = kind.replace(" ", "")
-        known = stem in {v.replace(" ", "") for v in vocab} or any(
-            v.replace(" ", "").startswith(stem) for v in vocab)
+        # normalize spaces AND underscores on both sides so two-word kinds
+        # ('use case' -> 'use_case') match the vocabulary's 'usecase' stems
+        # (round-2 C1), and so an underscore-separated vocab entry matches a
+        # space-separated header keyword.
+        def _norm(s: str) -> str:
+            return s.replace(" ", "").replace("_", "")
+
+        stem = _norm(kind)
+        norm_vocab = {_norm(v) for v in vocab}
+        known = stem in norm_vocab or any(v.startswith(stem) for v in norm_vocab)
+        # `value` is a legitimate _KIND_KEYWORDS entry that the children-model
+        # vocab does not carry; don't downgrade it to opaque just because the
+        # vocab lacks the stem (round-2 W3).
+        if not known and kind in _KIND_KEYWORDS:
+            known = True
     return {
         "kind": kind,
         "name": name,
@@ -359,22 +368,25 @@ def parse_ir(text: str, model_path: str | None = None) -> IRNode:
         # `{` opens a block: the node we just created becomes the container
         if seg_text == "{":
             brace = IRNode(kind="brace_open", source_span=(st, en), raw_text="{")
-            # W5: only treat the last child as a real opener if it is a
-            # statement/kind node — never a comment or a previous block's
-            # brace_close (two consecutive blocks would otherwise merge into
+            # W5 (r1) + W1 (r2): only treat the last child as a real opener
+            # if it is a statement/kind node — never a comment, a previous
+            # block's brace_close, a brace, or a node that already owns a
+            # closed body (two consecutive blocks would otherwise merge into
             # one opener).
             opener = None
             if parent.children:
                 cand = parent.children[-1]
-                if cand.kind not in ("comment", "brace_close", "brace_open", "block"):
+                if cand.kind not in ("comment", "brace_close", "brace_open", "block") and not any(
+                        c.kind == "brace_close" for c in cand.children):
                     opener = cand
             if opener is not None:
                 opener.children.append(brace)
                 stack.append(opener)
             else:
                 # anonymous block (W4: the brace child carries the byte, so
-                # blk itself has NO raw_text — no double-count)
-                blk = IRNode(kind="block", source_span=(st, en), raw_text="")
+                # blk itself has NO raw_text — and no span to avoid a
+                # double-count in tiling checks, r2 W2)
+                blk = IRNode(kind="block", source_span=(st, st), raw_text="")
                 parent.children.append(blk)
                 blk.children.append(brace)
                 stack.append(blk)
@@ -438,14 +450,14 @@ def render_ir(root: IRNode, indent: int = 0) -> str:
     return "".join(n.raw_text for n in root.walk())
 
 
-def ir_fidelity_summary(root: IRNode, source_bytes: int | None = None) -> dict:
+def ir_fidelity_summary(root: IRNode, source: str | None = None) -> dict:
     """Per-file fidelity summary: counts of modelled/partial/opaque nodes
     plus byte coverage of each fidelity class (issue #7: fidelity reported
     per file so opaque regions are visible, not lost).
 
-    When `source_bytes` is given, the report also includes a coverage ratio
-    (`covered_bytes` / `source_bytes`) so a reader can distinguish
-    "N bytes of dropped whitespace" from "N bytes of dropped code" (W7).
+    When `source` is given, the report also includes a coverage ratio and
+    an `uncovered_non_whitespace_bytes` count so a reader can distinguish
+    "N bytes of dropped whitespace" from "N bytes of dropped code" (W7/W9).
     """
     counts = {"modelled": 0, "partial": 0, "opaque": 0}
     bytes_by_fid = {"modelled": 0, "partial": 0, "opaque": 0}
@@ -460,9 +472,13 @@ def ir_fidelity_summary(root: IRNode, source_bytes: int | None = None) -> dict:
         "raw_text_bytes": bytes_by_fid,
         "total_raw_bytes": covered,
     }
-    if source_bytes is not None:
-        out["source_bytes"] = source_bytes
-        out["coverage_ratio"] = covered / source_bytes if source_bytes else 0.0
+    if source is not None:
+        nws = sum(1 for ch in source if not ch.isspace())
+        out["source_bytes"] = len(source)
+        out["covered_non_whitespace_bytes"] = sum(
+            1 for n in root.walk() for ch in n.raw_text if not ch.isspace())
+        out["uncovered_non_whitespace_bytes"] = nws - out["covered_non_whitespace_bytes"]
+        out["coverage_ratio"] = covered / len(source) if source else 0.0
     return out
 
 
