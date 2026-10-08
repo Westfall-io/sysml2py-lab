@@ -5,8 +5,9 @@ Derived from ``spec/relationships/children.json`` — replaces the hand-written
 ``elif`` ladders in the 266-class ``classes.py`` (DefinitionElement had a
 16-branch ladder; DefinitionBodyItem/PackageBody/UsageElement more).
 
-``dispatch_member(parent_kind, member_kind)`` returns the class handling
-``member_kind`` inside ``parent_kind``, or ``Unsupported`` (never raises).
+``dispatch_member(parent_body, member_kind)`` returns the class handling
+``member_kind`` inside ``parent_body`` (a children.json BODY key, not a
+class name), or ``Unsupported`` (never raises).
 """
 
 from __future__ import annotations
@@ -54,23 +55,24 @@ def _resolve_kind(kind: str) -> str:
     return kind
 
 
-def dispatch_member(parent_kind: str, member_kind: str) -> type:
-    """Return the class handling ``member_kind`` inside ``parent_kind``.
+def dispatch_member(parent_body: str, member_kind: str) -> type:
+    """Return the class handling ``member_kind`` inside ``parent_body``.
 
-    ``member_kind`` may be an IR coarse kind (lowercase, e.g. ``package``) or
-    a generated class name.  Falls back to ``Unsupported`` (which carries raw
-    text) rather than raising — the grammar may allow a member that has no
-    modelled class yet.
+    ``parent_body`` is a children.json BODY key (``PackageBody``,
+    ``DefinitionBody``, ...), NOT a class name.  ``member_kind`` may be an IR
+    coarse kind (lowercase, e.g. ``package``) or a generated class name.
+    Falls back to ``Unsupported`` (which carries raw text) rather than
+    raising — the grammar may allow a member that has no modelled class yet.
     """
     cls_name = _resolve_kind(member_kind)
-    table = MEMBERSHIP_DISPATCH.get(parent_kind, {})
+    table = MEMBERSHIP_DISPATCH.get(parent_body, {})
     child = table.get(cls_name) or table.get(member_kind)
     if child is None:
         return Unsupported
     return getattr(ast_classes, child, Unsupported)
 
 
-def dispatch_children(parent_kind: str, children: list[dict]) -> list[Any]:
+def dispatch_children(parent_body: str, children: list[dict]) -> list[Any]:
     """Dispatch a list of IR child dicts to generated node instances.
 
     Each child with a ``kind`` is dispatched via ``dispatch_member``; unknown
@@ -79,7 +81,7 @@ def dispatch_children(parent_kind: str, children: list[dict]) -> list[Any]:
     out: list[Any] = []
     for c in children:
         kind = c.get("kind", "")
-        cls = dispatch_member(parent_kind, kind)
+        cls = dispatch_member(parent_body, kind)
         if cls is Unsupported:
             out.append(Unsupported(raw_text=c.get("raw_text")))
         elif hasattr(cls, "from_ir"):

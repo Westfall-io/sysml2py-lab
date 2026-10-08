@@ -136,7 +136,7 @@ class Unsupported:
         return out
 
     @classmethod
-    def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> Unsupported:
+    def from_ir(cls, d: dict) -> Unsupported:
         """Construct an Unsupported node from an IR JSON dict (loss-minimizing).
 
         Children are re-dispatched through ``Node.from_ir`` so a collapse to
@@ -152,7 +152,7 @@ class Unsupported:
             modifiers=list(d.get("modifiers", [])),
             type_refs=list(d.get("type_refs", [])),
             multiplicity=d.get("multiplicity"),
-            children=[Node.from_ir(c, parent_kind) for c in d.get("children", [])],
+            children=[Node.from_ir(c) for c in d.get("children", [])],
             source_span=tuple(d.get("source_span", (0, 0))),
             fidelity=d.get("fidelity", "unsupported"),
         )
@@ -175,7 +175,7 @@ class Node:
     ir_kind: str | None = None  # IR coarse kind before alias lifting (W3)
 
     @classmethod
-    def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> Node:
+    def from_ir(cls, d: dict) -> Node:
         """Build a Node (or generated subclass) from an IR JSON dict.
 
         The IR's coarse kinds (``package``, ``part``, ...) are lifted to the
@@ -195,7 +195,7 @@ class Node:
         for c in d.get("children", []):
             child_cls_name = IR_KIND_ALIASES.get(c.get("kind", ""), c.get("kind", ""))
             child_cls = KIND_REGISTRY.get(child_cls_name, Unsupported)
-            children.append(child_cls.from_ir(c, parent_kind))
+            children.append(child_cls.from_ir(c))
         result = node_cls(
             kind=kind,
             name=d.get("name", ""),

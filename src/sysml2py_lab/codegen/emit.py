@@ -152,10 +152,13 @@ def _ruff_format(src_pkg: Path) -> None:
 
     The library ships a black.yml workflow, so generated code must pass
     black/ruff.  Rather than hand-formatting in every template, emit
-    semantically-correct code then let ruff normalize style.  `ruff format`
-    and `ruff check --fix` are deterministic, so this does not break the
-    byte-identical determinism gate.  If ruff is unavailable, the generated
-    tree is still emitted (style is a CI concern, not a correctness one).
+    semantically-correct code then let `ruff format` normalize style.
+    Templates must be lint-clean outright — the generator does NOT run
+    `ruff check --fix` (review r3/r4: self-fixing would vacate the lint
+    gate); `test_generated_code_passes_ruff` runs a real check.  `ruff
+    format` is deterministic, so this does not break the byte-identical
+    determinism gate.  If ruff is unavailable, the generated tree is still
+    emitted (style is a CI concern, not a correctness one).
     """
     import shutil
     import subprocess

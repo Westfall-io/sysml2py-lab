@@ -138,17 +138,22 @@ never raise `NotImplementedError`.
   the default generation path uses a fixed `SOURCE_DATE_EPOCH`-style value so
   two runs are byte-identical; the CLI may pass an explicit timestamp)
 
-Determinism gate: `generate --out` twice → `diff` byte-identical.
+Determinism gate: run `generate --out a` then `generate --out b` and
+`diff -r` the two trees — byte-identical.  (W6: re-running with the SAME
+`--out` raises FileExistsError by design — no-clobber — so use distinct out
+dirs or `--overwrite`.)
 
 ## The Casting (issue #9 acceptance)
 
-- Determinism: two consecutive runs byte-identical.
-- `ruff` + `black` clean on the generated package (normalize.py excluded from
-  the format check — it is a verbatim copy of the lab's single-sourced
-  canonical normalizer, issue #8).
+- Determinism: two consecutive runs byte-identical (whole tree, W5).
+- `ruff check` (lint, no `--fix`) + `ruff format --check` clean on the
+  generated package, with the lint run being a REAL check (the generator
+  deliberately does not self-fix).  normalize.py is excluded from the format
+  check — it is a verbatim copy of the lab's single-sourced canonical
+  normalizer, issue #8.  "black clean" means ruff format (black-compatible).
 - `>= 266` node kinds generated (the generator emits 700+, and the parity
-  test pins every hand-written 0.5.3 class name); every one has both `dump()`
-  and `get_definition()`.
+  test pins every hand-written 0.5.3 class name plus the 8 helper
+  composites); every one has both `dump()` and `get_definition()`.
 - Zero `NotImplementedError` in generated output.
 - The CAST: corpus → IR → `Node.from_ir` → generated tree → `dump()` →
   canonical-compare against original source.  **62/62 corpus files round-trip

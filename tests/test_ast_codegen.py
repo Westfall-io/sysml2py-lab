@@ -41,13 +41,18 @@ def _src(pkg: Path) -> Path:
 
 
 def test_determinism_byte_identical(tmp_path):
-    """Two consecutive generation runs produce byte-identical trees."""
+    """Two consecutive generation runs produce byte-identical trees.
+
+    W5: compares the WHOLE emitted tree (not just the five named files), so a
+    newly emitted file or pyproject/README drift is caught.
+    """
     p1 = _gen(tmp_path, "a")
     p2 = _gen(tmp_path, "b")
-    for f in ("ast_classes.py", "ast_dispatch.py", "provenance.py", "__init__.py", "normalize.py"):
-        b1 = (_src(p1) / f).read_bytes()
-        b2 = (_src(p2) / f).read_bytes()
-        assert b1 == b2, f"{f} differs between runs"
+    f1 = {p.relative_to(p1): p.read_bytes() for p in p1.rglob("*") if p.is_file()}
+    f2 = {p.relative_to(p2): p.read_bytes() for p in p2.rglob("*") if p.is_file()}
+    assert set(f1) == set(f2), f"file sets differ: {sorted(set(f1) ^ set(f2))}"
+    for rel, b1 in f1.items():
+        assert b1 == f2[rel], f"{rel} differs between runs"
 
 
 def test_generated_code_passes_ruff(tmp_path):
@@ -291,6 +296,43 @@ def test_ir_dict_constructor_roundtrips(tmp_path):
     assert "ok" in r.stdout
 
 
+def test_textx_dump_roundtrips(tmp_path):
+    """C2: the textX-mode (dict-without-kind) dump() must reconstruct text.
+
+    The per-class `dump()` override and its `_dump_textx` helper implement the
+    legacy 0.5.3 `formatting.reformat` contract.  Deleting either must fail
+    this test: a textX dict node's dump() must produce the expected SysML text,
+    not an empty string (Node.dump emits nothing for a plain dict).
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        parts: list[str] = []
+
+        n = sysml2py.PartDefinition({"name": "PartDefinition", "prefix": {}, "definition": {"name": "Automobile"}})
+        d = n.dump()
+        parts.append(d)
+        assert "Automobile" in d, f"PartDefinition textX dump lost name: {d!r}"
+
+        pkg_node = sysml2py.Package({"name": "Package", "prefix": {}, "definition": {"name": "P1"}})
+        d2 = pkg_node.dump()
+        parts.append(d2)
+        assert "P1" in d2, f"Package textX dump lost name: {d2!r}"
+
+        # a bare dict-only node (no name) must be non-empty where the class
+        # keyword exists (e.g. Comment -> "comment")
+        c = sysml2py.Comment({"name": "Comment", "prefix": {}, "definition": {"name": "hi"}})
+        d3 = c.dump()
+        parts.append(d3)
+        assert d3.strip(), f"Comment textX dump empty: {d3!r}"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
 def test_old_266_classes_are_present(tmp_path):
     """Every hand-written 0.5.3 class name is generated (compat + parity)."""
     old = (REPO_ROOT.parent / "sysml2py" / "src" / "sysml2py" / "grammar" / "classes.py")
@@ -320,11 +362,11 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
     """THE CASTING: corpus -> IR -> generated classes -> dump -> canonical.
 
     For every corpus .sysml: parse with the lab IR, lift the IR tree into
-    generated nodes via ``Node.from_ir`` (coarse-kind aliasing + recursive
-    body-context dispatch), ``dump()`` the generated tree, and
+    generated nodes via ``Node.from_ir`` (registry-authoritative coarse-kind
+    aliasing + recursive lifting), ``dump()`` the generated tree, and
     canonical-compare against the original source.  Proves the generated
-    classes + dispatch round-trip the full corpus losslessly — the issue-#9
-    release gate.
+    classes round-trip the full corpus losslessly — the issue-#9 release
+    gate.
 
     Load-bearing (C1): the tree must NOT silently collapse to Unsupported
     for kinds that have a modelled alias — the per-file instantiated-class
@@ -340,12 +382,42 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
     try:
         import sysml2py
 
-        aliased_classes = {
-            v for k, v in sysml2py.IR_KIND_ALIASES.items() if v != "Unsupported"
-        }
+        # Pinned literal (NOT derived from IR_KIND_ALIASES — C1): emptying the
+        # alias table must not shrink the expected set until the gates
+        # themselves pass vacuously.
+        REQUIRED_ALIASED_CLASSES = frozenset(
+            {
+                "Package",
+                "PartUsage",
+                "AttributeUsage",
+                "ActionUsage",
+                "ItemUsage",
+                "PortUsage",
+                "StateUsage",
+                "TransitionUsage",
+                "ConstraintUsage",
+                "InterfaceUsage",
+                "ConnectionUsage",
+                "OccurrenceUsage",
+                "RequirementUsage",
+                "UseCaseUsage",
+                "ObjectiveRequirementUsage",
+                "SubjectUsage",
+                "ActorUsage",
+                "Message",
+                "Succession",
+                "AliasMember",
+                "Import",
+                "Comment",
+                "RootNamespace",
+            }
+        )
+        assert REQUIRED_ALIASED_CLASSES <= set(sysml2py.IR_KIND_ALIASES.values()), (
+            "IR_KIND_ALIASES shrank below the pinned required set"
+        )
         corpus = REPO_ROOT / "corpus"
         files = sorted(corpus.rglob("*.sysml"))
-        assert len(files) >= 57, f"corpus shrank: {len(files)}"
+        assert len(files) >= 62, f"corpus shrank: {len(files)}"
         failed = []
         histogram: dict[str, int] = {}
         unsupported_for_aliased: set[str] = set()
@@ -373,7 +445,7 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
         assert not unsupported_for_aliased, (
             f"cast collapsed aliased kinds to Unsupported: {sorted(unsupported_for_aliased)}"
         )
-        missing_aliased = sorted(a for a in aliased_classes if a not in histogram)
+        missing_aliased = sorted(REQUIRED_ALIASED_CLASSES - set(histogram))
         assert not missing_aliased, (
             f"cast never instantiated aliased classes: {missing_aliased}"
         )

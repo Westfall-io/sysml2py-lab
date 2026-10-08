@@ -2,7 +2,8 @@
 
 Proves the generated AST classes faithfully represent every corpus model:
 parse each .sysml with the lab IR, lift the whole IR tree into generated
-classes (``Node.from_ir``, body-context dispatch), dump() it, and
+classes (``Node.from_ir`` — registry-authoritative lifting via
+``IR_KIND_ALIASES`` + ``KIND_REGISTRY``), dump() it, and
 canonical-compare against the original source (the issue-#8 round-trip gate,
 now over generated classes).
 
@@ -34,6 +35,36 @@ import sysml2py
 
 from sysml2py_lab.ir import ir_to_json, parse_ir
 from sysml2py_lab.normalize import canonical_equals
+
+# Pinned expected set of aliased classes (C1): derived as a literal so that
+# emptying IR_KIND_ALIASES cannot vacate the cast gates.
+REQUIRED_ALIASED_CLASSES = frozenset(
+    {
+        "Package",
+        "PartUsage",
+        "AttributeUsage",
+        "ActionUsage",
+        "ItemUsage",
+        "PortUsage",
+        "StateUsage",
+        "TransitionUsage",
+        "ConstraintUsage",
+        "InterfaceUsage",
+        "ConnectionUsage",
+        "OccurrenceUsage",
+        "RequirementUsage",
+        "UseCaseUsage",
+        "ObjectiveRequirementUsage",
+        "SubjectUsage",
+        "ActorUsage",
+        "Message",
+        "Succession",
+        "AliasMember",
+        "Import",
+        "Comment",
+        "RootNamespace",
+    }
+)
 
 
 def cast_file(path):
@@ -92,11 +123,15 @@ def main() -> None:
         print(f"UNSUPPORTED-FOR-ALIASED: {sorted(unsupported_for_aliased)}")
         failed += len(unsupported_for_aliased)
     print(f"INSTANTIATED-CLASSES: {len(histogram)} distinct")
-    aliased = {v for v in sysml2py.IR_KIND_ALIASES.values() if v != "Unsupported"}
-    missing = sorted(aliased - set(histogram))
+    # Pinned literal, NOT derived from IR_KIND_ALIASES (C1): emptying the
+    # alias table must not shrink the expected set until the gate vacates.
+    missing = sorted(REQUIRED_ALIASED_CLASSES - set(histogram))
     if missing:
         print(f"MISSING-ALIASED-CLASSES: {missing}")
         failed += len(missing)
+    if not REQUIRED_ALIASED_CLASSES <= set(sysml2py.IR_KIND_ALIASES.values()):
+        print("IR_KIND_ALIASES shrank below the pinned required set")
+        failed += 1
     top = sorted(histogram.items(), key=lambda kv: -kv[1])[:12]
     print("TOP:", ", ".join(f"{k}={v}" for k, v in top))
     if waivers:
