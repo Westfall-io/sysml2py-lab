@@ -2,28 +2,30 @@
 
 Proves the generated AST classes faithfully represent every corpus model:
 parse each .sysml with the lab IR, build a generated-class tree via the
-membership dispatch, dump() it, and canonical-compare against the original
-source (the issue-#8 round-trip gate, now over generated classes).
+membership dispatch (``Node.from_ir``), dump() it, and canonical-compare
+against the original source (the issue-#8 round-trip gate, now over
+generated classes).
 
-Waivers (per acceptance): files whose parse produces no IR (fidelity opaque)
-are recorded, not failed.
+Load-bearing (issue-#9 review C1): the cast exits nonzero if any aliased IR
+kind collapses to ``Unsupported`` (the generated classes must be exercised,
+not bypassed), and prints an instantiated-class histogram.
 """
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-LAB = Path("/opt/data/work/jasper-quillweld/sysml2py-lab")
-GEN = Path(sys.argv[1]) if len(sys.argv) > 1 else LAB / "/tmp/gen9e"
+LAB = Path(__file__).resolve().parents[1]
+GEN = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else LAB / "out" / "sysml2py"
 CORPUS = LAB / "corpus"
 
 sys.path.insert(0, str(LAB / "src"))
 sys.path.insert(0, str(GEN))
 
-import sysml2py
+import sysml2py  # noqa: E402
 
-from sysml2py_lab.ir import ir_to_json, parse_ir
-from sysml2py_lab.normalize import canonical_equals
+from sysml2py_lab.ir import ir_to_json, parse_ir  # noqa: E402
+from sysml2py_lab.normalize import canonical_equals  # noqa: E402
 
 
 def cast_file(path: Path) -> tuple[bool, str]:
@@ -50,11 +52,20 @@ def cast_file(path: Path) -> tuple[bool, str]:
     return (True, "")
 
 
+def walk(node) -> list[object]:
+    out = [node]
+    for c in getattr(node, "children", []) or []:
+        out.extend(walk(c))
+    return out
+
+
 def main() -> None:
     files = sorted(CORPUS.rglob("*.sysml"))
     passed = 0
     failed = 0
     waivers: list[tuple[str, str]] = []
+    histogram: dict[str, int] = {}
+    unsupported_for_aliased: set[str] = set()
     for f in files:
         ok, why = cast_file(f)
         if ok:
@@ -62,7 +73,35 @@ def main() -> None:
         else:
             failed += 1
             waivers.append((str(f.relative_to(CORPUS)), why))
+            continue
+        # Load-bearing: count instantiated classes, flag aliased->Unsupported.
+        try:
+            root = parse_ir(f.read_text(encoding="utf-8"))
+            tree = sysml2py.Node.from_ir(ir_to_json(root))
+            for node in walk(tree):
+                histogram[type(node).__name__] = histogram.get(type(node).__name__, 0) + 1
+                ir_kind = getattr(node, "ir_kind", None)
+                if (
+                    type(node).__name__ == "Unsupported"
+                    and ir_kind in sysml2py.IR_KIND_ALIASES
+                    and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
+                ):
+                    unsupported_for_aliased.add(f"{f.name}:{ir_kind}")
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            waivers.append((str(f.relative_to(CORPUS)), f"histogram walk failed: {exc}"))
     print(f"CAST: {passed}/{len(files)} passed, {failed} failed")
+    if unsupported_for_aliased:
+        print(f"UNSUPPORTED-FOR-ALIASED: {sorted(unsupported_for_aliased)}")
+        failed += len(unsupported_for_aliased)
+    print(f"INSTANTIATED-CLASSES: {len(histogram)} distinct")
+    aliased = {v for v in sysml2py.IR_KIND_ALIASES.values() if v != "Unsupported"}
+    missing = sorted(aliased - set(histogram))
+    if missing:
+        print(f"MISSING-ALIASED-CLASSES: {missing}")
+        failed += len(missing)
+    top = sorted(histogram.items(), key=lambda kv: -kv[1])[:12]
+    print("TOP:", ", ".join(f"{k}={v}" for k, v in top))
     if waivers:
         print("WAIVERS:")
         for name, why in waivers:

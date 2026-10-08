@@ -246,7 +246,9 @@ class CodegenModel:
     # -- provenance -------------------------------------------------------
 
     def provenance(self, repo_root: Path, generator_version: str, generated_at: str | None = None) -> dict:
-        h = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+        def _h(p: Path) -> str:
+            return hashlib.sha256(p.read_bytes()).hexdigest()
+
         spec_hash = hashlib.sha256()
         for p in (
             repo_root / "spec" / "relationships" / "children.json",
@@ -254,12 +256,14 @@ class CodegenModel:
             repo_root / "spec" / "overlay" / "assignments.json",
         ):
             spec_hash.update(p.read_bytes())
+        # Never render None (Jinja tojson would emit `null` — invalid Python).
+        stamp = generated_at or "1970-01-01T00:00:00Z"
         return {
-            "grammar_sha256": h(repo_root / "spec" / "language_spec.json"),
+            "grammar_sha256": _h(repo_root / "spec" / "language_spec.json"),
             "spec_sha256": spec_hash.hexdigest(),
-            "children_sha256": h(repo_root / "spec" / "relationships" / "children.json"),
-            "modifiers_sha256": h(repo_root / "spec" / "relationships" / "modifiers.json"),
-            "corpus_manifest_sha256": h(repo_root / "corpus" / "manifest.json"),
+            "children_sha256": _h(repo_root / "spec" / "relationships" / "children.json"),
+            "modifiers_sha256": _h(repo_root / "spec" / "relationships" / "modifiers.json"),
+            "corpus_manifest_sha256": _h(repo_root / "corpus" / "manifest.json"),
             "generator_version": generator_version,
-            "generated_at": generated_at,
+            "generated_at": stamp,
         }

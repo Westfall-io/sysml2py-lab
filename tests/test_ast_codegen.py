@@ -90,24 +90,33 @@ def test_at_least_266_kinds(tmp_path):
 
 
 def test_every_class_has_dump_and_get_definition(tmp_path):
-    """Acceptance: every generated class has both dump() and get_definition()."""
+    """Acceptance: every generated class has both dump() and get_definition().
+
+    Imports the generated package and asserts both methods are callable on
+    every KIND_REGISTRY entry (real method check — not a source regex, which
+    is why this catches C4).  Also asserts Node+Unsupported provide the triad.
+    """
     pkg = _gen(tmp_path)
-    src = (_src(pkg) / "ast_classes.py").read_text(encoding="utf-8")
-    classes = re.findall(r"^class (\w+)", src, re.MULTILINE)
-    for c in classes:
-        # class-level: the class either defines or inherits (Node) both
-        # methods; assert by scanning the class body if it defines any.
-        m = re.search(rf"^class {c}\(.*?:\n(.*?)(?=^class |\Z)", src, re.DOTALL | re.MULTILINE)
-        body = m.group(1) if m else ""
-        # Node/Unsupported define their own; every other class either has
-        # def dump / def get_definition in body OR inherits from Node.
-        if body and "def __init__" in body:
-            # generated concrete class — must have both (or inherit Node)
-            assert "def dump" in body or "class {c}(Node)".replace("{c}", c) not in body, \
-                f"{c} lacks dump()"
-    # stronger: every class in KIND_REGISTRY inherits Node (which provides both)
-    assert "class PartDefinition(Node)" in src
-    assert "class Package(Node)" in src
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        registry = sysml2py.KIND_REGISTRY
+        assert len(registry) >= 266
+        for name, cls in registry.items():
+            assert callable(getattr(cls, "dump", None)), f"{name} lacks dump()"
+            assert callable(getattr(cls, "get_definition", None)), f"{name} lacks get_definition()"
+            # constructed node must return a string for dump, dict for get_definition
+            node = cls()
+            assert isinstance(node.dump(), str), f"{name}.dump() returns non-str"
+            assert isinstance(node.get_definition(), dict), f"{name}.get_definition() returns non-dict"
+        # base helpers provide the triad too
+        for name in ("Node", "Unsupported"):
+            cls = getattr(sysml2py, name)
+            assert callable(getattr(cls, "dump", None)), f"{name} lacks dump()"
+            assert callable(getattr(cls, "get_definition", None)), f"{name} lacks get_definition()"
+    finally:
+        sys.path.remove(str(pkg / "src"))
 
 
 def test_zero_not_implemented_error(tmp_path):
@@ -235,8 +244,6 @@ def test_old_266_classes_are_present(tmp_path):
     pkg = _gen(tmp_path)
     new_names = set(re.findall(r"^class (\w+)", (_src(pkg) / "ast_classes.py").read_text(), re.MULTILINE))
     missing = old_names - new_names
-    # Unsupported is provided by the template (hand); Node is the base. Filter:
-    missing -= {"Unsupported", "Node"}
     assert not missing, f"hand-written classes missing from generated: {sorted(missing)}"
 
 
@@ -258,9 +265,15 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
 
     For every corpus .sysml: parse with the lab IR, lift the IR tree into
     generated nodes via ``Node.from_ir`` (coarse-kind aliasing + recursive
-    dispatch), ``dump()`` the generated tree, and canonical-compare against
-    the original source.  Proves the generated classes + dispatch round-trip
-    the full corpus losslessly — the issue-#9 release gate.
+    body-context dispatch), ``dump()`` the generated tree, and
+    canonical-compare against the original source.  Proves the generated
+    classes + dispatch round-trip the full corpus losslessly — the issue-#9
+    release gate.
+
+    Load-bearing (C1): the tree must NOT silently collapse to Unsupported
+    for kinds that have a modelled alias — the per-file instantiated-class
+    histogram must include every aliased kind's class, and no node may be
+    ``Unsupported`` for a kind that has an IR_KIND_ALIAS to a real class.
     """
     from sysml2py_lab.ir import ir_to_json, parse_ir
     from sysml2py_lab.normalize import canonical_equals
@@ -270,10 +283,16 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
     sys.path.insert(0, str(REPO_ROOT / "src"))
     try:
         import sysml2py
+
+        aliased_classes = {
+            v for k, v in sysml2py.IR_KIND_ALIASES.items() if v != "Unsupported"
+        }
         corpus = REPO_ROOT / "corpus"
         files = sorted(corpus.rglob("*.sysml"))
         assert len(files) >= 57, f"corpus shrank: {len(files)}"
         failed = []
+        histogram: dict[str, int] = {}
+        unsupported_for_aliased: set[str] = set()
         for f in files:
             src = f.read_text(encoding="utf-8")
             try:
@@ -284,14 +303,38 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
             except Exception as exc:  # noqa: BLE001
                 failed.append((str(f.relative_to(corpus)), f"{exc.__class__.__name__}: {exc}"))
                 continue
+            for node in _walk_nodes(tree):
+                histogram[type(node).__name__] = histogram.get(type(node).__name__, 0) + 1
+                ir_kind = getattr(node, "ir_kind", None)
+                if (
+                    type(node).__name__ == "Unsupported"
+                    and ir_kind in sysml2py.IR_KIND_ALIASES
+                    and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
+                ):
+                    unsupported_for_aliased.add(f"{f.name}:{ir_kind}")
             if not canonical_equals(dumped, src):
                 failed.append((str(f.relative_to(corpus)), "canonical mismatch"))
+        assert not unsupported_for_aliased, (
+            f"cast collapsed aliased kinds to Unsupported: {sorted(unsupported_for_aliased)}"
+        )
+        missing_aliased = sorted(a for a in aliased_classes if a not in histogram)
+        assert not missing_aliased, (
+            f"cast never instantiated aliased classes: {missing_aliased}"
+        )
         assert not failed, f"CAST FAILED {len(failed)}/{len(files)}:\n" + "\n".join(
             f"  - {n}: {w}" for n, w in failed
         )
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def _walk_nodes(node) -> list[object]:
+    """Yield node + all descendants (for histogram / load-bearing checks)."""
+    out = [node]
+    for c in getattr(node, "children", []) or []:
+        out.extend(_walk_nodes(c))
+    return out
 
 
 def shutil_which_ruff() -> str | None:

@@ -18,7 +18,6 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..discover import DiscoveryResult
 from .model import IR_KIND_ALIASES, CodegenModel
 
 
@@ -65,15 +64,6 @@ def _simplify_body(body: dict | None) -> str:
 def _emit_ast_classes(model: CodegenModel) -> str:
     env = _template_env()
     kinds = model.node_kinds()
-    dispatch = model.dispatch_map()
-    # topologically-ordered unique dispatch values (so imports are stable)
-    dispatch_values: list[str] = []
-    seen: set[str] = set()
-    for table in dispatch.values():
-        for child in table.values():
-            if child not in seen:
-                seen.add(child)
-                dispatch_values.append(child)
     return env.get_template("ast_classes.py.j2").render(
         header=_HEADER,
         node_kinds=kinds,
@@ -85,18 +75,20 @@ def _emit_ast_classes(model: CodegenModel) -> str:
 def _emit_ast_dispatch(model: CodegenModel) -> str:
     env = _template_env()
     dispatch = model.dispatch_map()
-    dispatch_values: list[str] = []
-    seen: set[str] = set()
+    # first-body-wins for CLASS_TO_BODY (a member kind may appear in several
+    # bodies; deterministic resolution avoids repeated dict keys / F601)
+    class_to_body_seen: dict[str, bool] = {}
     for table in dispatch.values():
-        for child in table.values():
-            if child not in seen:
-                seen.add(child)
-                dispatch_values.append(child)
+        for member_kind in table:
+            if member_kind not in class_to_body_seen:
+                class_to_body_seen[member_kind] = False
+            elif not class_to_body_seen[member_kind]:
+                class_to_body_seen[member_kind] = True
     return env.get_template("ast_dispatch.py.j2").render(
         header=_HEADER,
         dispatch_map=dispatch,
-        dispatch_values=dispatch_values,
         ir_kind_aliases=IR_KIND_ALIASES,
+        class_to_body_seen=class_to_body_seen,
     )
 
 
@@ -111,7 +103,6 @@ def _emit_provenance(model: CodegenModel, opts: EmitOptions, repo_root: Path, ge
 
 def emit_sysml2py(
     out_dir: Path,
-    discovery: DiscoveryResult | None = None,
     opts: EmitOptions | None = None,
     model: CodegenModel | None = None,
 ) -> Path:
@@ -162,9 +153,6 @@ def emit_sysml2py(
     (src_pkg / "__init__.py").write_text(
         env.get_template("pkg_init.py.j2").render(
             node_kinds=model.node_kinds(),
-            discovered_keywords=sorted(set().union(*(d.keys() for d in model.dispatch_map().values())))
-            if model.dispatch_map()
-            else [],
         ),
         encoding="utf-8",
     )
@@ -212,31 +200,21 @@ def _ruff_format(src_pkg: Path) -> None:
     if ruff is None:
         return
     try:
-        subprocess.run(
-            [ruff, "check", "--fix", "--quiet", str(src_pkg)],
-            check=False,
-            capture_output=True,
-        )
         # NOTE: normalize.py is a VERBATIM copy of the lab's single-sourced
         # canonical normalizer (issue #8) — it must stay byte-identical, so it
-        # is excluded from ruff format (ruff format would rewrite its style).
+        # is excluded from BOTH ruff --fix and ruff format (ruff would rewrite
+        # its style).  Target the four generated files explicitly.
+        gen_files = [
+            str(src_pkg / f)
+            for f in ("ast_classes.py", "ast_dispatch.py", "provenance.py", "__init__.py")
+        ]
         subprocess.run(
-            [ruff, "format", "--quiet", str(src_pkg / "ast_classes.py")],
+            [ruff, "check", "--fix", "--quiet", *gen_files],
             check=False,
             capture_output=True,
         )
         subprocess.run(
-            [ruff, "format", "--quiet", str(src_pkg / "ast_dispatch.py")],
-            check=False,
-            capture_output=True,
-        )
-        subprocess.run(
-            [ruff, "format", "--quiet", str(src_pkg / "provenance.py")],
-            check=False,
-            capture_output=True,
-        )
-        subprocess.run(
-            [ruff, "format", "--quiet", str(src_pkg / "__init__.py")],
+            [ruff, "format", "--quiet", *gen_files],
             check=False,
             capture_output=True,
         )

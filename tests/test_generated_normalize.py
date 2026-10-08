@@ -9,15 +9,10 @@ import runpy
 from pathlib import Path
 
 from sysml2py_lab.codegen.emit import emit_sysml2py, EmitOptions
-from sysml2py_lab.discover import DiscoveryResult
 
 
 def test_generated_normalize_is_byte_identical(tmp_path):
-    corpus = tmp_path / "corpus"
-    corpus.mkdir()
-    (corpus / "a.sysml").write_text("package P { part x; }\n", encoding="utf-8")
-    res = DiscoveryResult(files_scanned=1, statement_prefix_counts={"package": 1, "part": 1})
-    emit_sysml2py(tmp_path / "out", res, opts=EmitOptions(version="0.0.0"))
+    emit_sysml2py(tmp_path / "out", opts=EmitOptions(version="0.0.0"))
 
     lab = (
         Path(__file__).resolve().parents[1]
@@ -30,12 +25,8 @@ def test_generated_normalize_is_byte_identical(tmp_path):
 def test_generated_normalizer_is_self_contained(tmp_path):
     # the generated normalize must import only stdlib (no sysml2py_lab), so
     # the generated package can run standalone
-    corpus = tmp_path / "corpus"
-    corpus.mkdir()
-    (corpus / "a.sysml").write_text("package P;", encoding="utf-8")
-    res = DiscoveryResult(files_scanned=1, statement_prefix_counts={"package": 1})
     out = tmp_path / "out"
-    emit_sysml2py(out, res, opts=EmitOptions(version="0.0.0"))
+    emit_sysml2py(out, opts=EmitOptions(version="0.0.0"))
     gen_py = out / "sysml2py" / "src" / "sysml2py" / "normalize.py"
 
     src = gen_py.read_text(encoding="utf-8")

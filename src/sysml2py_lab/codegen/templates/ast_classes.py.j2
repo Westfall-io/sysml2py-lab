@@ -66,6 +66,18 @@ def beautify(string):
     return "\n".join(ns)
 
 
+def _terminate_line_comment(raw: str) -> str:
+    """Ensure a ``//`` line-comment raw_text ends with a newline.
+
+    The canonical tokenizer treats ``//`` as consuming to end-of-line, so a
+    comment joined with no trailing newline would swallow every following
+    sibling (the issue-#8 render_ir lesson).
+    """
+    if raw.lstrip().startswith("//") and not raw.endswith("\n"):
+        return raw + "\n"
+    return raw
+
+
 class Unsupported:
     """Loss-minimizing node for grammar constructs with no modelled class.
 
@@ -105,10 +117,7 @@ class Unsupported:
     def dump(self) -> str:
         out: list[str] = []
         if self.raw_text is not None:
-            rt = self.raw_text
-            if rt.lstrip().startswith("//") and not rt.endswith("\n"):
-                rt += "\n"
-            out.append(rt)
+            out.append(_terminate_line_comment(self.raw_text))
         elif isinstance(self.definition, dict):
             out.append(self.definition.get("raw_text", ""))
         for c in self.children:
@@ -123,6 +132,21 @@ class Unsupported:
         if self.raw_text is not None:
             out["raw_text"] = self.raw_text
         return out
+
+    @classmethod
+    def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> "Unsupported":
+        """Construct an Unsupported node from an IR JSON dict (loss-minimizing)."""
+        return cls(
+            kind=d.get("kind", ""),
+            name=d.get("name", ""),
+            raw_text=d.get("raw_text"),
+            modifiers=list(d.get("modifiers", [])),
+            type_refs=list(d.get("type_refs", [])),
+            multiplicity=d.get("multiplicity"),
+            children=[cls.from_ir(c, parent_kind) for c in d.get("children", [])],
+            source_span=tuple(d.get("source_span", (0, 0))),
+            fidelity=d.get("fidelity", "unsupported"),
+        )
 
 
 @dataclass
@@ -139,6 +163,7 @@ class Node:
     source_span: tuple[int, int] = (0, 0)
     raw_text: str = ""
     fidelity: str = "modelled"
+    ir_kind: str | None = None  # IR coarse kind before alias lifting (W3)
 
     @classmethod
     def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> "Node":
@@ -146,11 +171,43 @@ class Node:
 
         The IR's coarse kinds (``package``, ``part``, ...) are lifted to the
         generated subclasses via ``IR_KIND_ALIASES``; children are recursively
-        dispatched under the current node's body context.
+        dispatched under the current node's **body context** (children.json
+        membership, via ``dispatch_member``).  A coarse kind that aliases to a
+        modelled class but resolves to nothing in ``KIND_REGISTRY`` raises —
+        the cast must not pass by silently falling back to ``Unsupported``.
         """
+        # deferred import: ast_dispatch imports ast_classes at module load,
+        # so the cycle is only safe once both modules are fully imported.
+        from .ast_dispatch import CLASS_TO_BODY, dispatch_member
+
         kind = d.get("kind", "")
         cls_name = IR_KIND_ALIASES.get(kind, kind)
-        node_cls = KIND_REGISTRY.get(cls_name, Unsupported)
+        node_cls = KIND_REGISTRY.get(cls_name)
+        if node_cls is None:
+            # An IR kind with a known alias but no generated class is a
+            # codegen defect, not an unsupported construct.
+            if cls_name in IR_KIND_ALIASES.values() or (cls_name == kind and kind != "unknown"):
+                raise LookupError(
+                    f"IR kind {kind!r} aliases to {cls_name!r} but no generated class exists"
+                )
+            node_cls = Unsupported
+        # Dispatch children under the parent's body context (children.json):
+        # the generated dispatch is load-bearing for the cast.  Fall back to
+        # the alias registry when the parent class is not a body member.
+        parent_body = CLASS_TO_BODY.get(cls_name, "")
+        children: list[Node] = []
+        for c in d.get("children", []):
+            child_kind = c.get("kind", "")
+            child_cls_name = IR_KIND_ALIASES.get(child_kind, child_kind)
+            # Body-context dispatch first (the load-bearing children.json
+            # table); fall back to the global registry when the parent has no
+            # body or the body does not model this member.
+            dispatched = Unsupported
+            if parent_body:
+                dispatched = dispatch_member(parent_body, child_cls_name)
+            if dispatched is Unsupported:
+                dispatched = KIND_REGISTRY.get(child_cls_name, Unsupported)
+            children.append(dispatched.from_ir(c, cls_name))
         return node_cls(
             kind=kind,
             name=d.get("name", ""),
@@ -158,10 +215,11 @@ class Node:
             modifiers=list(d.get("modifiers", [])),
             type_refs=list(d.get("type_refs", [])),
             multiplicity=d.get("multiplicity"),
-            children=[Node.from_ir(c, cls_name) for c in d.get("children", [])],
+            children=children,
             source_span=tuple(d.get("source_span", (0, 0))),
             raw_text=d.get("raw_text", ""),
             fidelity=d.get("fidelity", "modelled"),
+            ir_kind=kind,
         )
 
     def dump(self) -> str:
@@ -175,15 +233,19 @@ class Node:
         """
         out: list[str] = []
         if self.raw_text:
-            rt = self.raw_text
-            if rt.lstrip().startswith("//") and not rt.endswith("\n"):
-                rt += "\n"
-            out.append(rt)
+            out.append(_terminate_line_comment(self.raw_text))
         else:
             parts: list[str] = []
             parts.extend(self.modifiers)
-            if self.kind and self.name:
-                parts.append(f"{self.kind} {self.name}")
+            if self.ir_kind or self.kind:
+                head = self.ir_kind or self.kind
+                if self.name:
+                    parts.append(f"{head} {self.name}")
+                elif "{" in head or head in ("brace_open", "brace_close"):
+                    parts.append(head)
+                # else: a bare kind with no name is not meaningful text
+                # (e.g. the IR "root" node) — emit nothing rather than
+                # malformed SysML.
             elif self.name:
                 parts.append(self.name)
             if self.multiplicity:
@@ -197,9 +259,9 @@ class Node:
         return "".join(out)
 
     def get_definition(self) -> dict:
-        """Serialize back to an IR-JSON dict."""
+        """Serialize back to an IR-JSON dict (preserving the IR coarse kind)."""
         return {
-            "kind": self.kind,
+            "kind": self.ir_kind or self.kind,
             "name": self.name,
             "short_name": self.short_name,
             "modifiers": list(self.modifiers),
@@ -227,8 +289,9 @@ class {{ kind.name }}(Node):
             self.kind = "{{ kind.name }}"
         elif isinstance(definition, dict) and "kind" in definition:
             # IR-JSON dict
-            super().__init__(kind="", **definition)
+            super().__init__(**{k: v for k, v in definition.items() if k != "kind"})
             self.kind = definition.get("kind") or "{{ kind.name }}"
+            self.ir_kind = definition.get("kind")
             if raw_text is not None:
                 self.raw_text = raw_text
         else:

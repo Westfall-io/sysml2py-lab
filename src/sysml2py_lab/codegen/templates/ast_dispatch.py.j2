@@ -36,6 +36,20 @@ MEMBERSHIP_DISPATCH: dict[str, dict[str, str]] = {
 {% endfor %}
 }
 
+# {parent_class_name: parent_body} — derived by inverting children.json: a
+# class belongs to the body that declares it as a member.  Lets from_ir
+# dispatch children under the correct body context.  Duplicate memberships
+# (a kind allowed in several bodies) resolve to the FIRST body, deterministically.
+CLASS_TO_BODY: dict[str, str] = {
+{% for body, table in dispatch_map.items() %}
+{% for member_kind in table %}
+{% if not class_to_body_seen[member_kind] %}
+    "{{ member_kind }}": "{{ body }}",
+{% endif %}
+{% endfor %}
+{% endfor %}
+}
+
 
 def _resolve_kind(kind: str) -> str:
     """Map an IR kind (lowercase token) to a generated class name."""
