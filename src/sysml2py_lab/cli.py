@@ -225,7 +225,11 @@ def main(argv: list[str] | None = None) -> int:
             root = parse_ir(text, model_path=str(args.model) if args.model else None)
             if args.summary:
                 import json as _json
-                print(_json.dumps(ir_fidelity_summary(root), indent=2), file=sys.stderr)
+                if args.model is not None and not Path(args.model).exists():
+                    print(f"warning: --model {args.model} not found; "
+                          "classifying via static fallback table", file=sys.stderr)
+                print(_json.dumps(ir_fidelity_summary(root, source_bytes=len(text)),
+                                  indent=2), file=sys.stderr)
             payload = ir_to_json(root)
             if args.out:
                 args.out.parent.mkdir(parents=True, exist_ok=True)

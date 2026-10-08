@@ -258,3 +258,69 @@ def test_ir_json_roundtrip():
     assert _nws(render_ir(back)) == _nws(render_ir(root))
     # all nodes preserved (same count)
     assert sum(1 for _ in back.walk()) == sum(1 for _ in root.walk())
+
+
+def test_family_kind_presence():
+    """W11(a) regression: the named declarations in family.sysml must land as
+    typed IR nodes — the suite must catch a declaration swallowed into a
+    comment or misclassified as unknown."""
+    fam = (Path(__file__).resolve().parents[1] / "examples" / "family.sysml")
+    if not fam.exists():
+        pytest.skip("family.sysml not present")
+    root = parse_ir(fam.read_text(encoding="utf-8"))
+    kinds = {n.kind for n in root.walk()}
+    # the file defines all of these
+    missing = {"part", "connection", "requirement", "occurrence",
+               "constraint", "use_case", "interface", "action",
+               "attribute", "item", "port", "state", "transition",
+               "package", "import"} - kinds
+    assert not missing, f"kinds missing from family.sysml IR: {missing}"
+    # the named declarations specifically must exist as nodes with names
+    names = {n.name for n in root.walk() if n.name}
+    for expected in ("Person", "Child", "ProcessMessage",
+                     "LegalAdoptionParenthood", "AdoptionCertification",
+                     "VerbalInteraction", "minimumAgeForAdoptiveParenthood",
+                     "Agree on adoption"):
+        assert expected in names, f"declaration {expected!r} missing from IR names"
+
+
+def _code_semis(text: str) -> int:
+    """Count statement terminators (`;`) OUTSIDE comments/strings, so a block
+    comment containing ';' in prose doesn't count as multiple statements."""
+    from sysml2py_lab.lexer import tokenize_sysml, SEMI
+    return sum(1 for t in tokenize_sysml(text) if t.kind == SEMI)
+
+
+def test_no_multi_statement_node():
+    """W11(b) regression: no IR node's raw_text may contain more than one CODE
+    statement terminator (';' outside comments/strings) — a node must never
+    silently merge statements (C2)."""
+    fam = (Path(__file__).resolve().parents[1] / "examples" / "family.sysml")
+    if not fam.exists():
+        pytest.skip("family.sysml not present")
+    root = parse_ir(fam.read_text(encoding="utf-8"))
+    for n in root.walk():
+        if _code_semis(n.raw_text) > 1:
+            raise AssertionError(
+                f"node kind={n.kind} name={n.name!r} holds multiple statements: {n.raw_text[:80]!r}")
+
+
+def test_span_tiling_no_overlap():
+    """W11(c) regression: every byte position belongs to at most one IR node
+    (Counter over source spans has no value > 1) — catches W4's double-count.
+    The root container's full-file span is ignored (it owns no bytes)."""
+    from collections import Counter
+    fam = (Path(__file__).resolve().parents[1] / "examples" / "family.sysml")
+    if not fam.exists():
+        pytest.skip("family.sysml not present")
+    src = fam.read_text(encoding="utf-8")
+    root = parse_ir(src)
+    c = Counter()
+    for n in root.walk():
+        if n.kind == "root":
+            continue  # container span covers the file; owns no raw bytes
+        s, e = n.source_span
+        if e > s:
+            c.update(range(s, e))
+    overlaps = {pos: cnt for pos, cnt in c.items() if cnt > 1}
+    assert not overlaps, f"overlapping IR spans at byte positions: {list(overlaps)[:10]}"

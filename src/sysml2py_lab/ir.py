@@ -69,7 +69,6 @@ _KIND_KEYWORDS = {
     "item": "item",
     "value": "value",
     "attribute": "attribute",
-    "variation": "variation",
     "connection": "connection",
     "port": "port",
     "state": "state",
@@ -81,23 +80,6 @@ _KIND_KEYWORDS = {
     "constraint": "constraint",
     "occurrence": "occurrence",
     "import": "import",
-}
-
-# Mapping from a leading header keyword to the IR kind used for a *definition*
-# (`def`) declaration.  Populated from the issue-6 relationship model; the
-# static table below is only the seed/fallback so the IR still works standalone.
-_DEF_KIND = {
-    "part": "part",
-    "item": "item",
-    "attribute": "attribute",
-    "port": "port",
-    "interface": "interface",
-    "connection": "connection",
-    "action": "action",
-    "requirement": "requirement",
-    "use_case": "use_case",
-    "occurrence": "occurrence",
-    "package": "package",
 }
 
 
@@ -166,16 +148,6 @@ class IRNode:
         return "\n".join(lines)
 
 
-def _tiles(toks: list[Token]) -> dict:
-    """Return a char->token map for O(1) coverage checks (not needed for
-    production but handy for tests)."""
-    m = {}
-    for t in toks:
-        for p in range(t.start, t.end):
-            m[p] = t
-    return m
-
-
 # --------------------------------------------------------------------------
 # Statement segmentation
 # --------------------------------------------------------------------------
@@ -214,9 +186,15 @@ def _statement_spans(text: str) -> list[tuple[int, int]]:
         if t.kind == WHITESPACE:
             continue
         if t.kind in (LINE_COMMENT, BLOCK_COMMENT):
-            # fold into current span (retained, not deleted); if empty this
-            # starts a comment-only span
-            cur.append((t.start, t.end))
+            # A comment with no code yet in `cur` is a STANDALONE comment:
+            # flush it as its own segment immediately (C1).  Otherwise it is
+            # trailing trivia on the current statement — fold it in, so the
+            # comment is retained with the statement it decorates.
+            if not cur:
+                cur.append((t.start, t.end))
+                flush()
+            else:
+                cur.append((t.start, t.end))
             continue
         cur.append((t.start, t.end))
         if t.kind == SEMI:
@@ -253,41 +231,48 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
     words = [t.text for t in tokens if t.kind in (WORD, UNRESTRICTED_NAME, SYMBOL, STRING)]
     kind = None
     name = ""
+    short_name = ""
     modifiers: list[str] = []
     type_refs: list[str] = []
     multiplicity: str | None = None
-    # walk words: a leading keyword -> kind; 'def' -> declaration; name after
-    # that; ':>' / ':' type refs; '['..']' multiplicity.
+    # walk words.  Modifiers and operators may appear before the kind keyword
+    # (C4) and the kind keyword may appear at any position; operators like
+    # ':>' ':' denote type refs and are checked BEFORE the name branch so the
+    # operator never becomes the name (C5).  `<shortName>` becomes short_name.
     i = 0
     while i < len(words):
         w = words[i]
-        if w in _KIND_KEYWORDS and kind is None and i == 0:
+        # two-word kind: 'use case'
+        if w == "use" and i + 1 < len(words) and words[i + 1] == "case" and kind is None:
+            kind = "use_case"
+            i += 2
+            continue
+        if w in _KIND_KEYWORDS and kind is None:
             kind = w
             i += 1
             continue
-        if kind is None and w in ("private", "public", "protected", "ref", "readonly", "derived", "end", "abstract", "variation"):
+        if kind is None and w in ("private", "public", "protected", "ref",
+                                  "readonly", "derived", "end", "abstract",
+                                  "variation"):
             modifiers.append(w)
-            i += 1
-            continue
-        if kind is None:
-            kind = "unknown"
-        # name token
-        if not name and w != "def":
-            name = w.strip("'\"")
             i += 1
             continue
         if w == "def":
             i += 1
             continue
-        if w in (":>", ":>>", ":", "=", ":=") :
+        # short name <...> — becomes short_name, never name
+        if w.startswith("<") and w.endswith(">") and not short_name:
+            short_name = w.strip("<>")
             i += 1
-            # next word (if any) is a type ref
+            continue
+        # operator / type-ref branch (C5: BEFORE name)
+        if w in (":>", ":>>", ":", "=", ":=", "::>"):
+            i += 1
             if i < len(words):
                 type_refs.append(words[i])
                 i += 1
             continue
-        if w == "[" :
-            # multiplicity [ .. ]
+        if w == "[":
             j = i + 1
             buf = []
             while j < len(words) and words[j] != "]":
@@ -296,21 +281,34 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
             multiplicity = "".join(buf) if buf else "*"
             i = j + 1
             continue
-        # any other token after name (e.g. ':' with no type) — skip
+        if kind is None:
+            kind = "unknown"
+        # name token (first non-operator, non-keyword token)
+        if not name and w != "def":
+            name = w.strip("'\"")
+            i += 1
+            continue
+        # any other token after name — skip
         i += 1
 
     if kind is None:
         kind = "unknown"
+    if not short_name:
+        short_name = name
     # fidelity: 'modelled' iff the kind stem is in the relationship-model
     # vocabulary (issue #6 children model).  When vocab is absent we fall
     # back to the static _KIND_KEYWORDS table (known iff not unknown).
     known = kind != "unknown"
-    if vocab is not None and kind != "unknown":
-        known = kind in vocab or any(k.startswith(kind) for k in vocab)
+    if vocab:
+        # compare space-normalized stems so two-word kinds ('use case') match
+        # the vocabulary's 'usecase'-family stems (W3)
+        stem = kind.replace(" ", "")
+        known = stem in {v.replace(" ", "") for v in vocab} or any(
+            v.replace(" ", "").startswith(stem) for v in vocab)
     return {
         "kind": kind,
         "name": name,
-        "short_name": name,
+        "short_name": short_name,
         "modifiers": modifiers,
         "type_refs": type_refs,
         "multiplicity": multiplicity,
@@ -361,14 +359,22 @@ def parse_ir(text: str, model_path: str | None = None) -> IRNode:
         # `{` opens a block: the node we just created becomes the container
         if seg_text == "{":
             brace = IRNode(kind="brace_open", source_span=(st, en), raw_text="{")
-            # ascend to the opener node and put the brace INSIDE it, then
-            # become that opener's block context
+            # W5: only treat the last child as a real opener if it is a
+            # statement/kind node — never a comment or a previous block's
+            # brace_close (two consecutive blocks would otherwise merge into
+            # one opener).
+            opener = None
             if parent.children:
-                opener = parent.children[-1]
+                cand = parent.children[-1]
+                if cand.kind not in ("comment", "brace_close", "brace_open", "block"):
+                    opener = cand
+            if opener is not None:
                 opener.children.append(brace)
                 stack.append(opener)
             else:
-                blk = IRNode(kind="block", source_span=(st, en), raw_text="{")
+                # anonymous block (W4: the brace child carries the byte, so
+                # blk itself has NO raw_text — no double-count)
+                blk = IRNode(kind="block", source_span=(st, en), raw_text="")
                 parent.children.append(blk)
                 blk.children.append(brace)
                 stack.append(blk)
@@ -400,6 +406,20 @@ def parse_ir(text: str, model_path: str | None = None) -> IRNode:
         )
         parent.children.append(node)
 
+    # W2: assign `partial` — a known-kind node whose body contains opaque
+    # regions is not fully modelled.  Walk bottom-up: a node is `partial` if
+    # it (or any descendant) is opaque; remaining known kinds stay `modelled`.
+    def _mark_partial(n: IRNode) -> bool:
+        has_opaque = n.fidelity == "opaque"
+        for c in n.children:
+            has_opaque = _mark_partial(c) or has_opaque
+        if has_opaque and n.fidelity == "modelled" and n.kind not in (
+                "root", "brace_open", "brace_close", "comment", "block"):
+            n.fidelity = "partial"
+        return has_opaque
+
+    _mark_partial(root)
+
     # root range is whole text (nodes may have overlaps with whitespace but
     # raw_text coverage assertion is on texts, not spans)
     return root
@@ -418,25 +438,41 @@ def render_ir(root: IRNode, indent: int = 0) -> str:
     return "".join(n.raw_text for n in root.walk())
 
 
-def ir_fidelity_summary(root: IRNode) -> dict:
+def ir_fidelity_summary(root: IRNode, source_bytes: int | None = None) -> dict:
     """Per-file fidelity summary: counts of modelled/partial/opaque nodes
     plus byte coverage of each fidelity class (issue #7: fidelity reported
-    per file so opaque regions are visible, not lost)."""
+    per file so opaque regions are visible, not lost).
+
+    When `source_bytes` is given, the report also includes a coverage ratio
+    (`covered_bytes` / `source_bytes`) so a reader can distinguish
+    "N bytes of dropped whitespace" from "N bytes of dropped code" (W7).
+    """
     counts = {"modelled": 0, "partial": 0, "opaque": 0}
     bytes_by_fid = {"modelled": 0, "partial": 0, "opaque": 0}
+    covered = 0
     for n in root.walk():
         f = n.fidelity if n.fidelity in counts else "opaque"
         counts[f] += 1
         bytes_by_fid[f] += len(n.raw_text)
-    return {
+        covered += len(n.raw_text)
+    out = {
         "node_counts": counts,
         "raw_text_bytes": bytes_by_fid,
-        "total_raw_bytes": sum(len(n.raw_text) for n in root.walk()),
+        "total_raw_bytes": covered,
     }
+    if source_bytes is not None:
+        out["source_bytes"] = source_bytes
+        out["coverage_ratio"] = covered / source_bytes if source_bytes else 0.0
+    return out
 
 
 def ir_to_json(root: IRNode) -> dict:
-    """Serialize an IR tree to a JSON-friendly dict (issue #7 deliverable)."""
+    """Serialize an IR tree to a JSON-friendly dict (issue #7 deliverable).
+
+    NOTE (W10): `source_span` is stored as a list in JSON (its natural JSON
+    shape) and restored as a `tuple[int, int]` by `ir_from_json`; the
+    round-trip is stable (ir_to_json(ir_from_json(x)) == ir_to_json(x)).
+    """
     return {
         "kind": root.kind,
         "name": root.name,

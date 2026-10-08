@@ -142,22 +142,26 @@ def tokenize_sysml(text: str) -> list[Token]:
             i += 1
             continue
 
-        # word run (keywords, identifiers, numbers, mixed symbols like `:>`,
-        # `[`, `]`, `(`, `)`, `,` etc. are symbolic; multi-char operators are
-        # absorbed into a symbol run so round-trip keeps them contiguous)
+        # word run (keywords, identifiers, numbers, multi-char operators like
+        # `:>`; but stop BEFORE a comment opener `//` or `/*` glued to the
+        # word — C3: `/` is a word char, so without this guard `1/* { */`
+        # would lex as WORD('1/*') and the `{` inside the comment would emit
+        # LBRACE)
         if _is_word_char(ch):
             j = i
-            while j < n and _is_word_char(text[j]):
+            while j < n and _is_word_char(text[j]) and not (
+                    text[j] == "/" and j + 1 < n and text[j + 1] in "/*"):
                 j += 1
             toks.append(Token(WORD, text[i:j], i, j))
             i = j
             continue
 
         # any other symbol (single char, or run of symbols like :>, ::>, =>
-        # that round-trip as a unit)
+        # that round-trip as a unit).  `;` is ALWAYS its own token (C2) so
+        # statement segmentation sees every terminator.
         j = i
         while j < n and not text[j].isspace() and not _is_word_char(text[j]) \
-                and text[j] not in "{}'\"" and not (
+                and text[j] not in "{}'\";" and not (
                     text[j] == "/" and j + 1 < n and text[j + 1] in "/*"):
             j += 1
         toks.append(Token(SYMBOL, text[i:j], i, j))
