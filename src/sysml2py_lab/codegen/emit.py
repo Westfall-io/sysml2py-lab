@@ -61,24 +61,12 @@ def emit_sysml2py(out_dir: Path, discovery: DiscoveryResult, opts: EmitOptions |
         encoding="utf-8",
     )
 
-    # Minimal normalize module copied into generated package (so sysml2py is self-contained)
-    (src_pkg / "normalize.py").write_text(
-        (
-            "from __future__ import annotations\n\n"
-            "import re\n\n"
-            "_ws = re.compile(r\"\\s+\")\n\n"
-            "def normalize_text(text: str) -> str:\n"
-            "    out_lines: list[str] = []\n"
-            "    for raw in text.splitlines():\n"
-            "        s = raw.strip()\n"
-            "        if not s:\n"
-            "            continue\n"
-            "        s = _ws.sub(' ', s)\n"
-            "        out_lines.append(s)\n"
-            "    return '\\n'.join(out_lines) + ('\\n' if out_lines else '')\n"
-        ),
-        encoding="utf-8",
-    )
+    # Canonical normalize module copied into generated package verbatim, so
+    # the generated sysml2py is self-contained AND uses the SAME canonical
+    # normalizer as the lab (issue #8 acceptance: "one implementation,
+    # shipped by codegen" — guaranteed by copying the file, not re-typing).
+    _norm_src = (Path(__file__).resolve().parents[1] / "normalize.py").read_text(encoding="utf-8")
+    (src_pkg / "normalize.py").write_text(_norm_src, encoding="utf-8")
 
     # Minimal README for generated package
     (pkg_root / "README.md").write_text(

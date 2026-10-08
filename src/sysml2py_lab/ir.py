@@ -466,8 +466,23 @@ def render_ir(root: IRNode, indent: int = 0) -> str:
     (not owned by any node) is not reproduced — the issue's acceptance
     criterion is round-trip under normalization, which collapses whitespace
     anyway.
+
+    LINE-COMMENT TERMINATION (issue #8 corpus casting): a `//` line comment's
+    lexical effect runs to end-of-line.  Because nodes concatenate without
+    newlines (inter-statement whitespace is not owned by nodes), a `//`
+    comment node whose raw_text does not end in a newline would swallow every
+    following statement on re-parse.  To keep the round-trip faithful, emit a
+    newline after any rendered `//` comment that is not already newline-
+    terminated.  (Block comments `/* */` terminate themselves.)
     """
-    return "".join(n.raw_text for n in root.walk())
+    out: list[str] = []
+    for n in root.walk():
+        raw = n.raw_text
+        out.append(raw)
+        if n.kind == "comment" and raw.lstrip().startswith("//") \
+                and not raw.endswith("\n"):
+            out.append("\n")
+    return "".join(out)
 
 
 def ir_fidelity_summary(root: IRNode, source: str | None = None) -> dict:
