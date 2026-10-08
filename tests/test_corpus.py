@@ -76,14 +76,21 @@ def test_verify_missing_file(tmp_path):
 
 
 def test_stats_reports_zero_coverage_kinds(tmp_path):
+    """Stats must report set-based counts (file-membership), exclude the
+    `unknown` opaque bucket, and name zero-coverage kinds.  Non-vacuous:
+    uses a fixture WITH an opaque region and asserts the actual VALUE of a
+    covered kind, so removing either guarantee fails the test."""
     c = _mk_corpus(tmp_path)
     src = tmp_path / "s.sysml"
-    src.write_text(_SAMPLE, encoding="utf-8")
+    # `wibble x;` is not a recognized kind -> an `unknown`/opaque node
+    src.write_text(_SAMPLE + "wibble x;\n", encoding="utf-8")
     add_file(c, src, source="test", dest_subdir="t")
     stats = corpus_stats(c)
     assert stats["files"] == 1
     assert stats["model_loaded"] is True  # default model path resolves
-    assert "part" in stats["files_with_kind"]
+    # set-based semantics: one file containing `part` => exactly 1
+    assert stats["files_with_kind"]["part"] == 1
+    assert "wibble" not in stats["files_with_kind"]
     # the model knows kinds the corpus doesn't show — stats must name them
     assert stats["kinds_zero_coverage"]
     # sanity: `part` cannot be zero-covered (the sample has a part)
@@ -154,13 +161,40 @@ CORPUS_DIR = REPO_ROOT / "corpus"
 
 def test_real_corpus_verifies_clean():
     """Every committed corpus file passes sha256 integrity + parses to IR."""
-    pytest.importorskip("sysml2py_lab")
-    from sysml2py_lab.corpus import verify_corpus, iter_corpus_files
+    # Casting-gate convention: never silently skip — a green no-op would
+    # defeat the gate.  A missing/broken lab install must FAIL this test.
+    try:
+        from sysml2py_lab.corpus import verify_corpus, iter_corpus_files
+    except ImportError as e:
+        pytest.fail(f"sysml2py_lab import failed (must not skip): {e}")
     n = len(list(iter_corpus_files(CORPUS_DIR)))
     assert n >= 57, f"corpus must hold >=57 files, found {n}"
     rep = verify_corpus(CORPUS_DIR)
     assert rep["errors"] == [], f"corpus verify failed: {rep['errors']}"
     assert rep["checked"] == n
+
+
+# The 8 commented examples mined from sysml2py/tests/grammar_test.py (round-1
+# C1: two were silently lost; pin the set so loss recurs as a test failure).
+EXPECTED_COMMENTED = {
+    "attribute_def_subusage__commented.sysml",
+    "attribute_definition__commented.sysml",
+    "attribute_usage__commented.sysml",
+    "package__commented.sysml",
+    "package_owned_members__commented.sysml",
+    "package_with_alias_member__commented.sysml",
+    "package_with_imported_package__commented.sysml",
+    "subpackage__commented.sysml",
+}
+
+
+def test_real_corpus_commented_set_pinned():
+    """All 8 commented examples must exist (silent loss must fail tests)."""
+    actual = {p.name for p in CORPUS_DIR.rglob("*__commented.sysml")}
+    assert actual == EXPECTED_COMMENTED, (
+        f"commented fixture set drifted: missing={sorted(EXPECTED_COMMENTED - actual)} "
+        f"unexpected={sorted(actual - EXPECTED_COMMENTED)}"
+    )
 
 
 def test_real_corpus_no_python_leak():
@@ -177,6 +211,11 @@ def test_real_corpus_no_leaked_quotes_and_balanced_braces():
     from sysml2py_lab.normalize import canonical_tokens
     for p in CORPUS_DIR.rglob("*.sysml"):
         src = p.read_text(encoding="utf-8")
+        # the check the name promises: no stray Python-style delimiters
+        assert '"""' not in src and "'''" not in src, \
+            f"stray triple-quote leaked into {p.name}"
+        # a single string-literal pair of quotes is legal (e.g. a SysML
+        # string value); only triple runs are forbidden above
         o, c = src.count("{"), src.count("}")
         assert o == c, f"unbalanced braces in {p.name} ({{={o} }}={c})"
         toks = canonical_tokens(src)

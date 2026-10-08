@@ -166,6 +166,8 @@ def main() -> int:
             license=LICENSE,
             dest_subdir="grammar-2023-07",
             model_path=str(args.model) if args.model else None,
+            function=fn,
+            generated_by="mine_corpus.py",
         )
         assert rel == f"grammar-2023-07/{fn}.sysml"
 

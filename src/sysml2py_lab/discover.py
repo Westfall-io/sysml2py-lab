@@ -1,3 +1,10 @@
+"""Corpus discovery (issue #8).
+
+Extends the MVP flat prefix histogram with relationship-aware node-kind
+counts from the IR classification layer (kinds come from the issue-6
+children model, not a flat prefix guess).
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,7 +13,7 @@ from typing import Iterable
 
 from .normalize import normalize_text
 from .parse_blocks import parse_brace_blocks
-from .model import Block, Line
+from .model import Line
 from .ir import parse_ir
 
 

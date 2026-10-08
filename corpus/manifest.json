@@ -72,6 +72,7 @@
         "opaque": 0,
         "partial": 0
       },
+      "function": "attribute_usage__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
         "attribute"
@@ -87,6 +88,7 @@
         "opaque": 0,
         "partial": 0
       },
+      "function": "package__commented",
       "license": "See SysML-v2-Release (Apache-2.0); original examples from OMG SysML v2",
       "node_kinds": [
         "package"

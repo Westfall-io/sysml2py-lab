@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Corpus intake and management (issue #8).
 
 The corpus is a provenance-tracked set of SysML v2 example files under
@@ -11,6 +9,8 @@ The corpus is a provenance-tracked set of SysML v2 example files under
   - fidelity: modelled/partial/opaque node counts from the IR (issue #7),
     plus which node kinds the file exercises
 """
+
+from __future__ import annotations
 
 import hashlib
 import json
@@ -84,8 +84,15 @@ def add_file(
     license: str = "",
     dest_subdir: str = "local",
     model_path: str | None = None,
+    function: str | None = None,
+    generated_by: str | None = None,
 ) -> str:
     """Add a .sysml file to the corpus, updating the manifest.
+
+    `function` records the source test function (heat a mined example);
+    `generated_by` records the tool that produced/updated the manifest entry,
+    so re-mining into an EMPTY corpus reproduces the committed manifest
+    exactly (review round 2 — reproducibility from scratch).
 
     Returns the manifest-relative path of the added file.
     """
@@ -118,7 +125,14 @@ def add_file(
             "node_kinds": kinds["node_kinds"],
         }
     )
+    if function is not None:
+        entry["function"] = function
+    elif "function" in entry:
+        # keep provenance if a non-mining caller re-adds an existing entry
+        pass
     manifest["files"][rel] = entry
+    if generated_by is not None:
+        manifest["generated_by"] = generated_by
     write_manifest(corpus_dir, manifest)
     return rel
 

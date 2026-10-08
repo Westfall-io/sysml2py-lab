@@ -131,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     cp_add.add_argument("--source-url", default="", help="Source URL for provenance")
     cp_add.add_argument("--license", default="", help="License string")
     cp_add.add_argument("--dest", default="local", help="Destination subdir under the corpus root")
+    cp_add.add_argument("--function", default=None, help="Source test function name (provenance)")
     cp_add.add_argument("--model", type=Path, default=None, help="children.json path")
     cp_verify = cp_sub.add_parser("verify", help="Verify sha256 + parseability of every corpus file.")
     cp_verify.add_argument("--corpus", type=Path, default=Path("corpus"), help="Corpus root (default: ./corpus)")
@@ -273,6 +274,7 @@ def main(argv: list[str] | None = None) -> int:
                     source=args.source, source_url=args.source_url,
                     license=args.license, dest_subdir=args.dest,
                     model_path=str(args.model) if args.model else None,
+                    function=args.function,
                 )
                 print(f"corpus add OK: {rel}")
                 return 0
