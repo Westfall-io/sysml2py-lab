@@ -173,17 +173,17 @@ def _ruff_format(src_pkg: Path) -> None:
     try:
         # NOTE: normalize.py is a VERBATIM copy of the lab's single-sourced
         # canonical normalizer (issue #8) — it must stay byte-identical, so it
-        # is excluded from BOTH ruff --fix and ruff format (ruff would rewrite
-        # its style).  Target the four generated files explicitly.
+        # is excluded from ruff format (ruff would rewrite its style).  Target
+        # the four generated files explicitly.
+        #
+        # We run `ruff format` (style normalization) but deliberately NOT
+        # `ruff check --fix`: templates must emit lint-clean code, and the
+        # acceptance test `test_generated_code_passes_ruff` runs a real
+        # `ruff check` (no --fix) so it can catch a template emitting lint.
         gen_files = [
             str(src_pkg / f)
             for f in ("ast_classes.py", "ast_dispatch.py", "provenance.py", "__init__.py")
         ]
-        subprocess.run(
-            [ruff, "check", "--fix", "--quiet", *gen_files],
-            check=False,
-            capture_output=True,
-        )
         subprocess.run(
             [ruff, "format", "--quiet", *gen_files],
             check=False,

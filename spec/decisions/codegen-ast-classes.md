@@ -103,13 +103,28 @@ def dispatch_member(parent_body: str, member_kind: str):
 
 `CLASS_TO_BODY` maps each class to the body it **owns** (derived from the
 grammar rule's own `XxxBody` reference, following fragments — `PartUsage`
-owns `UsageBody` via `Usage`).  `Node.from_ir` dispatches children under the
-parent's owned body, so the table is genuinely exercised by the cast.
+owns `UsageBody` via `Usage`).
 
-- Generated from `children.json` `kinds` sets + `wrapper`/`chain` — no
-  hand-written elif ladders.
-- `Unsupported` carries `raw_text` (the loss-minimizing IR principle):
-  never raise `NotImplementedError`.
+## Registry is authoritative; dispatch is advisory (review r3)
+
+`Node.from_ir` lifts IR kinds to generated classes via `IR_KIND_ALIASES` +
+`KIND_REGISTRY` — the registry is **authoritative**.  `MEMBERSHIP_DISPATCH`
+/ `dispatch_member` are generated and shipped as an **advisory** API (replace
+the old elif ladders; queried by name lookups and future fine-grained IR),
+but `from_ir` does NOT use them: the issue-#7/#8 IR is a coarse brace-block
+parse whose 26 kinds cannot select a real children.json body, so routing the
+cast through the table would be machinery with no observation to bind it to.
+The cast gates claim exactly what is load-bearing and mutation-proven:
+
+- every aliased class is instantiated across the corpus (histogram; fails if
+  `KIND_REGISTRY` empties), and
+- no aliased IR kind collapses to `Unsupported` (fails if an alias maps to a
+  missing class).
+
+Generated from `children.json` `kinds` sets + `wrapper`/`chain` — no
+hand-written elif ladders.
+`Unsupported` carries `raw_text` (the loss-minimizing IR principle):
+never raise `NotImplementedError`.
 
 ## Provenance (determinism)
 

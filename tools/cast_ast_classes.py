@@ -9,11 +9,14 @@ now over generated classes).
 Load-bearing (issue-#9 review): the exit code fails if:
   - any file's dump does not canonical-equal its source, OR
   - any aliased IR kind collapses to ``Unsupported`` (per-file), OR
-  - any aliased class is never instantiated across the corpus, OR
-  - **no real owned-body context was ever used for dispatch** (i.e. the
-    children.json membership table is dead — dispatch_member never consulted).
+  - any aliased class is never instantiated across the corpus.
 
-The generated classes + dispatch table are therefore exercised, not bypassed.
+The registry (KIND_REGISTRY) is authoritative for lifting IR kinds to
+generated classes; children.json's ``dispatch_member`` is an advisory API,
+not consulted by ``from_ir`` (the IR is too coarse for it to be
+authoritative — see the decision record).  The gates claim exactly what is
+true: the generated classes are exercised (histogram) and no aliased kind is
+silently degraded (unsupported_for_aliased).
 """
 from __future__ import annotations
 
@@ -34,25 +37,24 @@ from sysml2py_lab.normalize import canonical_equals
 
 
 def cast_file(path):
-    """Return (ok, message, hist, unsup, dispatch_bodies) for one file."""
+    """Return (ok, message, hist, unsup) for one file."""
     src = path.read_text(encoding="utf-8")
     try:
         root = parse_ir(src)
         j = ir_to_json(root)
     except Exception as exc:  # noqa: BLE001
-        return (False, f"parse/IR failed: {exc.__class__.__name__}: {exc}", {}, set(), set())
+        return (False, f"parse/IR failed: {exc.__class__.__name__}: {exc}", {}, set())
     if not isinstance(j, dict):
-        return (False, f"IR JSON root not a dict: {type(j).__name__}", {}, set(), set())
+        return (False, f"IR JSON root not a dict: {type(j).__name__}", {}, set())
     hist: dict[str, int] = {}
     unsup: set[str] = set()
-    dispatch_bodies: set[str] = set()
     try:
         tree = sysml2py.Node.from_ir(j)
         dumped = tree.dump()
     except Exception as exc:  # noqa: BLE001
-        return (False, f"generated-class build failed: {exc.__class__.__name__}: {exc}", {}, set(), set())
+        return (False, f"generated-class build failed: {exc.__class__.__name__}: {exc}", {}, set())
     if not canonical_equals(dumped, src):
-        return (False, "canonical mismatch between dumped and source", {}, set(), set())
+        return (False, "canonical mismatch between dumped and source", {}, set())
     stack = [tree]
     while stack:
         node = stack.pop()
@@ -64,11 +66,8 @@ def cast_file(path):
             and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
         ):
             unsup.add(f"{path.name}:{ir_kind}")
-        body = getattr(node, "_dispatch_body", None)
-        if body:
-            dispatch_bodies.add(body)
         stack.extend(getattr(node, "children", []) or [])
-    return (True, "", hist, unsup, dispatch_bodies)
+    return (True, "", hist, unsup)
 
 
 def main() -> None:
@@ -78,15 +77,13 @@ def main() -> None:
     waivers: list[tuple[str, str]] = []
     histogram: dict[str, int] = {}
     unsupported_for_aliased: set[str] = set()
-    dispatch_bodies_all: set[str] = set()
     for f in files:
-        ok, why, hist, unsup, bodies = cast_file(f)
+        ok, why, hist, unsup = cast_file(f)
         if ok:
             passed += 1
             for cls, n in hist.items():
                 histogram[cls] = histogram.get(cls, 0) + n
             unsupported_for_aliased |= unsup
-            dispatch_bodies_all |= bodies
         else:
             failed += 1
             waivers.append((str(f.relative_to(CORPUS)), why))
@@ -100,14 +97,6 @@ def main() -> None:
     if missing:
         print(f"MISSING-ALIASED-CLASSES: {missing}")
         failed += len(missing)
-    # The dispatch table must actually be consulted (load-bearing): route
-    # through a body context.  Fail if never used.
-    real_bodies = {b for b in dispatch_bodies_all if b in getattr(sysml2py, "MEMBERSHIP_DISPATCH", {})}
-    if not real_bodies:
-        print("NO-DISPATCH-BODY-USED: the children.json membership table was never consulted")
-        failed += 1
-    else:
-        print(f"DISPATCH-BODIES-USED: {sorted(real_bodies)[:8]}")
     top = sorted(histogram.items(), key=lambda kv: -kv[1])[:12]
     print("TOP:", ", ".join(f"{k}={v}" for k, v in top))
     if waivers:

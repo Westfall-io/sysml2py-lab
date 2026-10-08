@@ -26,8 +26,12 @@ from pathlib import Path
 
 from ..grammar.spec import load_spec
 
-# Composites the 266-class API carried that are not plain grammar rules but
-# are required for round-trip compatibility (dispatch roots / wrappers).
+# Extra class names generated alongside plain grammar rules.  RootNamespace /
+# DefinitionElement are also real top-level grammar rules, so they are already
+# generated and their EXTRA_KINDS entry is a belt-and-braces no-op (skipped by
+# `seen`).  The genuine additions are the eight hand-invented helper composites
+# the 0.5.3 classes.py carried (expression/operand wrappers + CommentSysML) —
+# pinned unconditionally by test `test_extra_kind_composites_present`.
 EXTRA_KINDS: tuple[str, ...] = (
     "RootNamespace",
     "DefinitionElement",
@@ -240,22 +244,28 @@ class CodegenModel:
                     if isinstance(x, dict):
                         CodegenModel._collect_calls(x, out)
 
-    def owned_body_for(self, cls_name: str, _depth: int = 0) -> str | None:
+    def owned_body_for(self, cls_name: str) -> str | None:
         """The body rule this class OWNS (contained ``XxxBody``), or None.
 
         Follows the rule's call references (and through fragment rules) to the
-        ``XxxBody`` the construct is defined to contain.  ``PartUsage`` owns
-        ``UsageBody`` via ``Usage``; ``Package`` owns ``PackageBody`` directly.
+        ``XxxBody`` the construct is defined to contain, then follows a body
+        rule whose own body is a single delegation to another ``*Body`` (so
+        ``UsageBody`` resolves to the real ``DefinitionBody`` it contains).
+        ``PartUsage`` owns ``UsageBody``; ``Package`` owns ``PackageBody``.
+        Memoized; depth-guarded against cycles.
         """
         if cls_name in self._owned_body_cache:
             return self._owned_body_cache[cls_name]
-        res = self._owned_body_for(cls_name, _depth)
+        res = self._owned_body_for(cls_name, 0)
         self._owned_body_cache[cls_name] = res
         return res
 
     def _owned_body_for(self, cls_name: str, _depth: int) -> str | None:
-        if _depth > 15:
+        if _depth > 25:
             return None
+        # guard against cycles not yet visible in the cache
+        if cls_name in self._owned_body_cache:
+            return self._owned_body_cache[cls_name]
         r = self._by_name.get(cls_name)
         if r is None:
             return None
@@ -263,9 +273,19 @@ class CodegenModel:
         self._collect_calls(r.get("body", {}), calls)
         for c in calls:
             if c.endswith("Body") and c in self._by_name:
+                # a body rule that merely delegates to another body rule is an
+                # alias — follow it so we land on the real containing body.
+                rc = self._by_name.get(c)
+                sub: list[str] = []
+                if rc is not None:
+                    self._collect_calls(rc.get("body", {}), sub)
+                if len(sub) == 1 and sub[0].endswith("Body") and sub[0] in self._by_name:
+                    sub_res = self._owned_body_for(sub[0], _depth + 1)
+                    if sub_res is not None:
+                        return sub_res
                 return c
             if c in self._by_name:
-                res = self.owned_body_for(c, _depth + 1)
+                res = self._owned_body_for(c, _depth + 1)
                 if res is not None:
                     return res
         return None

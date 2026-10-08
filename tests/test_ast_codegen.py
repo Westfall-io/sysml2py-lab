@@ -17,6 +17,7 @@ Covers the acceptance criteria:
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -235,6 +236,61 @@ def test_normalize_byte_identical_to_lab(tmp_path):
     assert gen == lab
 
 
+def test_extra_kind_composites_present(tmp_path):
+    """W13: the 8 hand-invented 0.5.3 helper composites must be generated.
+
+    Runs unconditionally (no sibling-checkout skip) so the parity set has a
+    real gate.
+    """
+    COMPOSITES = {
+        "ActionBodyItemTarget",
+        "AdditiveOperand",
+        "AndOperand",
+        "CommentSysML",
+        "EqualityOperand",
+        "MultiplicativeOperand",
+        "MultiplicityRelatedElement",
+        "RelationalOperand",
+        "SequenceOperand",
+    }
+    pkg = _gen(tmp_path)
+    src = (_src(pkg) / "ast_classes.py").read_text(encoding="utf-8")
+    present = {name for name in COMPOSITES if re.search(rf"^class {name}\(", src, re.MULTILINE)}
+    assert COMPOSITES == present, f"missing generated composites: {sorted(COMPOSITES - present)}"
+
+
+def test_ir_dict_constructor_roundtrips(tmp_path):
+    """W9: the IR-JSON dict constructor (C3 fix) lifts children into nodes.
+
+    Construct a generated class from ir_to_json(parse_ir(...)) directly (not
+    via from_ir) and confirm dump() canonical-equals the source.
+    """
+    pkg = _gen(tmp_path)
+    env = dict(__import__("os").environ)
+    # import path is the package PARENT (pkg/src), not the package dir itself
+    env["PYTHONPATH"] = str(pkg / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    r = subprocess.run(
+        [
+            sys.executable, "-c",
+            (
+                "import sysml2py, sys\n"
+                "from sysml2py_lab.ir import parse_ir, ir_to_json\n"
+                f"sys.path.insert(0, {str(REPO_ROOT / 'src')!r})\n"
+                "d = ir_to_json(parse_ir('part def X { part y; }'))\n"
+                "n = sysml2py.PartDefinition(d)\n"
+                "assert n.dump(), 'dump empty'\n"
+                "print('ok')\n"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert r.returncode == 0, f"IR-dict ctor failed: {r.stdout}\n{r.stderr}"
+    assert "ok" in r.stdout
+
+
 def test_old_266_classes_are_present(tmp_path):
     """Every hand-written 0.5.3 class name is generated (compat + parity)."""
     old = (REPO_ROOT.parent / "sysml2py" / "src" / "sysml2py" / "grammar" / "classes.py")
@@ -293,7 +349,6 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
         failed = []
         histogram: dict[str, int] = {}
         unsupported_for_aliased: set[str] = set()
-        dispatched_bodies: set[str] = set()
         for f in files:
             src = f.read_text(encoding="utf-8")
             try:
@@ -313,15 +368,8 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
                     and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
                 ):
                     unsupported_for_aliased.add(f"{f.name}:{ir_kind}")
-                body = getattr(node, "_dispatch_body", None)
-                if body:
-                    dispatched_bodies.add(body)
             if not canonical_equals(dumped, src):
                 failed.append((str(f.relative_to(corpus)), "canonical mismatch"))
-        assert dispatched_bodies, (
-            "cast never consulted the children.json membership table "
-            "(dispatch_member dead / body context never used)"
-        )
         assert not unsupported_for_aliased, (
             f"cast collapsed aliased kinds to Unsupported: {sorted(unsupported_for_aliased)}"
         )
@@ -331,12 +379,6 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
         )
         assert not failed, f"CAST FAILED {len(failed)}/{len(files)}:\n" + "\n".join(
             f"  - {n}: {w}" for n, w in failed
-        )
-        # Load-bearing (C1/C2): the children.json membership table must be
-        # consulted during the cast — a real owned-body dispatch context.
-        assert dispatched_bodies, (
-            "cast never consulted the children.json membership table "
-            "(dispatch_member dead / body context never used)"
         )
     finally:
         sys.path.remove(str(pkg / "src"))

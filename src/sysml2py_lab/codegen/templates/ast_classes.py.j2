@@ -136,7 +136,7 @@ class Unsupported:
         return out
 
     @classmethod
-    def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> "Unsupported":
+    def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> Unsupported:
         """Construct an Unsupported node from an IR JSON dict (loss-minimizing).
 
         Children are re-dispatched through ``Node.from_ir`` so a collapse to
@@ -168,43 +168,34 @@ class Node:
     modifiers: list[str] = field(default_factory=list)
     type_refs: list[str] = field(default_factory=list)
     multiplicity: str | None = None
-    children: list["Node"] = field(default_factory=list)
+    children: list[Node] = field(default_factory=list)
     source_span: tuple[int, int] = (0, 0)
     raw_text: str = ""
     fidelity: str = "modelled"
     ir_kind: str | None = None  # IR coarse kind before alias lifting (W3)
 
     @classmethod
-    def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> "Node":
+    def from_ir(cls, d: dict, parent_kind: str = "RootNamespace") -> Node:
         """Build a Node (or generated subclass) from an IR JSON dict.
 
         The IR's coarse kinds (``package``, ``part``, ...) are lifted to the
-        generated subclasses via ``IR_KIND_ALIASES``; children are recursively
-        dispatched under the current node's **body context** (children.json
-        membership, via ``dispatch_member``).  A coarse kind that aliases to a
-        modelled class but resolves to nothing in ``KIND_REGISTRY`` raises —
-        the cast must not pass by silently falling back to ``Unsupported``.
+        generated subclasses via ``IR_KIND_ALIASES`` + ``KIND_REGISTRY`` (the
+        registry is authoritative).  Children are recursively lifted the same
+        way; an anonymous/opaque kind (``block``, ``brace_open``, ``unknown``)
+        becomes ``Unsupported`` which still re-lifts any modelled descendant,
+        so nothing is swallowed.  A coarse kind that aliases to a modelled
+        class is never silently dropped: if its class is absent the node falls
+        to ``Unsupported`` and the cast's ``unsupported_for_aliased`` check
+        flags it.
         """
-        # deferred import: ast_dispatch imports ast_classes at module load,
-        # so the cycle is only safe once both modules are fully imported.
-        from .ast_dispatch import CLASS_TO_BODY, dispatch_member
-
         kind = d.get("kind", "")
         cls_name = IR_KIND_ALIASES.get(kind, kind)
         node_cls = KIND_REGISTRY.get(cls_name, Unsupported)
-        # Dispatch children under the parent's OWNED body context (derived
-        # from the grammar rule, not membership inversion).
-        parent_body = CLASS_TO_BODY.get(cls_name, "")
         children: list[Node] = []
         for c in d.get("children", []):
-            child_kind = c.get("kind", "")
-            child_cls_name = IR_KIND_ALIASES.get(child_kind, child_kind)
-            dispatched = Unsupported
-            if parent_body:
-                dispatched = dispatch_member(parent_body, child_cls_name)
-            if dispatched is Unsupported:
-                dispatched = KIND_REGISTRY.get(child_cls_name, Unsupported)
-            children.append(dispatched.from_ir(c, parent_kind))
+            child_cls_name = IR_KIND_ALIASES.get(c.get("kind", ""), c.get("kind", ""))
+            child_cls = KIND_REGISTRY.get(child_cls_name, Unsupported)
+            children.append(child_cls.from_ir(c, parent_kind))
         result = node_cls(
             kind=kind,
             name=d.get("name", ""),
@@ -218,10 +209,6 @@ class Node:
             fidelity=d.get("fidelity", "modelled"),
             ir_kind=kind,
         )
-        # record the body context used to dispatch this node's children — lets
-        # the cast prove the children.json membership table was actually
-        # consulted (load-bearing, review C1/C2).
-        result._dispatch_body = parent_body
         return result
 
     def dump(self) -> str:
@@ -353,11 +340,12 @@ def _dump_textx(definition: dict) -> str:
             parts.append(_dump_textx(pv))
         else:
             parts.append(str(pv))
-    if "keyword" in definition and definition["keyword"]:
-        parts.append(str(definition["keyword"]))
-    if "name" in definition and definition["name"] and \
-            definition["name"] not in _SKIP_NAME_TOKENS:
-        parts.append(str(definition["name"]))
+    keyword = definition.get("keyword")
+    if keyword:
+        parts.append(str(keyword))
+    name = definition.get("name")
+    if name is not None and name not in _SKIP_NAME_TOKENS:
+        parts.append(str(name))
     if "definition" in definition and definition["definition"] is not None:
         dv = definition["definition"]
         if isinstance(dv, dict):
