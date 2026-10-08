@@ -228,11 +228,16 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
     `modelled` (the relationship model says that member kind is valid).
     """
     words = [t.text for t in tokens if t.kind in (WORD, UNRESTRICTED_NAME, SYMBOL, STRING)]
-    # normalize a vocab stem for kind lookup (spaces AND underscores removed)
-    def _norm(w: str) -> str:
-        return w.replace(" ", "").replace("_", "")
-
-    norm_vocab = {_norm(v) for v in vocab} if vocab else None
+    # The derived kind vocabulary excludes the RESERVED structural IR kinds —
+    # the children-model vocab contains `comment`, which would collide with
+    # the structural comment node kind and turn a flagged loss into a clean
+    # `modelled` report (round-4 C1).
+    _RESERVED_KINDS = {"root", "brace_open", "brace_close", "block", "comment", "unknown"}
+    # header words are single tokens (never contain spaces); compare
+    # case-insensitively against the model stems.  No underscore stripping:
+    # the model vocab has no underscored stems and stripping would let
+    # snake_case identifiers be claimed as kinds (round-4 W1/W2).
+    norm_vocab = {v.lower() for v in vocab} if vocab else None
 
     def _is_kind_word(w: str) -> bool:
         # a kind token is either a static keyword OR a recognized stem from
@@ -241,7 +246,9 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
         # that must not be downgraded to opaque).
         if w in _KIND_KEYWORDS:
             return True
-        return norm_vocab is not None and _norm(w) in norm_vocab
+        if w.lower() in _RESERVED_KINDS:
+            return False
+        return norm_vocab is not None and w.lower() in norm_vocab
 
     kind = None
     name = ""

@@ -357,9 +357,9 @@ def test_no_opaque_with_known_kind():
     """Round-3 regression: (a) a node with a recognized kind must NEVER report
     `opaque` ('opaque' means "could not be classified" — an opaque node with a
     known kind is a fidelity lie); (b) a kind must actually be DERIVED from the
-    relationship-model vocabulary (round-3 C1/C2: assert use_case and model-only
-    kinds classify against a vocab that lacks every static keyword, so a
-    reverted vocab/sep-normalization failure bites in isolation)."""
+    relationship-model vocabulary (round-3 C1/C2: assert model-only kinds
+    classify against a vocab that lacks every static keyword, so a reverted
+    vocab path fails in isolation)."""
     from sysml2py_lab.ir import _parse_header, _kind_vocab_from_model, _KIND_KEYWORDS
     # (b) behavioural pin: vocab holds ONLY model-only kinds (none static), so
     # deriving them is provably the model's doing, not the static table's.
@@ -367,10 +367,10 @@ def test_no_opaque_with_known_kind():
     model_only = {k for k in model_vocab if k not in _KIND_KEYWORDS}
     assert "usecase" in model_vocab, "precondition: usecase in model vocab"
     assert "actor" in model_only, "precondition: actor is model-only"
-    # a vocab containing only model-only kinds — use_case must still derive
-    h = _parse_header(tokenize_sysml("use case def X;"),
-                      vocab=model_only | {"usecase"})
-    assert h["kind"] == "use_case", f"use_case not derived from model: {h}"
+    # `usecase` is the vocab-dependent spelling (W3: the 'use case' two-word
+    # form is hard-coded so it cannot test the vocab path — this CAN).
+    h = _parse_header(tokenize_sysml("usecase u;"), vocab=model_only | {"usecase"})
+    assert h["kind"] == "usecase", f"usecase not derived from model: {h}"
     assert h["known"] is True
     h2 = _parse_header(tokenize_sysml("actor x;"), vocab=model_only | {"actor"})
     assert h2["kind"] == "actor" and h2["known"] is True
@@ -383,6 +383,32 @@ def test_no_opaque_with_known_kind():
             if n.fidelity == "opaque" and n.kind != "unknown"
             and n.kind not in ("root", "brace_open", "brace_close", "block", "comment")]
     assert not lies, f"opaque nodes with known kind: {lies}"
+
+
+def test_no_reserved_kind_from_model():
+    """Round-4 C1 regression: the children-model vocab contains `comment`,
+    which collides with the reserved structural comment kind — deriving it
+    would label a merged-loss node `modelled` and suppress parent `partial`
+    (a fidelity lie).  No derived kind may be a reserved structural kind, and
+    the C1 repro must NOT report opaque-free modelled."""
+    from sysml2py_lab.ir import _parse_header, _kind_vocab_from_model, ir_fidelity_summary
+    vocab = set(_kind_vocab_from_model())
+    assert "comment" in vocab, "precondition: comment is in the model vocab"
+    # the reserved comment statement must NOT be derived from the model
+    h = _parse_header(tokenize_sysml("comment C about X;"), vocab=vocab)
+    assert h["kind"] != "comment", f"comment derived from model: {h}"
+    assert h["known"] is False, "comment statement must stay opaque (reserved kind)"
+    # snake_case identifiers must NOT be claimed as kinds (round-4 W2)
+    for bad in ("data_type dt;", "item_flow f;", "state_action s;"):
+        hb = _parse_header(tokenize_sysml(bad), vocab=vocab)
+        assert hb["known"] is False, f"snake_case {bad!r} wrongly derived: {hb}"
+    # the C1 repro: a merged comment+attribute must NOT report clean modelled
+    src = "part def P { comment C about X /* hi */ attribute y; }"
+    root = parse_ir(src)
+    fids = {n.fidelity for n in root.walk()}
+    assert "opaque" in fids, f"C1 repro must flag a loss, got fidelities {fids}"
+    summ = ir_fidelity_summary(root)
+    assert summ["node_counts"]["opaque"] >= 1, f"C1 repro must not be all-modelled: {summ}"
 
 
 def test_opener_not_statement_terminated():
