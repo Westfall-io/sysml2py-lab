@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """Issue #8 — the canonical normalizer is ONE implementation, shipped by
 codegen (acceptance criterion).  The generated sysml2py package must contain
 the exact same normalize.py bytes as the lab's, so corpus comparison and the
 generated library can never diverge."""
+
+from __future__ import annotations
 
 import runpy
 from pathlib import Path

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Issue #8 — corpus intake pipeline (add / verify / stats) + manifest.
 
 Guards the acceptance criteria:
@@ -9,6 +7,8 @@ Guards the acceptance criteria:
     coverage against the relationship model (children.json)
   - every corpus file parses to IR with fidelity recorded
 """
+
+from __future__ import annotations
 
 import hashlib
 import json
@@ -214,8 +214,12 @@ def test_real_corpus_no_leaked_quotes_and_balanced_braces():
         # the check the name promises: no stray Python-style delimiters
         assert '"""' not in src and "'''" not in src, \
             f"stray triple-quote leaked into {p.name}"
-        # a single string-literal pair of quotes is legal (e.g. a SysML
-        # string value); only triple runs are forbidden above
+        # defense-in-depth (round-3 W2): a lone trailing `"` from the
+        # single-quoted source form is legal in SysML but a leaked one in a
+        # COMMENTED fixture would silently corrupt it; require an even count
+        # of bare double-quotes in commented fixtures.
+        if "__commented" in p.name and src.count('"') % 2 != 0:
+            raise AssertionError(f"odd bare-quote count in {p.name}")
         o, c = src.count("{"), src.count("}")
         assert o == c, f"unbalanced braces in {p.name} ({{={o} }}={c})"
         toks = canonical_tokens(src)

@@ -2,8 +2,9 @@
 """Mine inline SysML model strings from sysml2py/tests/grammar_test.py
 into the corpus (issue #8).
 
-The grammar_test.py file holds 60 inline model strings copied from
-SysML-v2-Release sysml/src, plus 8 commented-out ones.  This script:
+The grammar_test.py file holds 53 active model strings copied from
+SysML-v2-Release sysml/src, plus 8 commented-out ones (56 test functions
+total; 3 are negative `pytest.raises` tests with no text).  This script:
 
   - parses grammar_test.py as Python (AST) to extract the ACTIVE
     text-assignment strings, named by their enclosing test function;
@@ -120,7 +121,10 @@ def commented_strings(path: Path) -> list[tuple[str, str]]:
                         buf.append(stripped)
                         i += 1
                     if not closed:
-                        continue
+                        raise ValueError(
+                            f"unterminated commented model string in {path} "
+                            f"(test {current_fn!r}): no closing triple-quote found"
+                        )
             out.append((f"{current_fn}__commented", "\n".join(buf).strip()))
             current_fn = None
         i += 1

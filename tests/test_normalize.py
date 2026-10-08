@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Issue #8 — canonical normalizer (token-stream, alias-aware).
 
 Guards the decision in spec/decisions/canonical-normalizer.md:
@@ -11,6 +9,8 @@ Guards the decision in spec/decisions/canonical-normalizer.md:
   - whitespace AND comments are trivia
   - the module is self-contained (audited separately by the codegen test)
 """
+
+from __future__ import annotations
 
 from sysml2py_lab.normalize import (
     ALIASES,

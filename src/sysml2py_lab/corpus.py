@@ -127,9 +127,6 @@ def add_file(
     )
     if function is not None:
         entry["function"] = function
-    elif "function" in entry:
-        # keep provenance if a non-mining caller re-adds an existing entry
-        pass
     manifest["files"][rel] = entry
     if generated_by is not None:
         manifest["generated_by"] = generated_by
