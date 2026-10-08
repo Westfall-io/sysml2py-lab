@@ -222,19 +222,33 @@ def test_ir_fidelity_and_roundtrip_family():
 
 def test_kind_from_relationship_model():
     """kind/known (fidelity) derive from the issue-6 children model, not a
-    hard-coded guess: a modelled kind stays modelled, and a header whose kind
-    is NOT in the vocabulary reports opaque."""
-    from sysml2py_lab.ir import _parse_header
-    # 'part' is a known member kind in the children model
+    hard-coded guess (round-3 C1): a kind ONLY in the model vocabulary (not
+    in the static table) must be derived as a typed kind, and the model must
+    change classification vs relying on the static table alone."""
+    from sysml2py_lab.ir import _parse_header, _kind_vocab_from_model, _KIND_KEYWORDS
+    # 'part' is a known member kind in the children model (and static table)
     hdr = _parse_header(tokenize_sysml("part adult[1] : Person;"),
-                        vocab={"part", "attribute", "port", "state"})
+                        vocab=set(_kind_vocab_from_model()))
     assert hdr["kind"] == "part"
     assert hdr["multiplicity"] == "1"
     assert hdr["type_refs"] == ["Person"]
     assert hdr["known"] is True
-    # a kind NOT in the vocabulary is not reported as modelled
-    hdr2 = _parse_header(tokenize_sysml("wibble x;"), vocab={"part", "attribute"})
-    assert hdr2["known"] is False
+    # a kind ONLY in the model (actor/subject are in children.json but NOT in
+    # the static 16-keyword table) must be DERIVED from the model — this is
+    # the round-3 C1 test that fails if the model path is dead/vacuous.
+    assert "actor" not in _KIND_KEYWORDS, "test precondition: actor not static"
+    for k in ("actor", "subject", "objective", "message"):
+        h = _parse_header(tokenize_sysml(f"{k} x;"), vocab=set(_kind_vocab_from_model()))
+        assert h["kind"] == k, f"model kind {k} not derived (got {h['kind']}, known={h['known']})"
+        assert h["known"] is True
+        assert h["name"] == "x"
+    # without the model, those same headers must NOT be derived to that kind
+    # (only the static fallback applies)
+    h_nomodel = _parse_header(tokenize_sysml("actor x;"), vocab=None)
+    assert h_nomodel["kind"] != "actor", "actor should not classify without the model"
+    # a genuine unknown (not in model, not in static) stays opaque
+    h2 = _parse_header(tokenize_sysml("wibble x;"), vocab=set(_kind_vocab_from_model()))
+    assert h2["known"] is False
 
 
 def test_fidelity_opaque_for_unknown():
@@ -340,11 +354,27 @@ def test_span_tiling_no_overlap():
 
 
 def test_no_opaque_with_known_kind():
-    """Round-2 C1 regression: a node with a recognized kind must NEVER report
-    `opaque` fidelity — 'opaque' means "could not be classified", so an
-    opaque node with kind != 'unknown' is a fidelity lie.  (Round 1's lesson:
-    a green test standing next to a real loss; `use case` was classified
-    correctly but reported opaque because of a sep-normalization bug.)"""
+    """Round-3 regression: (a) a node with a recognized kind must NEVER report
+    `opaque` ('opaque' means "could not be classified" — an opaque node with a
+    known kind is a fidelity lie); (b) a kind must actually be DERIVED from the
+    relationship-model vocabulary (round-3 C1/C2: assert use_case and model-only
+    kinds classify against a vocab that lacks every static keyword, so a
+    reverted vocab/sep-normalization failure bites in isolation)."""
+    from sysml2py_lab.ir import _parse_header, _kind_vocab_from_model, _KIND_KEYWORDS
+    # (b) behavioural pin: vocab holds ONLY model-only kinds (none static), so
+    # deriving them is provably the model's doing, not the static table's.
+    model_vocab = set(_kind_vocab_from_model())
+    model_only = {k for k in model_vocab if k not in _KIND_KEYWORDS}
+    assert "usecase" in model_vocab, "precondition: usecase in model vocab"
+    assert "actor" in model_only, "precondition: actor is model-only"
+    # a vocab containing only model-only kinds — use_case must still derive
+    h = _parse_header(tokenize_sysml("use case def X;"),
+                      vocab=model_only | {"usecase"})
+    assert h["kind"] == "use_case", f"use_case not derived from model: {h}"
+    assert h["known"] is True
+    h2 = _parse_header(tokenize_sysml("actor x;"), vocab=model_only | {"actor"})
+    assert h2["kind"] == "actor" and h2["known"] is True
+    # (a) the invariant: no opaque node in family.sysml carries a known kind
     fam = (Path(__file__).resolve().parents[1] / "examples" / "family.sysml")
     if not fam.exists():
         pytest.skip("family.sysml not present")
@@ -353,3 +383,44 @@ def test_no_opaque_with_known_kind():
             if n.fidelity == "opaque" and n.kind != "unknown"
             and n.kind not in ("root", "brace_open", "brace_close", "block", "comment")]
     assert not lies, f"opaque nodes with known kind: {lies}"
+
+
+def test_opener_not_statement_terminated():
+    """Round-3 W-A/W-B regression: a `;`-terminated or already-closed
+    statement must NOT adopt a following block (structural misattribution is
+    invisible to byte coverage)."""
+    # consecutive blocks: second block is an anonymous block, not part of `a`
+    root = parse_ir("part a { x; } { y; }")
+    tops = [(n.kind, getattr(n, "name", "")) for n in root.children]
+    assert ("block", "") in tops, f"expected anonymous block for 2nd block: {tops}"
+    part_a = [n for n in root.children if n.kind == "part" and n.name == "a"][0]
+    assert sum(1 for c in part_a.children if c.kind == "brace_close") == 1, \
+        "part a must own exactly one body"
+    # a ;-terminated statement must NOT adopt a following block (W-A)
+    root2 = parse_ir("part a; { y; }")
+    y_owner = None
+    for n in root2.walk():
+        if n.name == "y":
+            y_owner = n
+            parents = [c for c in root2.walk() if y_owner in c.children]
+            assert not any(p.kind == "part" for p in parents), \
+                "y must not be nested inside ;-terminated part a"
+            break
+    assert y_owner is not None, "y was not parsed at all"
+    # package-level: part b must not nest inside ;-terminated part a (it may
+    # sit in an anonymous block sibling to part a, both inside the package)
+    root3 = parse_ir("package P { part a; { part b; } }")
+    flat_b = [n for n in root3.walk() if n.kind == "part" and n.name == "b"]
+    assert flat_b, "part b not parsed"
+    b = flat_b[0]
+    # walk up: no ancestor may be part a
+    def _ancestors(node):
+        return [p for p in root3.walk() if node in p.children]
+    up = _ancestors(b)
+    while up:
+        assert up[0].name != "a", "part b must not nest inside part a"
+        prev = up[0]
+        up = _ancestors(prev) if prev.kind != "root" else []
+    # b must be reachable from the package, not from a sibling part
+    pkg = [n for n in root3.walk() if n.kind == "package" and n.name == "P"][0]
+    assert any(n is b for n in pkg.walk()), "part b must live inside package P"

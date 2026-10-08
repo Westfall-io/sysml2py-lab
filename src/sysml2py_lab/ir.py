@@ -228,6 +228,21 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
     `modelled` (the relationship model says that member kind is valid).
     """
     words = [t.text for t in tokens if t.kind in (WORD, UNRESTRICTED_NAME, SYMBOL, STRING)]
+    # normalize a vocab stem for kind lookup (spaces AND underscores removed)
+    def _norm(w: str) -> str:
+        return w.replace(" ", "").replace("_", "")
+
+    norm_vocab = {_norm(v) for v in vocab} if vocab else None
+
+    def _is_kind_word(w: str) -> bool:
+        # a kind token is either a static keyword OR a recognized stem from
+        # the relationship-model vocabulary (round-3 C1: derive, don't just
+        # validate — `actor`/`subject`/`message`/... are real model kinds
+        # that must not be downgraded to opaque).
+        if w in _KIND_KEYWORDS:
+            return True
+        return norm_vocab is not None and _norm(w) in norm_vocab
+
     kind = None
     name = ""
     short_name = ""
@@ -246,7 +261,7 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
             kind = "use_case"
             i += 2
             continue
-        if w in _KIND_KEYWORDS and kind is None:
+        if _is_kind_word(w) and kind is None:
             kind = w
             i += 1
             continue
@@ -294,26 +309,11 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
         kind = "unknown"
     if not short_name:
         short_name = name
-    # fidelity: 'modelled' iff the kind stem is in the relationship-model
-    # vocabulary (issue #6 children model).  When vocab is absent we fall
-    # back to the static _KIND_KEYWORDS table (known iff not unknown).
+    # fidelity: 'modelled' iff the kind is recognized.  kind is now DERIVED
+    # from the relationship-model vocabulary (with _KIND_KEYWORDS as the
+    # fallback), so every non-unknown kind is a genuine model kind — opaque
+    # is then reserved strictly for "could not be classified" (round-3 C1).
     known = kind != "unknown"
-    if vocab:
-        # normalize spaces AND underscores on both sides so two-word kinds
-        # ('use case' -> 'use_case') match the vocabulary's 'usecase' stems
-        # (round-2 C1), and so an underscore-separated vocab entry matches a
-        # space-separated header keyword.
-        def _norm(s: str) -> str:
-            return s.replace(" ", "").replace("_", "")
-
-        stem = _norm(kind)
-        norm_vocab = {_norm(v) for v in vocab}
-        known = stem in norm_vocab or any(v.startswith(stem) for v in norm_vocab)
-        # `value` is a legitimate _KIND_KEYWORDS entry that the children-model
-        # vocab does not carry; don't downgrade it to opaque just because the
-        # vocab lacks the stem (round-2 W3).
-        if not known and kind in _KIND_KEYWORDS:
-            known = True
     return {
         "kind": kind,
         "name": name,
@@ -368,16 +368,17 @@ def parse_ir(text: str, model_path: str | None = None) -> IRNode:
         # `{` opens a block: the node we just created becomes the container
         if seg_text == "{":
             brace = IRNode(kind="brace_open", source_span=(st, en), raw_text="{")
-            # W5 (r1) + W1 (r2): only treat the last child as a real opener
-            # if it is a statement/kind node — never a comment, a previous
-            # block's brace_close, a brace, or a node that already owns a
-            # closed body (two consecutive blocks would otherwise merge into
-            # one opener).
+            # W5 (r1) + W1 (r2) + W-A (r3): only treat the last child as a
+            # real opener if it is a statement/kind node — never a comment, a
+            # previous block's brace_close, a brace, an anonymous block, a
+            # node that already owns a closed body, OR a `;`-terminated
+            # statement (which cannot open a following block).
             opener = None
             if parent.children:
                 cand = parent.children[-1]
-                if cand.kind not in ("comment", "brace_close", "brace_open", "block") and not any(
-                        c.kind == "brace_close" for c in cand.children):
+                if cand.kind not in ("comment", "brace_close", "brace_open", "block") \
+                        and not any(c.kind == "brace_close" for c in cand.children) \
+                        and not cand.raw_text.rstrip().endswith(";"):
                     opener = cand
             if opener is not None:
                 opener.children.append(brace)
