@@ -1,12 +1,24 @@
+"""Deterministic AST-class codegen (issue #9).
+
+Turns the committed spec artifacts (language_spec.json + children.json +
+modifiers.json + corpus manifest) into a generated ``sysml2py`` package with
+per-rule AST node classes, a membership-dispatch table, and a provenance
+stamp.
+
+Determinism: the generator reads only committed metadata; ``generated_at`` is
+injected (the CLI defaults to a fixed SOURCE_DATE_EPOCH-style value so two
+runs are byte-identical).  ``--no-clobber``-style safety: the CLI refuses to
+overwrite an existing package root without an explicit flag.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..discover import DiscoveryResult
+from .model import IR_KIND_ALIASES, CodegenModel
 
 
 @dataclass(frozen=True)
@@ -15,6 +27,9 @@ class EmitOptions:
 
     version: str = "0.0.0"
     package_name: str = "sysml2py"
+    generated_at: str | None = None
+    repo_root: Path | None = None
+    overwrite: bool = False
 
 
 def _template_env() -> Environment:
@@ -27,57 +42,166 @@ def _template_env() -> Environment:
     return env
 
 
-def emit_sysml2py(out_dir: Path, discovery: DiscoveryResult, opts: EmitOptions | None = None) -> Path:
-    """
-    Write a generated `sysml2py` package to `out_dir/sysml2py/`.
+def _emit_ast_classes(model: CodegenModel) -> str:
+    env = _template_env()
+    kinds = model.node_kinds()
+    return env.get_template("ast_classes.py.j2").render(
+        header=_HEADER,
+        node_kinds=kinds,
+        ir_kind_aliases=IR_KIND_ALIASES,
+    )
 
-    Returns the path to the generated package root.
+
+def _emit_ast_dispatch(model: CodegenModel) -> str:
+    env = _template_env()
+    dispatch = model.dispatch_map()
+    return env.get_template("ast_dispatch.py.j2").render(
+        header=_HEADER,
+        dispatch_map=dispatch,
+        ir_kind_aliases=IR_KIND_ALIASES,
+        class_to_body=model.owned_body_map(),
+    )
+
+
+def _emit_provenance(model: CodegenModel, opts: EmitOptions, repo_root: Path, generated_at: str) -> str:
+    env = _template_env()
+    prov = model.provenance(repo_root, opts.version, generated_at)
+    return env.get_template("provenance.py.j2").render(
+        header=_HEADER,
+        provenance=prov,
+    )
+
+
+def emit_sysml2py(
+    out_dir: Path,
+    opts: EmitOptions | None = None,
+    model: CodegenModel | None = None,
+) -> Path:
+    """Write a generated `sysml2py` package to `out_dir/sysml2py/`.
+
+    Returns the path to the generated package root.  Does NOT overwrite an
+    existing package without ``opts.overwrite``.
     """
     opts = opts or EmitOptions()
     out_dir = out_dir.expanduser().resolve()
+    # emit.py is at <root>/src/sysml2py_lab/codegen/emit.py → parents[3] = root
+    repo_root = opts.repo_root or Path(__file__).resolve().parents[3]
+    model = model or CodegenModel.load(repo_root)
+    # Deterministic provenance by default: a fixed generated-at stamp so two
+    # runs are byte-identical.  Callers may inject an explicit timestamp.
+    generated_at = opts.generated_at if opts.generated_at is not None else "1970-01-01T00:00:00Z"
     pkg_root = out_dir / opts.package_name
     src_pkg = pkg_root / "src" / opts.package_name
 
+    if src_pkg.exists() and not opts.overwrite:
+        raise FileExistsError(
+            f"{src_pkg} already exists — pass overwrite=True (CLI: --overwrite) "
+            f"to regenerate in place"
+        )
+
     env = _template_env()
 
-    discovered_keywords = sorted(discovery.statement_prefix_counts.keys())
-
     # Create directories
-    (src_pkg).mkdir(parents=True, exist_ok=True)
+    src_pkg.mkdir(parents=True, exist_ok=True)
 
-    # Render templates
+    # AST classes + dispatch + provenance
+    (src_pkg / "ast_classes.py").write_text(_emit_ast_classes(model), encoding="utf-8")
+    (src_pkg / "ast_dispatch.py").write_text(_emit_ast_dispatch(model), encoding="utf-8")
+    (src_pkg / "provenance.py").write_text(
+        _emit_provenance(model, opts, repo_root, generated_at), encoding="utf-8"
+    )
+
+    # Canonical normalize module copied into generated package verbatim (the
+    # single normalizer implementation, issue #8).
+    _norm_src = (Path(__file__).resolve().parents[1] / "normalize.py").read_text(encoding="utf-8")
+    (src_pkg / "normalize.py").write_text(_norm_src, encoding="utf-8")
+
+    # Package metadata + init re-exporting the generated classes
     (pkg_root / "pyproject.toml").write_text(
         env.get_template("pyproject.toml.j2").render(version=opts.version),
         encoding="utf-8",
     )
-
     (src_pkg / "__init__.py").write_text(
-        env.get_template("pkg_init.py.j2").render(discovered_keywords=discovered_keywords),
-        encoding="utf-8",
-    )
-
-    (src_pkg / "nodes.py").write_text(
-        env.get_template("nodes.py.j2").render(discovered_keywords=discovered_keywords),
-        encoding="utf-8",
-    )
-
-    # Canonical normalize module copied into generated package verbatim, so
-    # the generated sysml2py is self-contained AND uses the SAME canonical
-    # normalizer as the lab (issue #8 acceptance: "one implementation,
-    # shipped by codegen" — guaranteed by copying the file, not re-typing).
-    _norm_src = (Path(__file__).resolve().parents[1] / "normalize.py").read_text(encoding="utf-8")
-    (src_pkg / "normalize.py").write_text(_norm_src, encoding="utf-8")
-
-    # Minimal README for generated package
-    (pkg_root / "README.md").write_text(
-        (
-            "# sysml2py (generated)\n\n"
-            "This package was generated by **sysml2py-lab**.\n\n"
-            "MVP capabilities:\n"
-            "- Generic `Statement`, `Block`, `Document`\n"
-            "- `dump()` emits normalized text\n"
+        env.get_template("pkg_init.py.j2").render(
+            node_kinds=model.node_kinds(),
         ),
         encoding="utf-8",
     )
 
+    (pkg_root / "README.md").write_text(
+        (
+            "# sysml2py (generated)\n\n"
+            "This package was generated by **sysml2py-lab** from the SysML v2\n"
+            "grammar + relationship model + corpus (issues #6/#7/#8/#9).\n\n"
+            "Capabilities:\n"
+            "- Generated AST node classes per grammar rule\n"
+            "- Membership-dispatch table from children.json\n"
+            "- `dump()` / `get_definition()` on every node (loss-minimizing)\n"
+            "- `Unsupported` nodes carry raw text (zero NotImplementedError)\n"
+        ),
+        encoding="utf-8",
+    )
+
+    _ruff_format(src_pkg)
+
     return pkg_root
+
+
+def _ruff_format(src_pkg: Path) -> None:
+    """Normalize generated code style via ruff (deterministic).
+
+    The library ships a black.yml workflow, so generated code must pass
+    black/ruff at the lab's line-length (100).  Rather than hand-formatting
+    in every template, emit semantically-correct code then let `ruff format`
+    normalize style.
+    Templates must be lint-clean outright — the generator does NOT run
+    `ruff check --fix` (review r3/r4: self-fixing would vacate the lint
+    gate); `test_generated_code_passes_ruff` runs a real check.  `ruff
+    format` is deterministic, so this does not break the byte-identical
+    determinism gate.  If ruff is unavailable, the generated tree is still
+    emitted (style is a CI concern, not a correctness one).
+    """
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path as _P
+
+    # Prefer the ruff that lives beside the running interpreter (the lab venv).
+    ruff = shutil.which("ruff")
+    if ruff is None:
+        _candidate = _P(sys.executable).parent / "ruff"
+        if _candidate.exists():
+            ruff = str(_candidate)
+    if ruff is None:
+        return
+    try:
+        # NOTE: normalize.py is a VERBATIM copy of the lab's single-sourced
+        # canonical normalizer (issue #8) — it must stay byte-identical, so it
+        # is excluded from ruff format (ruff would rewrite its style).  Target
+        # the four generated files explicitly.
+        #
+        # We run `ruff format` (style normalization) but deliberately NOT
+        # `ruff check --fix`: templates must emit lint-clean code, and the
+        # acceptance test `test_generated_code_passes_ruff` runs a real
+        # `ruff check` (no --fix) so it can catch a template emitting lint.
+        gen_files = [
+            str(src_pkg / f)
+            for f in ("ast_classes.py", "ast_dispatch.py", "provenance.py", "__init__.py")
+        ]
+        # Pin ruff's config explicitly as belt-and-braces: the generated
+        # pyproject.toml now ships [tool.ruff] line-length=100, so discovery
+        # finds 100 in any location (r7 N1); the explicit --config guards
+        # against a future where the pyproject is missing.
+        subprocess.run(
+            [ruff, "format", "--quiet", "--no-cache", "--config", "line-length=100", *gen_files],
+            check=False,
+            capture_output=True,
+        )
+    except OSError as exc:  # pragma: no cover - defensive
+        print(f"[emit] ruff post-format skipped: {exc}", file=sys.stderr)
+
+
+_HEADER = """\
+# Generated by sysml2py-lab — do not edit.
+# Regenerate with: sysml2py-lab generate --out <dir>
+"""

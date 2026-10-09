@@ -24,10 +24,28 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("discover", help="Scan corpus and print discovered statement keyword counts.")
     d.add_argument("corpus", type=Path)
 
-    g = sub.add_parser("generate", help="Discover + emit a generated sysml2py package.")
-    g.add_argument("corpus", type=Path)
+    g = sub.add_parser(
+        "generate",
+        help="Generate a sysml2py package with AST classes from the spec + corpus.",
+    )
     g.add_argument("--out", type=Path, default=Path("out"))
     g.add_argument("--version", default="0.0.0")
+    g.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow overwriting an existing generated package root (default: refuse).",
+    )
+    g.add_argument(
+        "--generated-at",
+        default=None,
+        help="Inject a timestamp into the provenance stamp.  Default: fixed "
+        "SOURCE_DATE_EPOCH-style value so two runs are byte-identical.",
+    )
+    g.add_argument(
+        "--generated-at-now",
+        action="store_true",
+        help="Use the current time in provenance (explicit opt-in to nondeterminism).",
+    )
 
     iv = sub.add_parser("inputs", help="Grammar input management (vendor / verify).")
     iv_sub = iv.add_subparsers(dest="inputs_cmd", required=True)
@@ -154,8 +172,24 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "generate":
-        res = discover_corpus(args.corpus)
-        pkg_root = emit_sysml2py(args.out, res, opts=EmitOptions(version=args.version))
+        # Deterministic by default: fixed generated-at so two runs are
+        # byte-identical (acceptance criterion).  --generated-at-now opts
+        # into wall-clock provenance explicitly.
+        generated_at = args.generated_at
+        if generated_at is None and not args.generated_at_now:
+            generated_at = "1970-01-01T00:00:00Z"
+        elif generated_at is None:
+            import datetime as _dt
+
+            generated_at = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        pkg_root = emit_sysml2py(
+            args.out,
+            opts=EmitOptions(
+                version=args.version,
+                generated_at=generated_at,
+                overwrite=args.overwrite,
+            ),
+        )
         print(str(pkg_root))
         return 0
 

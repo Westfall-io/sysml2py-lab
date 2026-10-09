@@ -20,3 +20,12 @@ dev = [
 
 [tool.hatch.build]
 packages = ["src/sysml2py"]
+
+# Formatting config is pinned here (NOT discovered by walking up), so ruff /
+# black agree with `_ruff_format` regardless of where the tree is generated.
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.black]
+line-length = 100

@@ -1,0 +1,22 @@
+{{ header }}
+"""Generated provenance stamp (issue #9).
+
+Deterministic: the hashes are of committed spec/corpus artifacts; the
+generation timestamp is injected at emit time (never ``Date.now()``-style
+nondeterminism).  Two consecutive runs with the same inputs are
+byte-identical.
+"""
+
+from __future__ import annotations
+
+PROVENANCE = {
+{% for key, value in provenance.items() %}
+    "{{ key }}": {{ value|tojson }},
+{% endfor %}
+}
+
+GRAMMAR_SHA256 = PROVENANCE["grammar_sha256"]
+SPEC_SHA256 = PROVENANCE["spec_sha256"]
+CORPUS_MANIFEST_SHA256 = PROVENANCE["corpus_manifest_sha256"]
+GENERATOR_VERSION = PROVENANCE["generator_version"]
+GENERATED_AT = PROVENANCE["generated_at"]
