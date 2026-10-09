@@ -286,7 +286,8 @@ def _parse_header(tokens: list[Token], vocab: set[str] | None = None) -> dict:
             continue
         if kind is None and w in ("private", "public", "protected", "ref",
                                   "readonly", "derived", "end", "abstract",
-                                  "variation"):
+                                  "variation", "in", "out", "inout",
+                                  "individual", "snapshot", "timeslice"):
             modifiers.append(w)
             i += 1
             continue

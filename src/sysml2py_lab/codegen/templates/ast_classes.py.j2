@@ -270,7 +270,16 @@ class Node:
         else:
             parts: list[str] = []
             parts.extend(self.modifiers)
-            if self.ir_kind or self.kind:
+            if self.short_name:
+                # W1-4 r2 / r3 W1-6: reconstruct the short name as the angle
+                # form "<s>" (parse_ir's short-name vocabulary), so build_node()
+                # -> dump() does not drop it and does not emit non-SysML "~s".
+                head0 = (self.ir_kind or self.kind)
+                if self.name:
+                    parts.append(f"{head0} <{self.short_name}> {self.name}")
+                else:
+                    parts.append(f"{head0} <{self.short_name}>")
+            elif self.ir_kind or self.kind:
                 head = self.ir_kind or self.kind
                 if self.name:
                     parts.append(f"{head} {self.name}")
@@ -283,13 +292,21 @@ class Node:
                 parts.append(self.name)
             if self.multiplicity:
                 parts.append(self.multiplicity)
+            if self.type_refs:
+                # W1-4 r2: reconstruct the typed reference (": ref"), matching
+                # the builder's _render_sysml, so it isn't dropped on Node.dump.
+                parts.extend(f": {t}" for t in self.type_refs)
             if parts:
                 out.append(" ".join(parts))
         for c in self.children:
             d = c.dump()
             if d:
                 out.append(d)
-        return "".join(out)
+        # r4 #8: parser-produced trees carry raw_text (already ;/{/} terminated)
+        # and join as-is; builder-built nodes (no raw_text) enter the reconstruct
+        # branch, so separate siblings with a newline or they concatenate.
+        sep = "" if self.raw_text else "\n"
+        return sep.join(out)
 
     def get_definition(self) -> dict:
         """Serialize back to an IR-JSON dict (preserving the IR coarse kind)."""

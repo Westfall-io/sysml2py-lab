@@ -668,3 +668,466 @@ def shutil_which_ruff() -> str | None:
         if cand.exists():
             ruff = str(cand)
     return ruff
+
+
+# ---------------------------------------------------------------------------
+# Phase-5 builder API (issue #10): casting + syntactic printer
+# ---------------------------------------------------------------------------
+
+def _strip_meta(x):
+    """Drop the AST's default provenance metadata so the builder's sparse IR
+    compares semantically equal to the reparsed get_definition() dict.
+
+    source_span and fidelity are AST-internal default bookkeeping (not
+    authored content); empty-valued fields are dropped on both sides.
+    """
+    META_KEYS = {"source_span", "fidelity"}
+    if isinstance(x, dict):
+        out = {}
+        for k, v in x.items():
+            if k in META_KEYS:
+                continue
+            sv = _strip_meta(v)
+            if sv in (None, "", 0) or sv == []:
+                continue
+            out[k] = sv
+        return out
+    if isinstance(x, list):
+        return [_strip_meta(i) for i in x]
+    return x
+
+
+def test_builder_api_casts_semantic_content(tmp_path):
+    """Phase-5 casting: build -> Node -> get_definition() preserves every
+    authored field element-for-element, asserted against a HAND-WRITTEN
+    expected IR literal (W1-8) so a dropped field fails the test.
+
+    Provenance-only metadata (source_span, fidelity) is the AST's default
+    bookkeeping, not authored content, and is excluded from the comparison.
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Satellite")
+        panel = sysml2py.PartUsageBuilder("Panel")._set_isAbstract()
+        sat._set_child(panel)
+
+        reparsed = _strip_meta(sat.build_node().get_definition())
+        # hand-written expected IR: if _to_ir (or from_ir) drops any authored
+        # field, the equality fails — not just the spot-checks.
+        expected = {
+            "kind": "part",
+            "name": "Satellite",
+            "children": [
+                {
+                    "kind": "part",
+                    "name": "Panel",
+                    "modifiers": ["abstract"],
+                }
+            ],
+        }
+        assert reparsed == expected, f"builder cast drifted: {reparsed}"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_typed_by_casts_to_type_refs(tmp_path):
+    """Phase-5 B1: _set_typed_by emits type_refs (the AST IR key), not a
+    non-existent typed_by key, and survives the round-trip."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        p = sysml2py.PartUsageBuilder("Panel")._set_typed_by(
+            sysml2py.PartUsageBuilder("PanelDef")
+        )
+        defn = _strip_meta(p.build_node().get_definition())
+        assert defn["type_refs"] == ["PanelDef"], defn
+        # must not throw (typed_by is not an AST IR key)
+        assert "typed_by" not in defn
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_syntactic_dump_parses_back(tmp_path):
+    """Phase-5 syntactic printer: dump() emits grammatical, brace-structured
+    SysML that the lab's parse_ir recovers as a brace-block tree with the
+    authored child structure intact (root -> Sat -> Panel).
+
+    W1-9: assert on the RECOVERED SHAPE — the brace_open owner must contain a
+    descendant carrying the child name — not merely that a brace exists.
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Satellite")
+        sat._set_child(sysml2py.PartUsageBuilder("Panel"))
+        text = sat.dump()
+        assert "{" in text and "}" in text
+        assert "part Satellite" in text
+        assert "part Panel" in text
+
+        from sysml2py_lab.ir import parse_ir
+
+        ir = parse_ir(text)
+        # W2-3: assert on the node that OWNS the open brace (the brace block),
+        # not from the root, so a flattened recovery (sibling re-shape) fails.
+        owner = _find_brace_owner(ir)
+        assert owner is not None, "no brace block recovered"
+        assert _has_descendant_text(owner, "Panel"), "child name not under brace owner"
+        assert any(k == "brace_open" for k in _flatten_kinds(ir))
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def _has_descendant_text(node, text) -> bool:
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        raw = getattr(n, "raw_text", "") or ""
+        if text in raw:
+            return True
+        stack.extend(getattr(n, "children", []) or [])
+    return False
+
+
+def _find_brace_owner(node):
+    """Return the node that OWNS an opening brace (a brace block), else None."""
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        for child in getattr(n, "children", []) or []:
+            if getattr(child, "kind", "") == "brace_open":
+                return n
+            stack.append(child)
+    return None
+
+
+def _flatten_kinds(node) -> list[str]:
+    out = []
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        out.append(getattr(n, "kind", ""))
+        stack.extend(getattr(n, "children", []) or [])
+    return out
+
+
+def test_builder_coverage_matches_ir_aliases(tmp_path):
+    """Phase-5 W2-18: every non-denied IR_KIND_ALIASES entry produces a
+    builder class (no hand-maintained kind list to drift)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import importlib
+
+        from sysml2py_lab.codegen import model as m
+
+        builders_mod = importlib.import_module("sysml2py.builders")
+        deny = m.CodegenModel.BUILDER_DENY
+        expected = set(m.IR_KIND_ALIASES) - deny - {"unknown"}
+        # map IR kinds to generated node-kind names (the builder dict keys)
+        expected_cls = {
+            m.IR_KIND_ALIASES[k]
+            for k in expected if m.IR_KIND_ALIASES[k] != "Unsupported"
+        }
+        have = set(builders_mod._BUILDER_BY_NAME.keys())
+        # W2-2: assert SET EQUALITY (both directions) so an unintended builder
+        # is caught, not just a missing one.
+        unexpected = have - expected_cls
+        assert not unexpected, f"unexpected builder kinds: {sorted(unexpected)}"
+        missing = expected_cls - have
+        assert not missing, f"builder kinds missing: {sorted(missing)}"
+        assert "PartUsage" in have and "InterfaceUsage" in have
+        assert "package" not in have  # keyed by node-kind name, not IR kind
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_behavior_traversal_printer_directed(tmp_path):
+    """Phase-5 W1-10: behavioural coverage of traversal, printer, directed
+    features and _get_child (not just an import smoke test)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+        from sysml2py.printer import canonical, print_model
+
+        sat = sysml2py.PartUsageBuilder("Sat")
+        bus = sysml2py.PartUsageBuilder("Bus")._set_isAbstract()
+        pwr = sysml2py.PartUsageBuilder("Power")
+        sat._set_child(bus)
+        bus._set_child(pwr)
+
+        node = sat.build_node()
+        # traversal (pre/post order + find)
+        names_pre = [n.name for n in sysml2py.walk_preorder(node)]
+        assert names_pre == ["Sat", "Bus", "Power"], names_pre
+        names_post = [n.name for n in sysml2py.walk_postorder(node)]
+        assert names_post == ["Power", "Bus", "Sat"], names_post
+        assert sysml2py.find(node, "Power") is not None
+        assert len(sysml2py.find_all(node, "Power")) == 1
+
+        # printer routes a builder-built tree through _render_sysml (W1-7);
+        # pass the builder (the natural authoring handle), not the lifted Node
+        text = print_model(sat)
+        assert "part Sat" in text and "{" in text
+        assert canonical(sat)  # canonicalizes without error
+
+        # a bare Node still renders via dump()
+        text_node = print_model(node)
+        assert "part Sat" in text_node
+
+        # _get_child feature chain
+        got = sat._get_child("Bus.Power")
+        assert got is pwr
+
+        # add_directed_feature honours kind_name (W1-6)
+        ref = sysml2py.PartUsageBuilder("R")
+        ref.add_directed_feature("in", name="f", kind_name="PortUsage")
+        assert isinstance(ref._children[-1], sysml2py.PortUsageBuilder)
+
+        # Visitor post-order (W2-11): after fires after descendants
+        order = []
+        class V(sysml2py.Visitor):
+            def before(self, n):
+                order.append(("b", n.name))
+            def after(self, n):
+                order.append(("a", n.name))
+        V().visit(node)
+        assert order == [("b", "Sat"), ("b", "Bus"), ("b", "Power"),
+                         ("a", "Power"), ("a", "Bus"), ("a", "Sat")], order
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_definition_cannot_be_typed(tmp_path):
+    """Phase-5 B3: a definition builder (_is_definition) rejects _set_typed_by."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        pkg_b = sysml2py.PackageBuilder("P")
+        assert pkg_b._is_definition is True
+        with pytest.raises(ValueError, match="cannot be typed"):
+            pkg_b._set_typed_by(sysml2py.PartUsageBuilder("X"))
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_coarse_vocabulary_and_enum(tmp_path):
+    """Phase-5 W1-3: the builder emits the coarse canonical-IR kind and
+    grammar modifier tokens (comparable with parse_ir), and enum modifiers
+    are keyed by slot name and emitted as the bare value."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        p = sysml2py.PartUsageBuilder("P")._set_direction("out")
+        # enum keyed by slot name, emitted as bare value
+        assert p._modifiers == {"direction": "out"}, p._modifiers
+        d = p.build_node().get_definition()
+        assert d["kind"] == "part" and d["modifiers"] == ["out"], d
+        assert "out part P" in p.dump()
+        # flag -> grammar token
+        q = sysml2py.PartUsageBuilder("Q")._set_isAbstract()
+        assert q.build_node().get_definition()["modifiers"] == ["abstract"]
+        # directed feature default uses coarse "reference" kind, and lifts to
+        # a real ReferenceUsage node (r3 B1 — not Unsupported)
+        b = sysml2py.PartUsageBuilder("Bus").add_directed_feature("in", "fuel")
+        f = b._get_child("fuel")
+        fn = f.build_node()
+        assert fn.__class__.__name__ == "ReferenceUsage", type(fn).__name__
+        assert fn.get_definition()["kind"] == "reference"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_is_legal_child_rejects_disallowed(tmp_path):
+    """Phase-5 r3 W1-4: is_legal_child rejects kinds that are not legal
+    children of the owned body (DefinitionBody for usage builders)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Sat")
+        assert sat.is_legal_child(sysml2py.AttributeUsageBuilder("A")) is True
+        assert sat.is_legal_child(sysml2py.PartUsageBuilder("P")) is True
+        # ActorUsage / ObjectiveRequirementUsage / TransitionUsage are NOT
+        # legal children of a part (they live in other bodies).
+        assert sat.is_legal_child(sysml2py.ActorUsageBuilder("AC")) is False
+        assert sat.is_legal_child(sysml2py.ObjectiveRequirementUsageBuilder("O")) is False
+        # r4 #1: a Package accepts usage members (package Family { part adult })
+        family = sysml2py.PackageBuilder("Family")
+        assert family.is_legal_child(sysml2py.PartUsageBuilder("adult")) is True
+        assert family.is_legal_child(sysml2py.AttributeUsageBuilder("mass")) is True
+        # r5 W1-1: a body with no children.json membership data never rejects
+        # (Import resolves to RelationshipBody, not a children.json key)
+        imp = sysml2py.ImportBuilder("x")
+        assert imp.is_legal_child(sysml2py.CommentBuilder("c")) is True
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_syntactic_multimember_roundtrip(tmp_path):
+    """Phase-5 r3 W1-8/9: with ';' terminators, a multi-member brace block
+    parses back into SEPARATE child nodes (not a swallowed single node), and
+    kind/name/modifiers recover per element from the builder's own dump()."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Satellite")
+        sat._set_child(sysml2py.PartUsageBuilder("Panel")._set_isAbstract())
+        sat._set_child(sysml2py.AttributeUsageBuilder("Mass")
+                       ._set_multiplicity("1..1")
+                       ._set_typed_by(sysml2py.PartUsageBuilder("MassDef")))
+        text = sat.dump()
+
+        from sysml2py_lab.ir import parse_ir
+
+        root = parse_ir(text)
+        sat_node = next((n for n in root.children if getattr(n, "kind", "") == "part"), None)
+        assert sat_node is not None and sat_node.name == "Satellite"
+        # brace-opener's owner carries the members; Panel and Mass are separate
+        owner = _find_brace_owner(root)
+        assert owner is not None
+        members = [c for c in getattr(owner, "children", [])
+                   if getattr(c, "kind", "") in ("part", "attribute")]
+        kinds = {c.kind for c in members}
+        assert "part" in kinds and "attribute" in kinds, [c.kind for c in members]
+        # the abstract modifier on Panel is preserved
+        panel = next((c for c in members if c.kind == "part"), None)
+        assert panel is not None and panel.modifiers == ["abstract"]
+        # r4 #5: type_refs and multiplicity are actually recovered from the text
+        mass = next((c for c in members if c.kind == "attribute"), None)
+        assert mass is not None, [c.kind for c in members]
+        assert mass.type_refs == ["MassDef"], mass.type_refs
+        assert mass.multiplicity == "1..1", mass.multiplicity
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_short_name_and_comment_text(tmp_path):
+    """Phase-5 r3 W1-5/6/7: builder short_name is emitted once, in angle form,
+    and reconstructs; Comment text is emitted as /* */ and reconstructs."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Satellite")._set_short_name("S")
+        # both dump paths now emit the short name once in angle form (r3 W1-5/6)
+        b_text = sat.dump()
+        assert "<S>" in b_text and "Satellite" in b_text, b_text
+        n_text = sat.build_node().dump()
+        assert "<S>" in n_text, n_text
+
+        cm = sysml2py.CommentBuilder("C")._set_text("hello world")
+        c_text = cm.dump()
+        assert "/* hello world */" in c_text, c_text
+
+        from sysml2py_lab.ir import parse_ir
+
+        # comment reparses (not unknown) once text is /* */ self-terminating
+        root = parse_ir(c_text)
+        kinds = list(_flatten_kinds(root))
+        assert "comment" in kinds, kinds
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_enum_validation_and_mutual_exclusion(tmp_path):
+    """Phase-5 r3 W2-12/11: enum setters reject invalid values; mutually
+    exclusive flag modifiers clear each other (cannot both render)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        with pytest.raises(ValueError):
+            sysml2py.PartUsageBuilder("P")._set_direction("sideways")
+        # abstract and variation are mutually exclusive
+        p = sysml2py.PartUsageBuilder("P")._set_isAbstract()._set_isVariation()
+        d = p.build_node().get_definition()
+        mods = d.get("modifiers", [])
+        assert not ({"abstract", "variation"} <= set(mods)), mods
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_directed_feature_roundtrip_and_slot_order(tmp_path):
+    """Phase-5 r4 #2/#4/B2: directed features reparse with their direction
+    modifier, and modifier ORDER follows the canonical slot order (not the
+    call order)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        # modifier order: direction(out) before isEnd before isReference etc.
+        p = (sysml2py.PartUsageBuilder("P")
+             ._set_isReference()._set_isEnd()._set_direction("out"))
+        text = p.dump()
+        # canonical slot order emits "out end ref" (not call order "ref end out")
+        assert text.startswith("out end ref part P;"), text
+        d = p.build_node().get_definition()
+        assert d["modifiers"] == ["out", "end", "ref"], d["modifiers"]
+
+        from sysml2py_lab.ir import parse_ir
+
+        root = parse_ir("out part P;")
+        n = next(c for c in root.children if getattr(c, "kind", "") == "part")
+        assert n.modifiers == ["out"], n.modifiers
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_set_text_comment_only(tmp_path):
+    """Phase-5 r5 W2-2/3 + r6 W2-1: _set_text is meaningful only for Comment.
+
+    A non-Comment builder REFUSES _set_text (text has no IR field on other
+    kinds, so it would silently vanish from build()/get_definition() while
+    showing in dump()); the Comment path emits /* text */ and casts back."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import pytest
+        import sysml2py
+
+        # non-comment builders refuse text (r6 W2-1) — no silent loss
+        with pytest.raises(TypeError):
+            (sysml2py.PartUsageBuilder("P")
+             ._set_child(sysml2py.PartUsageBuilder("x"))
+             ._set_text("note"))
+        # Comment still emits and casts (r3 W1-7)
+        c = sysml2py.CommentBuilder("C")._set_text("hi")
+        ctext = c.dump()
+        assert "/* hi */" in ctext, ctext
+        d = c.build_node().get_definition()
+        assert d["raw_text"] == "hi", d
+    finally:
+        sys.path.remove(str(pkg / "src"))
