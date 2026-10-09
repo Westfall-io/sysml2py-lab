@@ -1,33 +1,40 @@
 {{ header }}
 """Generated SysML text printer (issue #10, phase-5).
 
-Self-contained printer: renders a generated ``Node`` tree to textual SysML
-via the node's own ``dump()``, then canonicalizes with the shared normalizer
-for comparison.  ``print_model`` returns the rendered text; ``canonical``
-returns the canonical normalized form used by the casting harness.
+Self-contained printer: renders a generated ``Node`` *or* a phase-5
+``Builder`` tree to textual SysML.  Builder-built trees go through the
+builder's syntactic ``_render_sysml`` emitter (which produces brace-structured
+text the lab ``parse_ir`` recovers); parser-produced ``Node`` trees fall back
+to the node's own ``dump()``.  ``canonical`` returns the canonical normalized
+form used by the casting harness.
+
+NOTE: this module is intentionally reachable as ``sysml2py.printer`` (the
+submodule).  The convenience functions are ``print_model`` / ``canonical``,
+so no bare ``printer`` name shadows the submodule (reviewer W2-20).
 """
 
 from __future__ import annotations
 
-from .ast_classes import Node, beautify
-from .normalize import canonicalize, canonical_tokens
+from .ast_classes import beautify
+from .builders import Builder as _Builder
+from .normalize import canonicalize
 
-# ruff: noqa: I001, RUF022  (generated import block / __all__ ordering)
-
-__all__ = ["canonical", "canonicalize", "canonical_tokens", "print_model", "printer"]
+__all__ = ["canonical", "canonicalize", "print_model"]
 
 
-def printer(node: Node, *, indent: bool = True) -> str:
-    """Render ``node`` to textual SysML."""
-    text = node.dump()
+def _render(node, indent: bool) -> str:
+    if isinstance(node, _Builder):
+        text = node._render_sysml()
+    else:
+        text = node.dump()
     return beautify(text) if indent else text
 
 
-def print_model(node: Node, *, indent: bool = True) -> str:
-    """Alias for ``printer`` (0.5.3 ``dump``-once convenience)."""
-    return printer(node, indent=indent)
+def print_model(node, *, indent: bool = True) -> str:
+    """Render a generated Node or Builder tree to textual SysML."""
+    return _render(node, indent)
 
 
-def canonical(node: Node) -> str:
+def canonical(node) -> str:
     """Return the canonical normalized text for ``node``."""
-    return canonicalize(node.dump())
+    return canonicalize(_render(node, indent=False))

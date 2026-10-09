@@ -339,14 +339,30 @@ class CodegenModel:
 
     # -- builder API (issue #10) -----------------------------------------
 
-    # usage IR kinds that produce a builder class (subset of IR_KIND_ALIASES
-    # that are *usage* constructs an author builds; definitions added via
-    # `is_definition`).  Each maps to the generated class name via IR_KIND_ALIASES.
-    BUILDER_IR_KINDS: tuple[str, ...] = (
-        "package", "part", "item", "attribute", "port", "constraint",
-        "connection", "occurrence", "actor", "action", "state", "subject",
-        "use_case", "requirement", "comment", "alias",
+    # Usage/other IR kinds that produce a builder class.  Derived from
+    # IR_KIND_ALIASES MINUS an explicit deny-list (W2-18: derive from the
+    # alias table, not a hand-maintained parallel list, so drift is caught
+    # by the coverage test).  Each maps to a generated class via
+    # IR_KIND_ALIASES; every aliased kind not denied gets a builder.
+    BUILDER_DENY: frozenset[str] = frozenset(
+        {"brace_open", "brace_close", "root", "unknown", "import"}
     )
+
+    def builder_ir_kinds(self) -> list[str]:
+        """All IR kinds that should produce a builder class, in alias order."""
+        order = [
+            "package", "part", "item", "attribute", "port", "constraint",
+            "connection", "occurrence", "actor", "action", "state", "subject",
+            "use_case", "requirement", "interface", "message", "objective",
+            "succession", "transition", "comment", "alias",
+        ]
+        # include any alias not denied that isn't already listed (future-proof)
+        extra = [
+            k for k in IR_KIND_ALIASES
+            if k not in self.BUILDER_DENY and k not in order
+            and IR_KIND_ALIASES[k] != "Unsupported"
+        ]
+        return order + extra
 
     def builder_metadata(self) -> dict:
         """Descriptor data for the generated builders module (issue #10).
@@ -357,7 +373,7 @@ class CodegenModel:
         legal child kinds for its owned body (via children.json).
         """
         kinds_out = []
-        for ir_kind in self.BUILDER_IR_KINDS:
+        for ir_kind in self.builder_ir_kinds():
             cls_name = IR_KIND_ALIASES.get(ir_kind)
             if cls_name is None or cls_name == "Unsupported":
                 continue
@@ -368,18 +384,14 @@ class CodegenModel:
                     "class_name": cls_name,
                     "kind": cls_name,
                     "ir_kind": ir_kind,
-                    "is_definition": ir_kind
-                    in ("package",) or cls_name.endswith("Definition"),
+                    "is_definition": ir_kind == "package",
                     "owned_body": owned_body,
                     "owned_body_lit": repr(owned_body),
-                    "child_kinds": sorted(
-                        {k for slot in self.body_slots(owned_body) for k in slot.kinds}
-                        if owned_body
-                        else []
-                    ),
+                    "modifier_slots": self.modifier_slots("BasicUsagePrefix"),
                 }
             )
-        # legal children per owned body, from children.json
+        # legal children per owned body, from children.json (advisory — the
+        # resolver is not yet a load-bearing containment contract, B2/W2-15).
         legal: dict[str, list[str]] = {}
         for body in self.body_names():
             legal[body] = sorted(

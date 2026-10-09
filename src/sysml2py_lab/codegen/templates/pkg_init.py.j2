@@ -57,10 +57,10 @@ from .traversal import (
     Visitor,
 )
 from .printer import (
-    printer,
     print_model,
     canonical,
 )
+from . import printer as printer_module
 
 __all__ = [
     "Node",
@@ -98,7 +98,7 @@ __all__ = [
     "find_all",
     "resolve_chain",
     "Visitor",
-    "printer",
+    "printer_module",
     "print_model",
     "canonical",
 ]

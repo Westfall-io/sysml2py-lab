@@ -91,6 +91,12 @@ class Visitor:
         pass
 
     def visit(self, root: Node) -> None:
-        for node in walk_preorder(root):
-            self.before(node)
-            self.after(node)
+        """Depth-first traversal: ``before`` at entry, ``after`` at exit
+        (i.e. after all descendants — genuine pre/post hooks, W2-11)."""
+        self._visit(root)
+
+    def _visit(self, node: Node) -> None:
+        self.before(node)
+        for child in node.children:
+            self._visit(child)
+        self.after(node)

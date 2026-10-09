@@ -699,7 +699,8 @@ def _strip_meta(x):
 
 def test_builder_api_casts_semantic_content(tmp_path):
     """Phase-5 casting: build -> Node -> get_definition() preserves every
-    authored field (kind/name/children/modifiers) element-for-element.
+    authored field element-for-element, asserted against a HAND-WRITTEN
+    expected IR literal (W1-8) so a dropped field fails the test.
 
     Provenance-only metadata (source_span, fidelity) is the AST's default
     bookkeeping, not authored content, and is excluded from the comparison.
@@ -714,17 +715,42 @@ def test_builder_api_casts_semantic_content(tmp_path):
         panel = sysml2py.PartUsageBuilder("Panel")._set_isAbstract()
         sat._set_child(panel)
 
-        build_ir = sat._to_ir()
-        reparsed = sat.build_node().get_definition()
-        assert _strip_meta(build_ir) == _strip_meta(reparsed), (
-            "builder IR did not cast back; semantic drift"
+        reparsed = _strip_meta(sat.build_node().get_definition())
+        # hand-written expected IR: if _to_ir (or from_ir) drops any authored
+        # field, the equality fails — not just the spot-checks.
+        expected = {
+            "kind": "PartUsage",
+            "name": "Satellite",
+            "children": [
+                {
+                    "kind": "PartUsage",
+                    "name": "Panel",
+                    "modifiers": ["isAbstract"],
+                }
+            ],
+        }
+        assert reparsed == expected, f"builder cast drifted: {reparsed}"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_typed_by_casts_to_type_refs(tmp_path):
+    """Phase-5 B1: _set_typed_by emits type_refs (the AST IR key), not a
+    non-existent typed_by key, and survives the round-trip."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        p = sysml2py.PartUsageBuilder("Panel")._set_typed_by(
+            sysml2py.PartUsageBuilder("PanelDef")
         )
-        # spot-check the authored content survived verbatim
-        defn = _strip_meta(reparsed)
-        assert defn["kind"] == "PartUsage"
-        assert defn["name"] == "Satellite"
-        assert defn["children"][0]["name"] == "Panel"
-        assert defn["children"][0]["modifiers"] == ["isAbstract"]
+        defn = _strip_meta(p.build_node().get_definition())
+        assert defn["type_refs"] == ["PanelDef"], defn
+        # must not throw (typed_by is not an AST IR key)
+        assert "typed_by" not in defn
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
@@ -733,7 +759,11 @@ def test_builder_api_casts_semantic_content(tmp_path):
 def test_builder_syntactic_dump_parses_back(tmp_path):
     """Phase-5 syntactic printer: dump() emits grammatical, brace-structured
     SysML that the lab's parse_ir recovers as a brace-block tree with the
-    authored child structure intact (root -> Sat -> Panel)."""
+    authored child structure intact (root -> Sat -> Panel).
+
+    W1-9: assert on the RECOVERED SHAPE — the brace_open owner must contain a
+    descendant carrying the child name — not merely that a brace exists.
+    """
     pkg = _gen(tmp_path)
     sys.path.insert(0, str(pkg / "src"))
     sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -750,14 +780,24 @@ def test_builder_syntactic_dump_parses_back(tmp_path):
         from sysml2py_lab.ir import parse_ir
 
         ir = parse_ir(text)
-        kinds = _flatten_kinds(ir)
-        # the brace-block tree must contain the part wall + open/close braces
-        # (coarse IR classifies headers as unknown; structure is what casts)
-        assert "PartUsage" in kinds or "brace_open" in kinds
-        assert "brace_close" in kinds or "brace_open" in kinds
+        # the node owning brace_open must have a descendant carrying Panel
+        # (the recovered shape — re-nesting loses this, W1-9)
+        assert _has_descendant_text(ir, "Panel"), "child name not recovered"
+        assert any(k == "brace_open" for k in _flatten_kinds(ir))
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def _has_descendant_text(node, text) -> bool:
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        raw = getattr(n, "raw_text", "") or ""
+        if text in raw:
+            return True
+        stack.extend(getattr(n, "children", []) or [])
+    return False
 
 
 def _flatten_kinds(node) -> list[str]:
@@ -768,3 +808,104 @@ def _flatten_kinds(node) -> list[str]:
         out.append(getattr(n, "kind", ""))
         stack.extend(getattr(n, "children", []) or [])
     return out
+
+
+def test_builder_coverage_matches_ir_aliases(tmp_path):
+    """Phase-5 W2-18: every non-denied IR_KIND_ALIASES entry produces a
+    builder class (no hand-maintained kind list to drift)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import importlib
+
+        from sysml2py_lab.codegen import model as m
+
+        builders_mod = importlib.import_module("sysml2py.builders")
+        deny = m.CodegenModel.BUILDER_DENY
+        expected = set(m.IR_KIND_ALIASES) - deny - {"unknown"}
+        # map IR kinds to generated node-kind names (the builder dict keys)
+        expected_cls = {
+            m.IR_KIND_ALIASES[k]
+            for k in expected if m.IR_KIND_ALIASES[k] != "Unsupported"
+        }
+        have = set(builders_mod._BUILDER_BY_NAME.keys())
+        missing = expected_cls - have
+        assert not missing, f"builder kinds missing: {sorted(missing)}"
+        assert "PartUsage" in have and "InterfaceUsage" in have
+        assert "package" not in have  # keyed by node-kind name, not IR kind
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_behavior_traversal_printer_directed(tmp_path):
+    """Phase-5 W1-10: behavioural coverage of traversal, printer, directed
+    features and _get_child (not just an import smoke test)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+        from sysml2py.printer import canonical, print_model
+
+        sat = sysml2py.PartUsageBuilder("Sat")
+        bus = sysml2py.PartUsageBuilder("Bus")._set_isAbstract()
+        pwr = sysml2py.PartUsageBuilder("Power")
+        sat._set_child(bus)
+        bus._set_child(pwr)
+
+        node = sat.build_node()
+        # traversal (pre/post order + find)
+        names_pre = [n.name for n in sysml2py.walk_preorder(node)]
+        assert names_pre == ["Sat", "Bus", "Power"], names_pre
+        names_post = [n.name for n in sysml2py.walk_postorder(node)]
+        assert names_post == ["Power", "Bus", "Sat"], names_post
+        assert sysml2py.find(node, "Power") is not None
+        assert len(sysml2py.find_all(node, "Power")) == 1
+
+        # printer routes a builder-built tree through _render_sysml (W1-7);
+        # pass the builder (the natural authoring handle), not the lifted Node
+        text = print_model(sat)
+        assert "PartUsage Sat" in text and "{" in text
+        assert canonical(sat)  # canonicalizes without error
+
+        # a bare Node still renders via dump()
+        text_node = print_model(node)
+        assert "PartUsage Sat" in text_node
+
+        # _get_child feature chain
+        got = sat._get_child("Bus.Power")
+        assert got is pwr
+
+        # add_directed_feature honours kind_name (W1-6)
+        ref = sysml2py.PartUsageBuilder("R")
+        ref.add_directed_feature("in", name="f", kind_name="PortUsage")
+        assert isinstance(ref._children[-1], sysml2py.PortUsageBuilder)
+
+        # Visitor post-order (W2-11): after fires after descendants
+        order = []
+        class V(sysml2py.Visitor):
+            def before(self, n):
+                order.append(("b", n.name))
+            def after(self, n):
+                order.append(("a", n.name))
+        V().visit(node)
+        assert order == [("b", "Sat"), ("b", "Bus"), ("b", "Power"),
+                         ("a", "Power"), ("a", "Bus"), ("a", "Sat")], order
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_definition_cannot_be_typed(tmp_path):
+    """Phase-5 B3: a definition builder (_is_definition) rejects _set_typed_by."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        pkg_b = sysml2py.PackageBuilder("P")
+        assert pkg_b._is_definition is True
+        with pytest.raises(ValueError, match="cannot be typed"):
+            pkg_b._set_typed_by(sysml2py.PartUsageBuilder("X"))
+    finally:
+        sys.path.remove(str(pkg / "src"))
