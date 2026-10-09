@@ -4,15 +4,15 @@ import argparse
 import sys
 from pathlib import Path
 
+from .codegen.emit import EmitOptions, emit_sysml2py
 from .discover import discover_corpus
-from .codegen.emit import emit_sysml2py, EmitOptions
-from .grammar.inputs import verify_inputs, record_manifest
-from .grammar.spec import build_spec, write_spec
-from .grammar.inline import inline_fragments
-from .grammar.emit_tx import emit_tx
-from .grammar.modifiers import build_modifier_model, modifiers_for_kind, write_modifiers
 from .grammar.children import build_children_model, children_for_body, write_children
-from .ir import parse_ir, ir_to_json, render_ir, ir_fidelity_summary
+from .grammar.emit_tx import emit_tx
+from .grammar.inline import inline_fragments
+from .grammar.inputs import record_manifest, verify_inputs
+from .grammar.modifiers import build_modifier_model, modifiers_for_kind, write_modifiers
+from .grammar.spec import build_spec, write_spec
+from .ir import ir_fidelity_summary, ir_to_json, parse_ir
 from .lexer import tokenize_sysml
 
 
@@ -158,6 +158,29 @@ def main(argv: list[str] | None = None) -> int:
     cp_stats.add_argument("--corpus", type=Path, default=Path("corpus"), help="Corpus root (default: ./corpus)")
     cp_stats.add_argument("--model", type=Path, default=None, help="children.json path")
 
+    rg = sub.add_parser("regress", help="Issue #11 regression harness: replay / roundtrip / determinism / goldens / coverage.")
+    rg_sub = rg.add_subparsers(dest="regress_cmd", required=True)
+    _rg_common = [
+        ("--corpus", "Corpus root (default: repo ./corpus)"),
+        ("--model", "children.json path"),
+        ("--generated", "Generated package root (optional; enables the AST/roundtrip stages)"),
+    ]
+    for name, help_ in (("replay", "Replay every corpus file: IR + generated-classes canonical compare."),
+                        ("roundtrip", "text -> generated classes -> get_definition -> dump -> canonical compare.")):
+        rsub = rg_sub.add_parser(name, help=help_)
+        for flag, h in _rg_common:
+            rsub.add_argument(flag, type=Path, default=None, help=h)
+    rg_sub.add_parser("determinism", help="Generate twice; assert byte-identical output.")
+    rg_gold = rg_sub.add_parser("goldens", help="Check (or refresh, --write) committed golden snapshots.")
+    rg_gold.add_argument("--write", action="store_true", help="Refresh the goldens (intentional update commit).")
+    rg_gold.add_argument("--goldens-dir", type=Path, default=Path("goldens"), help="Goldens root (default: ./goldens)")
+    for flag, h in _rg_common:
+        rg_gold.add_argument(flag, type=Path, default=None, help=h)
+    rg_cov = rg_sub.add_parser("coverage", help="Coverage report vs the baseline; fails on regression.")
+    rg_cov.add_argument("--baseline", type=Path, default=None, help="Coverage baseline JSON (default: ./goldens/coverage-baseline.json)")
+    for flag, h in _rg_common:
+        rg_cov.add_argument(flag, type=Path, default=None, help=h)
+
     args = p.parse_args(argv)
 
     if args.cmd == "discover":
@@ -300,7 +323,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "corpus":
         import json as _json
-        from .corpus import add_file, verify_corpus, corpus_stats
+
+        from .corpus import add_file, corpus_stats, verify_corpus
         try:
             if args.corpus_cmd == "add":
                 rel = add_file(
@@ -332,6 +356,74 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         except Exception as e:
             print(f"corpus {args.corpus_cmd} FAILED: {e}", file=sys.stderr)
+            return 1
+
+    if args.cmd == "regress":
+        import json as _json
+
+        from . import regress as rg
+
+        corpus_dir = args.corpus.resolve() if getattr(args, "corpus", None) else rg.DEFAULT_CORPUS_DIR
+        model_path = str(args.model) if getattr(args, "model", None) else None
+        gen_pkg = str(args.generated.resolve()) if getattr(args, "generated", None) else None
+        cmd = args.regress_cmd
+        try:
+            if cmd == "replay":
+                report = rg.replay(corpus_dir, model_path=model_path, generated_pkg=gen_pkg)
+                s = report["summary"]
+                print(f"replay: {s['files']} files, {s['pass']} pass, {s['fail']} fail")
+                print("fidelity classes: " + _json.dumps(s["fidelity_classes"]))
+                for f in report["files"]:
+                    if not f.get("ok"):
+                        errs = "; ".join(f.get("errors", [])) or f.get("error", "")
+                        print(f"  FAIL {f['file']}: {errs} ir_rt={f.get('ir_roundtrip')} ast_rt={f.get('ast_roundtrip')}")
+                return 0 if not report["summary"]["fail"] else 1
+            if cmd == "roundtrip":
+                report = rg.roundtrip(corpus_dir, model_path=model_path, generated_pkg=gen_pkg)
+                s = report["summary"]
+                print(f"roundtrip: {s['files']} files, {s['pass']} pass, {s['fail']} fail")
+                for f in report["files"]:
+                    if not f.get("ok"):
+                        errs = "; ".join(f.get("errors", [])) or f.get("error", "")
+                        print(f"  FAIL {f['file']}: {errs}")
+                return 0 if not report["summary"]["fail"] else 1
+            if cmd == "determinism":
+                report = rg.determinism()
+                print(f"determinism: {'OK' if report['ok'] else 'FAIL'}")
+                for d in report.get("diffs", []):
+                    print(f"  diff {d}")
+                if not report.get("ok"):
+                    print("error:", report.get("error"))
+                return 0 if report.get("ok") else 1
+            if cmd == "goldens":
+                gold_dir = args.goldens_dir.resolve() if args.goldens_dir else rg.DEFAULT_GOLDENS_DIR
+                report = rg.goldens(corpus_dir, gold_dir, model_path=model_path,
+                                    generated_pkg=gen_pkg, write=args.write)
+                if args.write:
+                    print(f"goldens refreshed -> {report['dir']}")
+                    return 0
+                print(f"goldens: {'CLEAN' if report['ok'] else 'DIFF'}")
+                for c in report.get("changed", []):
+                    print(f"  {c}")
+                return 0 if report.get("ok") else 1
+            if cmd == "coverage":
+                base = args.baseline.resolve() if args.baseline else rg.DEFAULT_BASELINE
+                rg._ensure_pkg(gen_pkg)
+                try:
+                    report = rg.coverage(corpus_dir, model_path=model_path, baseline_path=base)
+                finally:
+                    rg._drop_pkg(gen_pkg)
+                print("coverage: " + _json.dumps(report["coverage"]))
+                if "baseline" in report:
+                    rat = report["ratchet"]
+                    print(f"ratchet: {'PASS' if rat['pass'] else 'REGRESSION'}")
+                    for r in rat.get("regressions", []):
+                        print(f"  {r}")
+                    return 0 if rat["pass"] else 1
+                print("ratchet: PASS (no baseline yet)")
+                return 0
+        except Exception as e:
+            print(f"regress {cmd} FAILED: {e}", file=sys.stderr)
             return 1
 
     return 2
