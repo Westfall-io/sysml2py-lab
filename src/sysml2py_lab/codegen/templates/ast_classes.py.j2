@@ -312,8 +312,18 @@ class {{ kind.name }}(Node):
                 Node.from_ir(c) if isinstance(c, dict) else c
                 for c in kid_dicts
             ]
+            # N2: splat only known Node fields; fail loudly on any IR key that
+            # is not a modeled field (a future IR key would otherwise raise a
+            # cryptic TypeError deep in the ctor).
+            _node_fields = {
+                "kind", "name", "short_name", "modifiers", "type_refs",
+                "multiplicity", "source_span", "raw_text", "fidelity",
+            }
+            _unknown = set(definition) - _node_fields - {"children"}
+            if _unknown:
+                raise ValueError(f"Unhandled IR keys in definition: {sorted(_unknown)}")
             super().__init__(
-                **{k: v for k, v in definition.items() if k != "kind" and k != "children"},
+                **{k: v for k, v in definition.items() if k in _node_fields},
                 children=kids,
             )
             self.kind = ir_kind

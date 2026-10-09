@@ -179,8 +179,9 @@ dirs or `--overwrite`.)
   omission) is already absent from the first `get_definition()` and is trivially
   reproduced, so the fixed point is stable at a lossy value.  Losses in
   `from_ir` are covered by `test_from_ir_forwards_full_ir_key_set`, which
-  derives the probe dict from the ctor signature and probes BOTH payload
-  paths (aliasless → Unsupported and modelled → Package).
+  probes by the **field surface** (Node's dataclass signature — Unsupported
+  mirrors it) over BOTH payload paths (aliasless → Unsupported and modelled →
+  Package), mutating each field and asserting it survives.
 - **Unsupported exercised (r8):** the CAST asserts `histogram["Unsupported"] > 0`.
   Note this proves *instantiation* of the path — every corpus node reaching
   `Unsupported` (brace_open/block/brace_close) carries an empty payload, so

@@ -439,10 +439,31 @@ def test_from_ir_forwards_full_ir_key_set(tmp_path):
             "type_refs": ["T"], "multiplicity": "[1]",
             "source_span": [3, 7], "raw_text": "raw", "fidelity": "test",
         }
+        # r10 W3: the field surface comes from Node alone; assert Unsupported
+        # mirrors it (all eleven Node fields present on Unsupported too), so an
+        # Unsupported-only ctor param cannot silently diverge.
+        node_surface = (
+            set(inspect.signature(sysml2py.Node.__init__).parameters)
+            - {"self", "definition"}
+        )
+        unsup_surface = (
+            set(inspect.signature(sysml2py.Unsupported.__init__).parameters)
+            - {"self", "definition", "kwargs"}
+        )
+        assert node_surface == unsup_surface, (
+            f"Node/Unsupported surfaces diverged: "
+            f"{sorted(node_surface - unsup_surface)} vs {sorted(unsup_surface - node_surface)}"
+        )
         # (kind, resolved_class_name); bogus routes to Unsupported, package
         # to Package (the modelled path at ast_classes.py.j2:224-236).
         for kind, resolved in (("bogus", "Unsupported"), ("package", "Package")):
-            cls = sysml2py.Node if kind == "bogus" else sysml2py.Package
+            # r10 C1: probe by the FIELD SURFACE, not the resolved class's
+            # declared signature.  Generated classes carry the template ctor
+            # (self, definition=None, *, raw_text=None, **kwargs) — no
+            # declared fields — so Package.__init__ would yield {raw_text}.
+            # Node's dataclass signature IS the field surface; Unsupported
+            # mirrors it by construction (all eleven Node fields).
+            cls = sysml2py.Node
             from_ir = sysml2py.Node.from_ir
             init_params = (
                 set(inspect.signature(cls.__init__).parameters)
