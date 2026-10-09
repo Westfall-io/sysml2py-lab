@@ -420,6 +420,11 @@ def test_from_ir_forwards_full_ir_key_set(tmp_path):
         and a modelled kind (``package`` -> Package), so both constructors
         are executed and checked;
       * each field is set to a distinctive sentinel and asserted to survive.
+        (Exception: ``children`` is sentinel-inert here — its empty sentinel
+        collides with the dataclass default, so it is not discriminated by
+        this loop.  ``children`` is gated on ALL THREE payload paths elsewhere:
+        the corpus CAST for the modelled path, ``test:398``/``:186`` for
+        Unsupported, and ``test:312`` for the IR-dict ctor.)
 
     Two legitimate exceptions to the forwarding rule are pinned explicitly:
     ``ir_kind`` is derived from ``kind`` (not read from ``d["ir_kind"]``),
@@ -495,6 +500,31 @@ def test_from_ir_forwards_full_ir_key_set(tmp_path):
                 assert node.kind == "Package" and node.ir_kind == "package", (
                     f"package path kind/ir_kind wrong: {node.kind!r}/{node.ir_kind!r}"
                 )
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_from_ir_rejects_unknown_ir_keys(tmp_path):
+    """r11 W2 gate: a future IR key is never SILENTLY dropped.
+
+    Both from_ir constructors (and the IR-dict ctor) must raise on any IR key
+    outside the modeled field set, so a field added to the IR but not yet
+    forwarded cannot vanish via d.get(...) — it must fail loudly instead.
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        for kind in ("package", "bogus"):
+            d = {"kind": kind, "name": "x", "future_field": 1}
+            with pytest.raises(ValueError):
+                sysml2py.Node.from_ir(d)
+        # IR-dict ctor path (a class instance built from a live definition dict)
+        with pytest.raises(ValueError):
+            sysml2py.Package({"kind": "package", "future_field": 1})
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))

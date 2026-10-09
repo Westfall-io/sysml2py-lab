@@ -181,7 +181,11 @@ dirs or `--overwrite`.)
   `from_ir` are covered by `test_from_ir_forwards_full_ir_key_set`, which
   probes by the **field surface** (Node's dataclass signature — Unsupported
   mirrors it) over BOTH payload paths (aliasless → Unsupported and modelled →
-  Package), mutating each field and asserting it survives.
+  Package), mutating each field and asserting it survives.  `children` is
+  sentinel-inert in that loop (empty sentinel == default); it is gated on all
+  three payload paths elsewhere: the corpus CAST (modelled), the dispatch /
+  C1 tests (Unsupported), and `test_ir_dict_constructor_roundtrips` (IR-dict
+  ctor).
 - **Unsupported exercised (r8):** the CAST asserts `histogram["Unsupported"] > 0`.
   Note this proves *instantiation* of the path — every corpus node reaching
   `Unsupported` (brace_open/block/brace_close) carries an empty payload, so

@@ -35,6 +35,15 @@ IR_KIND_ALIASES: dict[str, str] = {
 {% endfor %}
 }
 
+# The canonical IR dict field set (r11 W2).  Both from_ir constructors and
+# the IR-dict ctor reject any IR key outside this set, so a future IR field
+# can never be silently dropped via d.get(...).  ("children" is handled
+# separately by each path.)
+_NODE_IR_FIELDS = frozenset(
+    {"kind", "name", "short_name", "modifiers", "type_refs",
+     "multiplicity", "source_span", "raw_text", "fidelity"}
+)
+
 
 def valid_definition(definition, name):
     """Check a textX-style definition dict matches the expected node name.
@@ -161,6 +170,11 @@ class Unsupported:
         an anonymous ``block`` gets its own raw_text, but any child that is a
         modelled kind still lifts to its generated class.
         """
+        # r11 W2: symmetric with Node.from_ir — reject unknown IR keys so a
+        # future field is never silently dropped via d.get(...).
+        _unknown = set(d) - _NODE_IR_FIELDS - {"children"}
+        if _unknown:
+            raise ValueError(f"Unhandled IR keys in d: {sorted(_unknown)}")
         return cls(
             kind=d.get("kind", ""),
             ir_kind=d.get("kind", ""),
@@ -206,6 +220,12 @@ class Node:
         to ``Unsupported`` and the cast's ``unsupported_for_aliased`` check
         flags it.
         """
+        # r11 W2: symmetric with Unsupported.from_ir / the IR-dict ctor —
+        # reject unknown IR keys so a future field is never silently dropped
+        # via d.get(...).
+        _unknown = set(d) - _NODE_IR_FIELDS - {"children"}
+        if _unknown:
+            raise ValueError(f"Unhandled IR keys in d: {sorted(_unknown)}")
         kind = d.get("kind", "")
         cls_name = IR_KIND_ALIASES.get(kind, kind)
         node_cls = KIND_REGISTRY.get(cls_name, Unsupported)
@@ -312,18 +332,14 @@ class {{ kind.name }}(Node):
                 Node.from_ir(c) if isinstance(c, dict) else c
                 for c in kid_dicts
             ]
-            # N2: splat only known Node fields; fail loudly on any IR key that
-            # is not a modeled field (a future IR key would otherwise raise a
-            # cryptic TypeError deep in the ctor).
-            _node_fields = {
-                "kind", "name", "short_name", "modifiers", "type_refs",
-                "multiplicity", "source_span", "raw_text", "fidelity",
-            }
-            _unknown = set(definition) - _node_fields - {"children"}
+            # r11 W2/N2: splat only known Node fields; fail loudly on any IR
+            # key that is not a modeled field (a future IR key would otherwise
+            # raise a cryptic TypeError deep in the ctor).
+            _unknown = set(definition) - _NODE_IR_FIELDS - {"children"}
             if _unknown:
                 raise ValueError(f"Unhandled IR keys in definition: {sorted(_unknown)}")
             super().__init__(
-                **{k: v for k, v in definition.items() if k in _node_fields},
+                **{k: v for k, v in definition.items() if k in _NODE_IR_FIELDS},
                 children=kids,
             )
             self.kind = ir_kind
