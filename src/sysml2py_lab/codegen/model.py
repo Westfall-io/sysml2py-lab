@@ -267,7 +267,8 @@ class CodegenModel:
     def _owned_body_for(self, cls_name: str, _depth: int) -> str | None:
         if _depth > 25:
             return None
-        # guard against cycles not yet visible in the cache
+        # memoized result (the live cycle guard is the _depth bound above;
+        # the cache is only ever populated by the public wrapper post-resolve)
         if cls_name in self._owned_body_cache:
             return self._owned_body_cache[cls_name]
         r = self._by_name.get(cls_name)
@@ -316,10 +317,10 @@ class CodegenModel:
     def dispatch_map(self) -> dict[str, dict[str, str]]:
         """``{body_name: {member_kind: child_kind}}`` derived from children.json.
 
-        The child kind for a slot is the LAST element of the chain when the
-        chain is a single-element path to the kind, else the wrapper.  We use
-        the kind's own name when it is a modelled node kind; otherwise the
-        wrapper becomes the dispatch target (and may be Unsupported).
+        The child kind for a member is the member's own name when it is a
+        modelled node kind, else the slot's ``wrapper`` (or the member kind
+        itself when there is no wrapper, which may then be Unsupported at
+        dispatch time).  The ``chain`` field is NOT consulted here.
         """
         out: dict[str, dict[str, str]] = {}
         known = {k.name for k in self.node_kinds()}

@@ -48,8 +48,17 @@ def test_determinism_byte_identical(tmp_path):
     """
     p1 = _gen(tmp_path, "a")
     p2 = _gen(tmp_path, "b")
-    f1 = {p.relative_to(p1): p.read_bytes() for p in p1.rglob("*") if p.is_file()}
-    f2 = {p.relative_to(p2): p.read_bytes() for p in p2.rglob("*") if p.is_file()}
+    ign = {".ruff_cache", "__pycache__"}
+    f1 = {
+        p.relative_to(p1): p.read_bytes()
+        for p in p1.rglob("*")
+        if p.is_file() and not any(part in ign for part in p.relative_to(p1).parts)
+    }
+    f2 = {
+        p.relative_to(p2): p.read_bytes()
+        for p in p2.rglob("*")
+        if p.is_file() and not any(part in ign for part in p.relative_to(p2).parts)
+    }
     assert set(f1) == set(f2), f"file sets differ: {sorted(set(f1) ^ set(f2))}"
     for rel, b1 in f1.items():
         assert b1 == f2[rel], f"{rel} differs between runs"
@@ -128,11 +137,13 @@ def test_every_class_has_dump_and_get_definition(tmp_path):
 def test_zero_not_implemented_error(tmp_path):
     """Acceptance: zero NotImplementedError raises in generated output."""
     pkg = _gen(tmp_path)
-    for f in ("ast_classes.py", "ast_dispatch.py"):
-        src = (_src(pkg) / f).read_text(encoding="utf-8")
-        # count actual raise sites (not docstring mentions)
+    # N6: scan every generated .py (provenance/__init__ could carry a raise)
+    for f in sorted((_src(pkg) / "sysml2py").glob("*.py")):
+        if f.name == "normalize.py":
+            continue  # verbatim lab copy (issue #8)
+        src = f.read_text(encoding="utf-8")
         raises = re.findall(r"^\s*raise NotImplementedError", src, re.MULTILINE)
-        assert raises == [], f"{f} has NotImplementedError raises: {raises}"
+        assert raises == [], f"{f.name} has NotImplementedError raises: {raises}"
 
 
 def test_dispatch_table_and_unknown_fallback(tmp_path):
@@ -158,6 +169,19 @@ def test_dispatch_table_and_unknown_fallback(tmp_path):
             [{"kind": "MysteryThing", "raw_text": "???", "children": []}],
         )
         assert kids[0].dump() == "???"
+        # W3: an unknown kind WITH a subtree must keep that subtree (not
+        # erase it) — Unsupported.from_ir preserves children.
+        kids = sysml2py.dispatch_children(
+            "PackageBody",
+            [
+                {
+                    "kind": "MysteryThing",
+                    "raw_text": "mt ",
+                    "children": [{"kind": "part", "name": "x", "children": []}],
+                }
+            ],
+        )
+        assert len(kids[0].children) == 1, f"subtree erased: {kids[0].children!r}"
     finally:
         sys.path.remove(str(pkg / "src"))
 
@@ -333,6 +357,44 @@ def test_textx_dump_roundtrips(tmp_path):
         sys.path.remove(str(REPO_ROOT / "src"))
 
 
+def test_unsupported_get_definition_preserves_children(tmp_path):
+    """C1 gate: Unsupported.get_definition() must NOT swallow its subtree.
+
+    A coarse IR kind with no alias (e.g. ``block``) lifts to ``Unsupported``
+    but still carries real children (Unsupported.from_ir re-lifts them).
+    get_definition() must recurse into those children, matching Node's,
+    or the CAST round-trip would silently drop the whole subtree.
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        # block has no IR_KIND_ALIASES -> Unsupported, but carries a child
+        u = sysml2py.Node.from_ir(
+            {
+                "kind": "block",
+                "name": "B",
+                "children": [
+                    {"kind": "part", "name": "x", "children": []},
+                ],
+            }
+        )
+        assert type(u).__name__ == "Unsupported", type(u).__name__
+        d = u.get_definition()
+        assert d.get("children"), f"subtree dropped: {d!r}"
+        # a real comment child recurses too (partial round-trip identity)
+        u2 = sysml2py.Node.from_ir(
+            {"kind": "comment", "name": "", "children": [{"kind": "part", "name": "y"}]}
+        )
+        d2 = u2.get_definition()
+        assert d2.get("children"), f"comment subtree dropped: {d2!r}"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
 def test_old_266_classes_are_present(tmp_path):
     """Every hand-written 0.5.3 class name is generated (compat + parity)."""
     old = (REPO_ROOT.parent / "sysml2py" / "src" / "sysml2py" / "grammar" / "classes.py")
@@ -376,6 +438,10 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
     from sysml2py_lab.ir import ir_to_json, parse_ir
     from sysml2py_lab.normalize import canonical_equals
 
+    # N4: single source of the pinned set — import it from the cast tool so
+    # the two cannot drift.
+    from tools.cast_ast_classes import REQUIRED_ALIASED_CLASSES
+
     pkg = _gen(tmp_path)
     sys.path.insert(0, str(pkg / "src"))
     sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -385,33 +451,6 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
         # Pinned literal (NOT derived from IR_KIND_ALIASES — C1): emptying the
         # alias table must not shrink the expected set until the gates
         # themselves pass vacuously.
-        REQUIRED_ALIASED_CLASSES = frozenset(
-            {
-                "Package",
-                "PartUsage",
-                "AttributeUsage",
-                "ActionUsage",
-                "ItemUsage",
-                "PortUsage",
-                "StateUsage",
-                "TransitionUsage",
-                "ConstraintUsage",
-                "InterfaceUsage",
-                "ConnectionUsage",
-                "OccurrenceUsage",
-                "RequirementUsage",
-                "UseCaseUsage",
-                "ObjectiveRequirementUsage",
-                "SubjectUsage",
-                "ActorUsage",
-                "Message",
-                "Succession",
-                "AliasMember",
-                "Import",
-                "Comment",
-                "RootNamespace",
-            }
-        )
         assert REQUIRED_ALIASED_CLASSES <= set(sysml2py.IR_KIND_ALIASES.values()), (
             "IR_KIND_ALIASES shrank below the pinned required set"
         )

@@ -151,8 +151,9 @@ def _ruff_format(src_pkg: Path) -> None:
     """Normalize generated code style via ruff (deterministic).
 
     The library ships a black.yml workflow, so generated code must pass
-    black/ruff.  Rather than hand-formatting in every template, emit
-    semantically-correct code then let `ruff format` normalize style.
+    black/ruff at the lab's line-length (100).  Rather than hand-formatting
+    in every template, emit semantically-correct code then let `ruff format`
+    normalize style.
     Templates must be lint-clean outright — the generator does NOT run
     `ruff check --fix` (review r3/r4: self-fixing would vacate the lint
     gate); `test_generated_code_passes_ruff` runs a real check.  `ruff
@@ -192,7 +193,7 @@ def _ruff_format(src_pkg: Path) -> None:
         # UP from each file, so /tmp output would get line-length 88 while a
         # repo-local `out/` would get 100.  Use the lab's settings (100).
         subprocess.run(
-            [ruff, "format", "--quiet", "--config", "line-length=100", *gen_files],
+            [ruff, "format", "--quiet", "--no-cache", "--config", "line-length=100", *gen_files],
             check=False,
             capture_output=True,
         )

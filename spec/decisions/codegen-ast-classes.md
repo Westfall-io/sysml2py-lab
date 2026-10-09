@@ -30,7 +30,7 @@ children.json ───────┼─► codegen/model.py ──► Jinja te
                       │                  ast_classes.py.j2
                       │                  ast_dispatch.py.j2
                       │                  provenance.py.j2
-                      │                  (existing pyproject/init/nodes templates)
+                      │                  (existing pyproject/init templates)
 corpus manifest ──────┘ (generator version + provenance stamp)
 
 modifiers.json (loaded, hashed, reviewed — not rendered; see sources table)
@@ -45,13 +45,16 @@ exposes:
   strict subset (parity test pins this); the generator emits 700+.
 - `body_slots(body_name)` — membership slots for a body
 - `dispatch_map()` — `{parent_body: {member_kind: child_class}}` derived from
-  children.json chains/kinds.  Keys are generated class names.
+  children.json `kinds` sets + `wrapper` (`chain` is NOT consulted).  Keys
+  are generated class names.  ADVISORY — `Node.from_ir` does not use it.
 - `IR_KIND_ALIASES` — coarse IR kind (`package`, `part`, ...) → generated
   class name.  The issue-#7/#8 IR is a brace-block parse with ~26 coarse
   kinds; the generated classes are fine-grained grammar classes.  This alias
   lifts IR trees onto generated nodes (`Node.from_ir`).
 
-## Generated class shape
+## Generated class shape <!-- illustrative: simplified for readability; the
+real emitted ctor sets self._definition in textX mode and never synthesizes
+{"name": ...} for definition=None. See templates/ast_classes.py.j2. -->
 
 Every generated class implements the uniform triad:
 
@@ -78,7 +81,7 @@ class PartDefinition:
 - `dump()` is loss-minimizing: prefers the node's own `raw_text` verbatim
   (newline-terminated for `//` line comments so a comment cannot swallow its
   siblings — the issue-#8 render_ir lesson), then recurses into children.
-  textX-mode dicts reconstruct via `_dump_textx` (modifiers, keyword, name,
+  textX-mode dicts reconstruct via `_dump_textx` (prefix, keyword, name,
   body).  A bare kind with no name emits nothing (no malformed SysML).
 - `get_definition()` returns the dict-shaped reconstruction (the builder
   direction): for IR-built nodes it emits the original IR coarse kind via
@@ -123,7 +126,7 @@ The cast gates claim exactly what is load-bearing and mutation-proven:
 - no aliased IR kind collapses to `Unsupported` (fails if an alias maps to a
   missing class).
 
-Generated from `children.json` `kinds` sets + `wrapper`/`chain` — no
+Generated from `children.json` `kinds` sets + `wrapper` (not `chain`) — no
 hand-written elif ladders.
 `Unsupported` carries `raw_text` (the loss-minimizing IR principle):
 never raise `NotImplementedError`.

@@ -80,16 +80,17 @@ def dispatch_children(parent_body: str, children: list[dict]) -> list[Any]:
     """Dispatch a list of IR child dicts to generated node instances.
 
     Each child with a ``kind`` is dispatched via ``dispatch_member``; unknown
-    kinds become ``Unsupported`` preserving ``raw_text``.
+    kinds become ``Unsupported`` via ``Unsupported.from_ir`` (which preserves
+    the member's own subtree rather than erasing it, and carries ``raw_text``).
     """
     out: list[Any] = []
     for c in children:
         kind = c.get("kind", "")
         cls = dispatch_member(parent_body, kind)
         if cls is Unsupported:
-            out.append(Unsupported(raw_text=c.get("raw_text")))
+            out.append(Unsupported.from_ir(c))
         elif hasattr(cls, "from_ir"):
             out.append(cls.from_ir(c))
         else:
-            out.append(Unsupported(raw_text=c.get("raw_text")))
+            out.append(Unsupported.from_ir(c))
     return out

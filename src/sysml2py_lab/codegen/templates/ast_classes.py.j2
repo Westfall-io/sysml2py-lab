@@ -135,6 +135,8 @@ class Unsupported:
         out.setdefault("name", self.kind or "Unsupported")
         if self.raw_text is not None:
             out["raw_text"] = self.raw_text
+        if self.children:
+            out["children"] = [c.get_definition() for c in self.children]
         return out
 
     @classmethod
