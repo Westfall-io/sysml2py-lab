@@ -72,6 +72,20 @@ def _emit_provenance(model: CodegenModel, opts: EmitOptions, repo_root: Path, ge
     )
 
 
+def _emit_builders(model: CodegenModel) -> str:
+    env = _template_env()
+    bm = model.builder_metadata()
+    return env.get_template("builders.py.j2").render(
+        header=_HEADER,
+        builder_class_names=[b["name"] for b in bm["builder_classes"]],
+        builder_classes=bm["builder_classes"],
+        legal_children=bm["legal_children"],
+        definition_modifier_slots=bm["definition_modifier_slots"],
+        usage_modifier_slots=bm["usage_modifier_slots"],
+        named_kinds=bm["named_kinds"],
+    )
+
+
 def emit_sysml2py(
     out_dir: Path,
     opts: EmitOptions | None = None,
@@ -111,6 +125,15 @@ def emit_sysml2py(
         _emit_provenance(model, opts, repo_root, generated_at), encoding="utf-8"
     )
 
+    # Builder API + traversal + printer (issue #10, phase-5)
+    (src_pkg / "builders.py").write_text(_emit_builders(model), encoding="utf-8")
+    (src_pkg / "traversal.py").write_text(
+        env.get_template("traversal.py.j2").render(header=_HEADER), encoding="utf-8"
+    )
+    (src_pkg / "printer.py").write_text(
+        env.get_template("printer.py.j2").render(header=_HEADER), encoding="utf-8"
+    )
+
     # Canonical normalize module copied into generated package verbatim (the
     # single normalizer implementation, issue #8).
     _norm_src = (Path(__file__).resolve().parents[1] / "normalize.py").read_text(encoding="utf-8")
@@ -124,6 +147,9 @@ def emit_sysml2py(
     (src_pkg / "__init__.py").write_text(
         env.get_template("pkg_init.py.j2").render(
             node_kinds=model.node_kinds(),
+            builder_class_names=[
+                b["name"] for b in model.builder_metadata()["builder_classes"]
+            ],
         ),
         encoding="utf-8",
     )
@@ -186,7 +212,15 @@ def _ruff_format(src_pkg: Path) -> None:
         # `ruff check` (no --fix) so it can catch a template emitting lint.
         gen_files = [
             str(src_pkg / f)
-            for f in ("ast_classes.py", "ast_dispatch.py", "provenance.py", "__init__.py")
+            for f in (
+                "ast_classes.py",
+                "ast_dispatch.py",
+                "provenance.py",
+                "builders.py",
+                "traversal.py",
+                "printer.py",
+                "__init__.py",
+            )
         ]
         # Pin ruff's config explicitly as belt-and-braces: the generated
         # pyproject.toml now ships [tool.ruff] line-length=100, so discovery

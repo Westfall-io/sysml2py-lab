@@ -39,6 +39,28 @@ from .provenance import (
     GENERATOR_VERSION,
     GENERATED_AT,
 )
+from .builders import (
+    Builder,
+    UPSERT_CHILD_KINDS,
+    LEGAL_CHILDREN,
+{% for name in builder_class_names %}
+    {{ name }},
+{% endfor %}
+)
+from .traversal import (
+    walk,
+    walk_preorder,
+    walk_postorder,
+    find,
+    find_all,
+    resolve_chain,
+    Visitor,
+)
+from .printer import (
+    printer,
+    print_model,
+    canonical,
+)
 
 __all__ = [
     "Node",
@@ -63,5 +85,21 @@ __all__ = [
     "CORPUS_MANIFEST_SHA256",
     "GENERATOR_VERSION",
     "GENERATED_AT",
+    "Builder",
+    "UPSERT_CHILD_KINDS",
+    "LEGAL_CHILDREN",
+{% for name in builder_class_names %}
+    "{{ name }}",
+{% endfor %}
+    "walk",
+    "walk_preorder",
+    "walk_postorder",
+    "find",
+    "find_all",
+    "resolve_chain",
+    "Visitor",
+    "printer",
+    "print_model",
+    "canonical",
 ]
 

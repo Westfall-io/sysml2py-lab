@@ -337,6 +337,64 @@ class CodegenModel:
         """``{class_name: owned_body}`` for every node kind (dispatch context)."""
         return {k.name: k.owned_body for k in self.node_kinds() if k.owned_body}
 
+    # -- builder API (issue #10) -----------------------------------------
+
+    # usage IR kinds that produce a builder class (subset of IR_KIND_ALIASES
+    # that are *usage* constructs an author builds; definitions added via
+    # `is_definition`).  Each maps to the generated class name via IR_KIND_ALIASES.
+    BUILDER_IR_KINDS: tuple[str, ...] = (
+        "package", "part", "item", "attribute", "port", "constraint",
+        "connection", "occurrence", "actor", "action", "state", "subject",
+        "use_case", "requirement", "comment", "alias",
+    )
+
+    def builder_metadata(self) -> dict:
+        """Descriptor data for the generated builders module (issue #10).
+
+        Yields one entry per builder class: the generated AST class name, its
+        IR kind, whether it is a definition-flavoured builder, the modifier
+        setter slots (via the Usage/Definition modifier prefixes), and the
+        legal child kinds for its owned body (via children.json).
+        """
+        kinds_out = []
+        for ir_kind in self.BUILDER_IR_KINDS:
+            cls_name = IR_KIND_ALIASES.get(ir_kind)
+            if cls_name is None or cls_name == "Unsupported":
+                continue
+            owned_body = self.owned_body_for(cls_name)
+            kinds_out.append(
+                {
+                    "name": cls_name + "Builder",
+                    "class_name": cls_name,
+                    "kind": cls_name,
+                    "ir_kind": ir_kind,
+                    "is_definition": ir_kind
+                    in ("package",) or cls_name.endswith("Definition"),
+                    "owned_body": owned_body,
+                    "owned_body_lit": repr(owned_body),
+                    "child_kinds": sorted(
+                        {k for slot in self.body_slots(owned_body) for k in slot.kinds}
+                        if owned_body
+                        else []
+                    ),
+                }
+            )
+        # legal children per owned body, from children.json
+        legal: dict[str, list[str]] = {}
+        for body in self.body_names():
+            legal[body] = sorted(
+                {k for slot in self.body_slots(body) for k in slot.kinds}
+            )
+        return {
+            "builder_classes": kinds_out,
+            "legal_children": legal,
+            "definition_modifier_slots": self.modifier_slots("BasicDefinitionPrefix"),
+            "usage_modifier_slots": self.modifier_slots("BasicUsagePrefix"),
+            "named_kinds": sorted(
+                {slot.wrapper for body in self.body_names() for slot in self.body_slots(body)}
+            ),
+        }
+
     # -- provenance -------------------------------------------------------
 
     def provenance(self, repo_root: Path, generator_version: str, generated_at: str | None = None) -> dict:

@@ -1,0 +1,33 @@
+{{ header }}
+"""Generated SysML text printer (issue #10, phase-5).
+
+Self-contained printer: renders a generated ``Node`` tree to textual SysML
+via the node's own ``dump()``, then canonicalizes with the shared normalizer
+for comparison.  ``print_model`` returns the rendered text; ``canonical``
+returns the canonical normalized form used by the casting harness.
+"""
+
+from __future__ import annotations
+
+from .ast_classes import Node, beautify
+from .normalize import canonicalize, canonical_tokens
+
+# ruff: noqa: I001, RUF022  (generated import block / __all__ ordering)
+
+__all__ = ["canonical", "canonicalize", "canonical_tokens", "print_model", "printer"]
+
+
+def printer(node: Node, *, indent: bool = True) -> str:
+    """Render ``node`` to textual SysML."""
+    text = node.dump()
+    return beautify(text) if indent else text
+
+
+def print_model(node: Node, *, indent: bool = True) -> str:
+    """Alias for ``printer`` (0.5.3 ``dump``-once convenience)."""
+    return printer(node, indent=indent)
+
+
+def canonical(node: Node) -> str:
+    """Return the canonical normalized text for ``node``."""
+    return canonicalize(node.dump())
