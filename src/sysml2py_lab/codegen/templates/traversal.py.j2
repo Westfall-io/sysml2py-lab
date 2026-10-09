@@ -72,7 +72,7 @@ def resolve_chain(root: Node, featurechain: str) -> Node | None:
             return root
     cur = root
     for seg in fc:
-        nxt = next((c for c in cur.children if c.name == seg), None)
+        nxt = next((c for c in cur.children if c.name == seg or c.short_name == seg), None)
         if nxt is None:
             return None
         cur = nxt

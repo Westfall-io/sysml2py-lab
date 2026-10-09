@@ -151,21 +151,22 @@ class Builder:
         return self
 
     def is_legal_child(self, child):
-        """Advisory child-kind legality (W1-5/r3 W1-4).
+        """Advisory child-kind legality (W1-5/r3 W1-4/r4 #1).
 
         ``child.kind`` must appear among this builder's owned-body's legal
         child kinds (children.json) when that body has data; otherwise
-        conservatively True.  After r3 W1-3, usage builders own
-        ``DefinitionBody`` whose slot kinds are exactly the builder
-        vocabulary (PartUsage, PortUsage, …), so a rejecting gate is correct:
-        e.g. ActorUsage / RequirementUsage are not legal children of a part.
+        conservatively True.  Usage builders own ``DefinitionBody`` whose slot
+        kinds are exactly the builder vocabulary (PartUsage, PortUsage, …).
+        Package bodies additionally accept ALL usage kinds (children.json
+        ``PackageBody`` only lists definitions, but a package legitimately
+        contains `part`/`attribute`/etc. members — r4 #1), so the usage
+        kinds from ``DefinitionBody`` are unioned in.
         """
         body = self.owned_body
-        if body in LEGAL_CHILDREN:
-            allowed = LEGAL_CHILDREN[body]
-            if child.kind not in allowed:
-                return False
-        return True
+        allowed = LEGAL_CHILDREN.get(body, set())
+        if body == "PackageBody":
+            allowed = set(allowed) | set(LEGAL_CHILDREN.get("DefinitionBody", ()))
+        return child.kind in allowed
 
     def _get_child(self, featurechain):
         return _walk_chain(self, featurechain)
@@ -206,28 +207,33 @@ class Builder:
         W1-8) so multi-member brace blocks recover as separate IR statements;
         ``/* */`` free text for Comment (r3 W1-7).
         """
+        comment_txt = None
         if self._text is not None:
-            # Comment payload is free text (r3 W1-7): self-terminating so
-            # parse_ir yields a comment node rather than an unknown.
-            return f"/* {self._text} */"
+            if self._kind == "comment":
+                # Comment payload is free text (r3 W1-7): self-terminating so
+                # parse_ir yields a comment node rather than an unknown.
+                return f"/* {self._text} */"
+            comment_txt = self._text  # non-comment builders: appended later
 
         # W2-10: emit modifiers in canonical slot order, not insertion order,
         # so e.g. `abstract` before ``out`` (valid RefPrefix) survives.
         mods: list[str] = []
         for _name, _tokens, _kind in _MODIFIER_SLOTS:
-            v = self._modifiers.get(_name)
-            if v is None:
+            # flags are stored by TOKEN ('abstract'), enums by NAME ('direction') —
+            # r4 #2: look up by the correct key or slot-order emission never fires.
+            key = _tokens[0] if _kind == "flag" else _name
+            v = self._modifiers.get(key)
+            if v is None or v is False:
                 continue
             if v is True:
                 mods.append(_tokens[0])
-            elif v is False:
-                continue
             elif isinstance(v, str):
                 mods.append(v)  # enum — bare value (W1-3)
             else:
                 mods.append(f"{_name}={v}")
         for k, v in self._modifiers.items():
-            if any(s[0] == k for s in _MODIFIER_SLOTS):
+            if any((s[2] == "flag" and s[1][0] == k) or (s[2] != "flag" and s[0] == k)
+                   for s in _MODIFIER_SLOTS):
                 continue
             if v is True:
                 mods.append(k)
@@ -246,6 +252,8 @@ class Builder:
             head += f" [{self._multiplicity}]"
         if self._typed_by is not None:
             head += f" : {self._typed_by._name}"
+        if comment_txt is not None:
+            head += f" /* {comment_txt} */"
         lines = [head]
         kids = [c for c in self._children if c is not None]
         if kids:
@@ -269,7 +277,8 @@ class Builder:
             d["multiplicity"] = self._multiplicity
         mods: list[str] = []
         for _nm, _tk, _kd in _MODIFIER_SLOTS:
-            v = self._modifiers.get(_nm)
+            key = _tk[0] if _kd == "flag" else _nm
+            v = self._modifiers.get(key)
             if v is None or v is False:
                 continue
             if v is True:
@@ -279,7 +288,8 @@ class Builder:
             else:
                 mods.append(f"{_nm}={v}")
         for k, v in self._modifiers.items():
-            if any(s[0] == k for s in _MODIFIER_SLOTS):
+            if any((s[2] == "flag" and s[1][0] == k) or (s[2] != "flag" and s[0] == k)
+                   for s in _MODIFIER_SLOTS):
                 continue
             if v is True:
                 mods.append(k)
@@ -315,7 +325,9 @@ def _walk_chain(root, featurechain):
     if not isinstance(featurechain, str):
         raise TypeError("featurechain must be a str")
     fc = featurechain.split(".")
-    if fc and root._get_name() == fc[0]:
+    # r4 #7: match the root self-name against LONG or SHORT name (was
+    # _get_name() which preferred short name, breaking long chains).
+    if fc and fc[0] in (root._name, root._short_name):
         fc = fc[1:]
         if not fc:
             return root

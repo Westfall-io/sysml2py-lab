@@ -302,7 +302,11 @@ class Node:
             d = c.dump()
             if d:
                 out.append(d)
-        return "".join(out)
+        # r4 #8: parser-produced trees carry raw_text (already ;/{/} terminated)
+        # and join as-is; builder-built nodes (no raw_text) enter the reconstruct
+        # branch, so separate siblings with a newline or they concatenate.
+        sep = "" if self.raw_text else "\n"
+        return sep.join(out)
 
     def get_definition(self) -> dict:
         """Serialize back to an IR-JSON dict (preserving the IR coarse kind)."""

@@ -1,8 +1,10 @@
 # Issue #10 — Phase-5 Developer API: Dependency Posture & Casting Status
 
-Status: foundation built + one review cycle (r1: REQUEST CHANGES → fixed →
-re-review launched).  Casting clean at IR-content + syntactic-parse-back
-levels; full 0.5.3 compat contract is a follow-up (see Deliberate Breaks).
+Status: foundation through r4 (r1→r4: every REQUEST CHANGES cycle fixed,
+r4 fixes under re-review).  Casting clean at semantic
+(build → Node → get_definition) and coarse-IR syntactic-parse-back levels;
+multi-member brace structure recovered via `;` (r3 W1-8).  Full 0.5.3
+compat contract is a follow-up (see Deliberate Breaks).
 
 ## Dependency posture (DECIDED: self-contained-thin)
 
@@ -16,16 +18,18 @@ generated AST directly, with **no runtime textX or astropy dependency**.
 
 - `builders.py` — `Builder` base + per-kind builder classes derived from
   `IR_KIND_ALIASES` minus a deny-list (`BUILDER_DENY`), so coverage cannot
-  drift from the alias table (W2-18).  Currently 22: Package, PartUsage,
+  drift from the alias table (W2-18).  23: Package, PartUsage,
   ItemUsage, AttributeUsage, PortUsage, ConstraintUsage, ConnectionUsage,
   OccurrenceUsage, ActorUsage, ActionUsage, StateUsage, SubjectUsage,
   UseCaseUsage, RequirementUsage, InterfaceUsage, Message,
-  ObjectiveRequirementUsage, Succession, TransitionUsage, Comment, AliasMember
-  (DefaultReferenceUsage is the internal directed-feature default).  Methods:
-  `_set_name` / `_set_short_name` / `_set_typed_by` / `_set_child` /
-  `_get_child` / `add_directed_feature` / per-modifier setters (from
-  modifiers.json BasicUsagePrefix) / `build` / `build_node` / `dump` /
-  `_render_sysml`.
+  ObjectiveRequirementUsage, Succession, TransitionUsage, Comment,
+  AliasMember, Import, ReferenceUsage
+  (`_DefaultReferenceBuilder` is the internal directed-feature default,
+  not in `__all__`).  Methods:
+  `_set_name` / `_set_short_name` / `_set_text` / `_set_multiplicity` /
+  `_set_typed_by` / `_set_child` / `_get_child` / `add_directed_feature` /
+  per-modifier setters (from modifiers.json BasicUsagePrefix) / `build` /
+  `build_node` / `dump` / `_render_sysml` / `is_legal_child`.
 - `traversal.py` — `walk` (pre/post), `find`, `find_all`, `resolve_chain`,
   `Visitor` (genuine pre/post-order).
 - `printer.py` — `print_model` / `canonical` (canonicalize-based).  Routes
@@ -133,6 +137,40 @@ test added.
   resolve even when members carry short names.
 
 Gate: 166 tests pass; source + generated ruff-clean; determinism
+byte-identical; PR #19.
+
+### r4 (REQUEST CHANGES) — 1 blocker + 3 W1 + 5 W2, fixed (this commit)
+- **#1 [BLOCKER]** `is_legal_child` false-rejected every usage under a
+  Package (PackageBody listed only definitions, but a package legitimately
+  contains `part`/`attribute` members — e.g. `examples/family.sysml`).
+  Fixed: union usage kinds (`DefinitionBody`) into `PackageBody`'s allowed
+  set; added a Package-parent test case.
+- **#2 [W1]** slot-order emission never fired for flags (lookup-by-name vs
+  store-by-token mismatch).  Fixed both `_render_sysml` and `_to_ir` loops to
+  look up flags by token, enums by name; widened the fallback skip.  Now
+  `out end ref` (canonical), not insertion order.  Test added.
+- **#3 [W1]** `_set_text` early-return erased the whole subtree for
+  non-Comment builders.  Scoped the `/* */` early-return to `comment` only;
+  other kinds append ` /* text */` after the header.  Verified subtree + text
+  both emit.
+- **#4 [W1]** B2/ir.py direction change had no regression test.  Added
+  `parse_ir("out part P;")` assertions.
+- **#5 [W2]** W1-9's claim exceeded its test (type_refs/multiplicity never
+  asserted; `_set_multiplicity` untested).  Added field-level assertions.
+- **#6 [W2]** W2-15 applied to builder chain but not `resolve_chain`.
+  Fixed traversal's chain to match short_name too.
+- **#7 [W2]** `_walk_chain` root self-name preferse short name.  Now matches
+  LONG or short name.
+- **#8 [W2]** `Node.dump()` reconstruct concatenated siblings (builder-built
+  nodes, no raw_text).  Now joins with `\n` when raw_text is empty.
+- **#9 [W2]** decision-doc count/list/methods/status refreshed (23 concrete
+  builders incl. Import + ReferenceUsage).
+
+Note: ir.py's 9 pre-existing lint findings remain untouched (Tock domain);
+the `individual` token added in r3 B2 is inert (already a kind stem) —
+harmless, kept for symmetry.
+
+Gate: 167 tests pass; source + generated ruff-clean; determinism
 byte-identical; PR #19.
 
 ## Known gaps / deliberate breaks vs 0.5.3 (documented, follow-up)

@@ -973,6 +973,10 @@ def test_builder_is_legal_child_rejects_disallowed(tmp_path):
         # legal children of a part (they live in other bodies).
         assert sat.is_legal_child(sysml2py.ActorUsageBuilder("AC")) is False
         assert sat.is_legal_child(sysml2py.ObjectiveRequirementUsageBuilder("O")) is False
+        # r4 #1: a Package accepts usage members (package Family { part adult })
+        family = sysml2py.PackageBuilder("Family")
+        assert family.is_legal_child(sysml2py.PartUsageBuilder("adult")) is True
+        assert family.is_legal_child(sysml2py.AttributeUsageBuilder("mass")) is True
     finally:
         sys.path.remove(str(pkg / "src"))
 
@@ -989,8 +993,9 @@ def test_builder_syntactic_multimember_roundtrip(tmp_path):
 
         sat = sysml2py.PartUsageBuilder("Satellite")
         sat._set_child(sysml2py.PartUsageBuilder("Panel")._set_isAbstract())
-        sat._set_child(sysml2py.AttributeUsageBuilder("Mass")._set_typed_by(
-            sysml2py.PartUsageBuilder("MassDef")))
+        sat._set_child(sysml2py.AttributeUsageBuilder("Mass")
+                       ._set_multiplicity("1..1")
+                       ._set_typed_by(sysml2py.PartUsageBuilder("MassDef")))
         text = sat.dump()
 
         from sysml2py_lab.ir import parse_ir
@@ -1008,6 +1013,11 @@ def test_builder_syntactic_multimember_roundtrip(tmp_path):
         # the abstract modifier on Panel is preserved
         panel = next((c for c in members if c.kind == "part"), None)
         assert panel is not None and panel.modifiers == ["abstract"]
+        # r4 #5: type_refs and multiplicity are actually recovered from the text
+        mass = next((c for c in members if c.kind == "attribute"), None)
+        assert mass is not None, [c.kind for c in members]
+        assert mass.type_refs == ["MassDef"], mass.type_refs
+        assert mass.multiplicity == "1..1", mass.multiplicity
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
@@ -1061,3 +1071,32 @@ def test_builder_enum_validation_and_mutual_exclusion(tmp_path):
         assert not ({"abstract", "variation"} <= set(mods)), mods
     finally:
         sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_directed_feature_roundtrip_and_slot_order(tmp_path):
+    """Phase-5 r4 #2/#4/B2: directed features reparse with their direction
+    modifier, and modifier ORDER follows the canonical slot order (not the
+    call order)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        # modifier order: direction(out) before isEnd before isReference etc.
+        p = (sysml2py.PartUsageBuilder("P")
+             ._set_isReference()._set_isEnd()._set_direction("out"))
+        text = p.dump()
+        # canonical slot order emits "out end ref" (not call order "ref end out")
+        assert text.startswith("out end ref part P;"), text
+        d = p.build_node().get_definition()
+        assert d["modifiers"] == ["out", "end", "ref"], d["modifiers"]
+
+        from sysml2py_lab.ir import parse_ir
+
+        root = parse_ir("out part P;")
+        n = next(c for c in root.children if getattr(c, "kind", "") == "part")
+        assert n.modifiers == ["out"], n.modifiers
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
