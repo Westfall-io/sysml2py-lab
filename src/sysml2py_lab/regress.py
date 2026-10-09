@@ -24,6 +24,7 @@ shadow a test-runner concept) — it is ``regress``.
 
 from __future__ import annotations
 
+import importlib
 import json
 import subprocess
 import sys
@@ -145,16 +146,19 @@ def _ensure_pkg(pkg_root: str | Path | None) -> None:
 
 
 def _drop_pkg(pkg_root: str | Path | None) -> None:
-    """Remove the generated package's src/ from sys.path, then purge the
-    cached ``sysml2py`` module so a later run with a different tree does not
-    silently reuse the first one."""
+    """Remove the generated package's src/ from sys.path and purge EVERY
+    cached ``sysml2py``/``sysml2py.*`` module (the package __init__ imports
+    eight submodules; a stale submodule would be re-bound to a different
+    tree's objects).  r2 W1-3."""
     if pkg_root is None:
         return
     src = _generated_pkg_src(Path(pkg_root))
     s = str(src)
     if s in sys.path:
         sys.path.remove(s)
-    sys.modules.pop("sysml2py", None)
+    for m in [k for k in sys.modules if k == "sysml2py" or k.startswith("sysml2py.")]:
+        sys.modules.pop(m, None)
+    importlib.invalidate_caches()
 
 
 # ---------------------------------------------------------------------------
@@ -182,8 +186,8 @@ def replay(
 
     _ensure_pkg(generated_pkg)
     results: list[dict] = []
-    files = _iter_corpus(corpus_dir)
     try:
+        files = _iter_corpus(corpus_dir)
         for path, rel in files:
             if not path.exists():
                 results.append({"file": rel, "ok": False, "error": "missing"})
@@ -360,26 +364,32 @@ def determinism(generate_args: list[str] | None = None, *, tmpdir: Path | None =
         cmd += ["--out", str(out)]
         return subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT, check=False)
 
+    result: dict = {}
     try:
         pa = _run(out_a)
         pb = _run(out_b)
         if pa.returncode != 0 or pb.returncode != 0:
-            return {
+            result = {
                 "ok": False,
                 "error": f"generate failed: a={pa.returncode} b={pb.returncode}",
                 "a": pa.stderr[-500:] if pa.stderr else pa.stdout[-500:],
                 "b": pb.stderr[-500:] if pb.stderr else pb.stdout[-500:],
             }
+            return result
 
         diffs = _diff_trees(out_a, out_b)
         # A vacuous pass comparing zero files is a silent trap (r1 W1-5).
         if not diffs and _count_tree_files(out_a) == 0:
-            return {"ok": False, "diffs": [], "error": "compared zero files (both runs empty?)",
-                    "a": str(out_a), "b": str(out_b)}
-        return {"ok": not diffs, "diffs": diffs[:50], "a": str(out_a), "b": str(out_b)}
+            result = {"ok": False, "diffs": [], "error": "compared zero files (both runs empty?)",
+                      "a": str(out_a), "b": str(out_b)}
+            return result
+        result = {"ok": not diffs, "diffs": diffs[:50], "a": str(out_a), "b": str(out_b)}
+        return result
     finally:
-        # Clean up the temp workspace when we created it (r1 W2-8).
-        if tmpdir is None:
+        # Clean up the temp workspace when we created it (r1 W2-8), UNLESS the
+        # run failed — keep the evidence (out_a/out_b) so the caller can diff
+        # the two trees (r2 W2-6).
+        if tmpdir is None and result.get("ok"):
             import shutil
 
             shutil.rmtree(work, ignore_errors=True)
@@ -397,11 +407,21 @@ def _lab_cli() -> Path:
     return cand if cand.exists() else Path("sysml2py-lab")
 
 
+def _excluded_cache_dir(parts) -> bool:
+    """True if `parts` walk through a cache dir (.ruff_cache / __pycache__).
+
+    Shared by _diff_trees and _count_tree_files so the two determinism
+    verdicts exclude the same set (r2 W2-10)."""
+    return any(x in {".ruff_cache", "__pycache__"} for x in parts)
+
+
 def _diff_trees(a: Path, b: Path) -> list[str]:
     """Return differing relative paths between two identical-layout trees."""
     diffs: list[str] = []
-    fa = {p.relative_to(a).as_posix(): p for p in a.rglob("*") if p.is_file()}
-    fb = {p.relative_to(b).as_posix(): p for p in b.rglob("*") if p.is_file()}
+    fa = {p.relative_to(a).as_posix(): p for p in a.rglob("*")
+          if p.is_file() and not _excluded_cache_dir(p.parts)}
+    fb = {p.relative_to(b).as_posix(): p for p in b.rglob("*")
+          if p.is_file() and not _excluded_cache_dir(p.parts)}
     for rel, pa in fa.items():
         pb = fb.get(rel)
         if pb is None or pb.read_bytes() != pa.read_bytes():
@@ -416,7 +436,7 @@ def _count_tree_files(root: Path) -> int:
     return sum(
         1
         for p in root.rglob("*")
-        if p.is_file() and not any(x in {".ruff_cache", "__pycache__"} for x in p.parts)
+        if p.is_file() and not _excluded_cache_dir(p.parts)
     )
 
 

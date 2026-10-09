@@ -5,10 +5,14 @@
 The lab previously had a single MVP round-trip test and **no CI at all**
 (no `.github/`). This issue makes the corpus loop enforceable.
 
-## Review cycle (r1 → fix)
+## Review cycle (r1 → r2 → fix)
 
-r1: **REQUEST CHANGES** — 3 blockers + 5 W1 + 12 W2 (all genuine). Fixed and
-re-submitted (r2 pending).  The r1 findings sharpened the harness from
+r1: **REQUEST CHANGES** — 3 blockers + 5 W1 + 12 W2 (all genuine). Fixed
+(r1-fix commit).
+r2: **REQUEST CHANGES** — 0 blockers + 4 W1 + 7 W2; all three r1 blocker
+fixes confirmed genuine in code, remaining items were tests/gaps that didn't
+lock the fixes in. Fixed (r2-fix commit).  The r1 findings sharpened the
+harness from
 "composes the pieces" to "a CI gate that actually fails where it must":
 
 - **B1** replay `ok` now requires the AST stage (`ast_roundtrip is True`) when
@@ -110,6 +114,12 @@ counts fall or loss counts rise.
   `Line` fallback.
 - Determinism is asserted twice (harness + the pre-existing
   `test_determinism_byte_identical`) and via CI `diff -r`.
-- **ci.yml lint scope**: only `regress.py` + `test_regress.py` + generated
-  output are lint-gated (see r1 B3 above).  A future issue can drop the
-  pre-existing whole-repo ruff debt and widen the gate.
+- **ci.yml lint scope**: the gate runs ruff under a PINNED
+  `[tool.ruff.lint] select = ["E4","E7","E9","F"]` across the PR's changed
+  files (`regress.py`, `cli.py`, `ir.py`, `test_regress.py`,
+  `test_mvp_roundtrip.py`) + the generated output.  `ir.py`'s inherited
+  findings are excluded via explicit `per-file-ignores` so the exact scope
+  is auditable from config, not a hidden assumption (r2 W1-4).  A future
+  issue can widen the gate once the pre-existing whole-repo ruff debt
+  (BLE001 in cli.py, UP035/UP037 in model.py, SIM102 in grammar/, …) is
+  cleared.

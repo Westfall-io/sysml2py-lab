@@ -57,6 +57,9 @@ def test_regress_replay_full_corpus(genroot):
         for e in report["files"] if not e.get("ok")
     )
     assert set(s["fidelity_classes"]) <= {"full", "partial", "opaque", "error"}
+    # r2 W2: a fidelity-summary crash must NOT pass silently — gate the error
+    # class (it would surface as goldens drift otherwise).
+    assert s["fidelity_classes"].get("error", 0) == 0, s["fidelity_classes"]
     for e in report["files"]:
         assert "fidelity_class" in e, e["file"]
         assert e["ir_roundtrip"] is True, f"{e['file']} IR round-trip failed"
@@ -64,11 +67,20 @@ def test_regress_replay_full_corpus(genroot):
 
 
 def test_regress_replay_gates_on_ast_stage(genroot, tmp_path):
-    """r1 B1: replay must FAIL when the AST stage is missing while a package
-    was requested — a corpus can't pass on IR alone."""
-    # point at a package path that does not exist -> _ensure_pkg raises
-    with pytest.raises(RuntimeError):
-        rg.replay(rg.DEFAULT_CORPUS_DIR, generated_pkg=tmp_path / "nope")
+    """r1 B1: replay must FAIL when the AST stage is broken while a package
+    was requested — a corpus can't pass on IR alone.
+
+    Uses a SHAM package whose __init__ raises ImportError, so the AST stage
+    cannot import and every file must fail.  This genuinely exercises the
+    `ok = ir_ok and ast_roundtrip is True` composition (not just the
+    missing-path raise, which #_generated_pkg_src handles separately)."""
+    sham = tmp_path / "sham"
+    pkg = sham / "src" / "sysml2py"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text('raise ImportError("sham")', encoding="utf-8")
+    report = rg.replay(rg.DEFAULT_CORPUS_DIR, generated_pkg=sham)
+    assert report["summary"]["fail"] == report["summary"]["files"] >= 62
+    assert report["summary"]["pass"] == 0
 
 
 def test_regress_roundtrip_full_corpus(genroot):
@@ -117,6 +129,15 @@ def test_regress_manifest_missing_raises(tmp_path):
         rg.roundtrip(empty)
 
 
+def test_regress_manifest_empty_raises(tmp_path):
+    """r2 W2: a present-but-empty manifest (no declared files) raises."""
+    empty = tmp_path / "corpus"
+    empty.mkdir()
+    (empty / "manifest.json").write_text('{"files": {}}', encoding="utf-8")
+    with pytest.raises(ValueError):
+        rg.replay(empty)
+
+
 def test_regress_coverage_ratchet_blocks_regression(tmp_path):
     """AC: the coverage ratchet blocks decreases (mutation-proven).
 
@@ -131,6 +152,10 @@ def test_regress_coverage_ratchet_blocks_regression(tmp_path):
     report = rg.coverage(rg.DEFAULT_CORPUS_DIR, baseline_path=base)
     assert report["ratchet"]["pass"] is False
     assert any("modelled" in r for r in report["ratchet"]["regressions"])
+    # r2 W1: loss-direction fail path must ALSO be mutation-proven — the
+    # baseline's partial=0 vs reality 146 must trip the partial guard too,
+    # else deleting that loop would silently pass.
+    assert any("partial" in r for r in report["ratchet"]["regressions"])
 
 
 def test_regress_coverage_ratchet_passes_at_baseline(tmp_path):
