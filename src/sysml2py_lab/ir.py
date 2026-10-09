@@ -24,7 +24,7 @@ Comments are retained as IR nodes (kind `comment`).
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterator
 
 from .lexer import (
     Token,

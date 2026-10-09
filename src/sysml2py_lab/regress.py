@@ -24,7 +24,6 @@ shadow a test-runner concept) — it is ``regress``.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import subprocess
 import sys
@@ -55,10 +54,6 @@ DEFAULT_BASELINE = DEFAULT_GOLDENS_DIR / "coverage-baseline.json"
 # ---------------------------------------------------------------------------
 # Small data helpers
 # ---------------------------------------------------------------------------
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
 
 def _json_dump(obj: Any, path: Path) -> None:
     path.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -92,53 +87,74 @@ def _fidelity_class(fidelity: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _manifest_files(corpus_dir: Path) -> list[str]:
-    """Sorted manifest-relative paths (authoritative order, not rglob)."""
-    manifest = _load_json(corpus_dir / "manifest.json", {"files": {}})
-    return sorted(manifest.get("files", {}).keys())
+    """Sorted manifest-relative paths (authoritative order, not rglob).
+
+    Raises if the manifest is missing or declares no files, so replay /
+    roundtrip can't vacuously pass on an empty corpus (r1 W1).
+    """
+    manifest_path = corpus_dir / "manifest.json"
+    manifest = _load_json(manifest_path, None)
+    if manifest is None:
+        raise FileNotFoundError(f"corpus manifest missing: {manifest_path}")
+    keys = list(manifest.get("files", {}).keys())
+    if not keys:
+        raise ValueError(f"corpus manifest has no files: {manifest_path}")
+    return sorted(keys)
 
 
 def _iter_corpus(corpus_dir: Path) -> list[tuple[Path, str]]:
-    """Return [(absolute_path, manifest_rel)] in manifest order."""
+    """Return [(absolute_path, manifest_rel)] in manifest order.
+
+    A manifest-listed file that's missing on disk is still emitted so the
+    report can flag it (replay marks it ``ok=False``).
+    """
     out: list[tuple[Path, str]] = []
     for rel in _manifest_files(corpus_dir):
-        p = (corpus_dir / rel).resolve()
-        if p.exists():
-            out.append((p, rel))
-        else:
-            # Keep the entry even if missing so the report can flag it.
-            out.append((p, rel))
+        out.append(((corpus_dir / rel).resolve(), rel))
     return out
 
 
-def _generated_pkg_src(pkg_root: Path) -> Path | None:
-    """Given a generated package root, return the editable-style src/ dir to
-    put on sys.path (``<root>/sysml2py/src``), or None if absent."""
-    cand = pkg_root / "sysml2py" / "src"
-    return cand if (cand / "sysml2py" / "__init__.py").exists() else None
+def _generated_pkg_src(pkg_root: Path) -> Path:
+    """Return the sys.path-worthy dir for a generated package root.
+
+    Accepts two layouts (the user may paste either ``generate``'s printed
+    return value ``<out>/sysml2py`` or the ``<out>`` dir itself):
+      * ``<root>/sysml2py/src``          (root == the --out dir)
+      * ``<root>/src``                   (root == the <out>/sysml2py dir)
+
+    Raises RuntimeError when neither resolves, so a wrong/absent generated
+    package is a hard failure (not a silent skip of the AST stage).
+    """
+    for cand in (pkg_root / "sysml2py" / "src", pkg_root / "src"):
+        if (cand / "sysml2py" / "__init__.py").exists():
+            return cand
+    raise RuntimeError(
+        f"cannot locate generated sysml2py package under {pkg_root} "
+        "(expected <out>/sysml2py/src or <out>/src)"
+    )
 
 
 def _ensure_pkg(pkg_root: str | Path | None) -> None:
-    """Insert the generated package's src/ onto sys.path when given and not
-    already importable."""
+    """Insert the generated package's src/ onto sys.path when given."""
     if pkg_root is None:
         return
     src = _generated_pkg_src(Path(pkg_root))
-    if src is None:
-        return
     s = str(src)
     if s not in sys.path:
         sys.path.insert(0, s)
 
 
 def _drop_pkg(pkg_root: str | Path | None) -> None:
+    """Remove the generated package's src/ from sys.path, then purge the
+    cached ``sysml2py`` module so a later run with a different tree does not
+    silently reuse the first one."""
     if pkg_root is None:
         return
     src = _generated_pkg_src(Path(pkg_root))
-    if src is None:
-        return
     s = str(src)
     if s in sys.path:
         sys.path.remove(s)
+    sys.modules.pop("sysml2py", None)
 
 
 # ---------------------------------------------------------------------------
@@ -192,8 +208,12 @@ def replay(
                     "opaque": summ["node_counts"]["opaque"],
                 }
                 entry["fidelity_class"] = _fidelity_class(entry["fidelity"])
-            except Exception:  # noqa: BLE001
-                entry["fidelity_class"] = "partial"
+            except Exception as exc:  # noqa: BLE001
+                # r1 W2-4: a failure here is NOT "partial" — label it "error".
+                entry["fidelity_class"] = "error"
+                entry.setdefault("errors", []).append(
+                    f"fidelity: {exc.__class__.__name__}: {exc}"
+                )
 
             # stage 1: IR re-render canonical
             try:
@@ -215,7 +235,15 @@ def replay(
                 entry["ast_roundtrip"] = None
                 entry.setdefault("errors", []).append(f"ast: {exc.__class__.__name__}: {exc}")
 
-            entry["ok"] = bool(entry.get("ir_roundtrip")) and entry.get("ir_roundtrip") is not None
+            # ok requires the IR round-trip regardless; when a generated
+            # package was supplied, the AST stage must ALSO have passed
+            # (ast_roundtrip True, not None/False) — otherwise a broken or
+            # absent generated package silent-passes on IR alone (r1 B1).
+            ir_ok = entry.get("ir_roundtrip") is True
+            if generated_pkg is not None:
+                entry["ok"] = ir_ok and entry.get("ast_roundtrip") is True
+            else:
+                entry["ok"] = ir_ok
             results.append(entry)
     finally:
         _drop_pkg(generated_pkg)
@@ -226,7 +254,7 @@ def replay(
         "fail": sum(1 for r in results if not r.get("ok")),
         "fidelity_classes": {
             cls: sum(1 for r in results if r.get("fidelity_class") == cls)
-            for cls in ("full", "partial", "opaque")
+            for cls in ("full", "partial", "opaque", "error")
         },
     }
     return {"summary": summary, "files": results}
@@ -269,10 +297,17 @@ def roundtrip(
                 import sysml2py  # type: ignore[import-not-found]
 
                 root = parse_ir(src, model_path=model_path)
-                tree = sysml2py.Node.from_ir(_ir_to_json(root))
+                j = _ir_to_json(root)
+                tree = sysml2py.Node.from_ir(j)
                 gd = tree.get_definition()
                 dumped = dump_from_definition(gd)
-                entry["ok"] = canonical_equals(dumped, src)
+                entry["raw_ok"] = canonical_equals(dumped, src)
+                # r1 W1-4: also prove the semantic definition is lossless —
+                # get_definition() must equal the IR we lifted from (raw_text
+                # survives regardless, so without this a broken get_definition
+                # that drops fields still dumps raw_text and 'passes').
+                entry["semantic_ok"] = bool(gd == j)
+                entry["ok"] = entry["raw_ok"] and entry["semantic_ok"]
             except Exception as exc:  # noqa: BLE001
                 entry["ok"] = False
                 entry["error"] = f"{exc.__class__.__name__}: {exc}"
@@ -284,6 +319,8 @@ def roundtrip(
         "files": len(results),
         "pass": sum(1 for r in results if r.get("ok")),
         "fail": sum(1 for r in results if not r.get("ok")),
+        "raw_pass": sum(1 for r in results if r.get("raw_ok")),
+        "semantic_pass": sum(1 for r in results if r.get("semantic_ok")),
     }
     return {"summary": summary, "files": results}
 
@@ -306,8 +343,9 @@ def determinism(generate_args: list[str] | None = None, *, tmpdir: Path | None =
     """Generate twice into fresh dirs and require byte-identical output.
 
     ``generate_args`` are CLI args to ``sysml2py-lab generate`` (e.g.
-    ``["--out", <dir>]``); each run gets its own out dir.  Writes into a
-    temp workspace unless ``tmpdir`` is given.
+    ``["--generated-at-now"]``); each run ALWAYS gets its own ``--out``
+    appended after the caller's args, so they cannot clobber the per-run dir
+    (r1 W1-5).  Writes into a temp workspace unless ``tmpdir`` is given.
     """
     exe = _lab_cli()
     work = Path(tmpdir) if tmpdir else Path(tempfile.mkdtemp(prefix="sysml2py-regress-"))
@@ -316,24 +354,35 @@ def determinism(generate_args: list[str] | None = None, *, tmpdir: Path | None =
 
     def _run(out: Path) -> subprocess.CompletedProcess[str]:
         out.mkdir(parents=True, exist_ok=True)
-        cmd = [str(exe), "generate", "--out", str(out)]
+        cmd = [str(exe), "generate"]
         if generate_args:
-            cmd = [str(exe), "generate", *generate_args]
-            # ensure the out dir is set by caller-provided args
+            cmd += generate_args
+        cmd += ["--out", str(out)]
         return subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT, check=False)
 
-    pa = _run(out_a)
-    pb = _run(out_b)
-    if pa.returncode != 0 or pb.returncode != 0:
-        return {
-            "ok": False,
-            "error": f"generate failed: a={pa.returncode} b={pb.returncode}",
-            "a": pa.stderr[-500:] if pa.stderr else pa.stdout[-500:],
-            "b": pb.stderr[-500:] if pb.stderr else pb.stdout[-500:],
-        }
+    try:
+        pa = _run(out_a)
+        pb = _run(out_b)
+        if pa.returncode != 0 or pb.returncode != 0:
+            return {
+                "ok": False,
+                "error": f"generate failed: a={pa.returncode} b={pb.returncode}",
+                "a": pa.stderr[-500:] if pa.stderr else pa.stdout[-500:],
+                "b": pb.stderr[-500:] if pb.stderr else pb.stdout[-500:],
+            }
 
-    diffs = _diff_trees(out_a, out_b)
-    return {"ok": not diffs, "diffs": diffs[:50], "a": str(out_a), "b": str(out_b)}
+        diffs = _diff_trees(out_a, out_b)
+        # A vacuous pass comparing zero files is a silent trap (r1 W1-5).
+        if not diffs and _count_tree_files(out_a) == 0:
+            return {"ok": False, "diffs": [], "error": "compared zero files (both runs empty?)",
+                    "a": str(out_a), "b": str(out_b)}
+        return {"ok": not diffs, "diffs": diffs[:50], "a": str(out_a), "b": str(out_b)}
+    finally:
+        # Clean up the temp workspace when we created it (r1 W2-8).
+        if tmpdir is None:
+            import shutil
+
+            shutil.rmtree(work, ignore_errors=True)
 
 
 def _lab_cli() -> Path:
@@ -360,6 +409,15 @@ def _diff_trees(a: Path, b: Path) -> list[str]:
     for rel in set(fb) - set(fa):
         diffs.append(f"+{rel}")
     return sorted(diffs)
+
+
+def _count_tree_files(root: Path) -> int:
+    """Number of files (excluding cache dirs) under a tree."""
+    return sum(
+        1
+        for p in root.rglob("*")
+        if p.is_file() and not any(x in {".ruff_cache", "__pycache__"} for x in p.parts)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -446,7 +504,19 @@ def _count_buildable(corpus_dir: Path) -> int:
     seen: set[str] = set()
     for entry in manifest.get("files", {}).values():
         seen.update(entry.get("node_kinds", []))
-    return sum(1 for k in seen if k in aliases and aliases[k] not in ("", "Unsupported"))
+    # r1 W2-9: also honour BUILDER_DENY (root/unknown/braces) so "buildable"
+    # matches the actual generated builder set, not just the alias table.
+    try:
+        from sysml2py_lab.codegen.model import CodegenModel
+
+        denied = set(CodegenModel.BUILDER_DENY)
+    except Exception:  # noqa: BLE001
+        denied = set()
+    return sum(
+        1
+        for k in seen
+        if k in aliases and aliases[k] not in ("", "Unsupported") and k not in denied
+    )
 
 
 def _count_ir_roundtrip(corpus_dir: Path, model_path: str | None) -> int:
@@ -467,13 +537,24 @@ def _count_ir_roundtrip(corpus_dir: Path, model_path: str | None) -> int:
 
 
 def _ratchet_regressions(base: dict, current: dict) -> list[str]:
-    """Return list of fields that regressed vs baseline (strict decrease)."""
+    """Return list of coverage fields that regressed vs baseline.
+
+    Split directions (r1 B2): ``modelled``/``buildable``/``ir_roundtrip_files``
+    are *progress* counts — they must not decrease.  ``partial``/``opaque`` are
+    *loss* counts — a genuine fidelity improvement (opaque -> modelled) drops
+    them, so they must not INCREASE (rising loss is the regression).
+    """
     regs: list[str] = []
-    for field in ("modelled", "partial", "opaque", "buildable", "ir_roundtrip_files"):
+    for field in ("modelled", "buildable", "ir_roundtrip_files"):
         b = int(base.get(field, 0) or 0)
         c = int(current.get(field, 0) or 0)
         if c < b:
             regs.append(f"{field}: {b} -> {c}")
+    for field in ("partial", "opaque"):
+        b = int(base.get(field, 0) or 0)
+        c = int(current.get(field, 0) or 0)
+        if c > b:
+            regs.append(f"{field}: {b} -> {c} (loss increased)")
     return regs
 
 
@@ -494,9 +575,10 @@ def goldens(
     ``write=True`` refreshes the golden files from the current corpus state
     (an intentional refresh, done on a dedicated golden-update commit).
     ``write=False`` (default) diffs the current state against the committed
-    goldens and reports drift.
+    goldens and reports drift (an *absent* golden is itself drift — r1 W1).
     """
-    goldens_dir.mkdir(parents=True, exist_ok=True)
+    files_gp = goldens_dir / "replay-fidelity.json"
+    cov_gp = goldens_dir / "coverage-baseline.json"
 
     # golden 1: expanded per-file replay detail (modelled/partial/opaque)
     _ensure_pkg(generated_pkg)
@@ -507,37 +589,42 @@ def goldens(
                 "fidelity": r.get("fidelity", {}),
                 "fidelity_class": r.get("fidelity_class"),
                 "ir_roundtrip": r.get("ir_roundtrip"),
+                "ast_roundtrip": r.get("ast_roundtrip"),
             }
             for r in replay_report["files"]
         }
-        files_gp = goldens_dir / "replay-fidelity.json"
 
-        # golden 2: coverage snapshot
+        # golden 2: coverage snapshot — ratchet against the goldens-dir copy.
+        # replay() drops the package path in its own finally, so re-ensure it
+        # before coverage (buildable needs the generated classes importable).
+        _ensure_pkg(generated_pkg)
         cov_report = coverage(
             corpus_dir,
             model_path=model_path,
-            baseline_path=DEFAULT_BASELINE,
+            baseline_path=cov_gp,
         )
-        cov_gp = goldens_dir / "coverage-baseline.json"
     finally:
         _drop_pkg(generated_pkg)
 
-    changed: list[str] = []
     if write:
+        # only create the golden dir when we are actually refreshing
+        goldens_dir.mkdir(parents=True, exist_ok=True)
         _json_dump(files_golden, files_gp)
         _json_dump({"coverage": cov_report["coverage"]}, cov_gp)
         changed = [files_gp.name, cov_gp.name]
     else:
-        if files_gp.exists():
-            old = _load_json(files_gp, {})
-            dr = _diff_dicts(old, files_golden)
+        changed = []
+        for name, gp, current in (
+            ("replay-fidelity.json", files_gp, files_golden),
+            ("coverage-baseline.json", cov_gp, {"coverage": cov_report["coverage"]}),
+        ):
+            if not gp.exists():
+                changed.append(f"{name}: MISSING (commit the golden baseline)")
+                continue
+            old = _load_json(gp, {})
+            dr = _diff_dicts(old, current)
             if dr:
-                changed.append(f"replay-fidelity.json: {dr}")
-        if cov_gp.exists():
-            old_cov = _load_json(cov_gp, {}).get("coverage", {})
-            dr = _diff_dicts(old_cov, cov_report["coverage"])
-            if dr:
-                changed.append(f"coverage-baseline.json: {dr}")
+                changed.append(f"{name}: {dr}")
 
     return {"ok": not changed, "changed": changed, "dir": str(goldens_dir)}
 
