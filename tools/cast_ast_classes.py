@@ -25,49 +25,33 @@ import sys
 from pathlib import Path
 
 LAB = Path(__file__).resolve().parents[1]
-GEN = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else LAB / "out" / "sysml2py" / "src"
-CORPUS = LAB / "corpus"
 
-sys.path.insert(0, str(LAB / "src"))
-sys.path.insert(0, str(GEN))
+# _cast_pins is a sibling of this tool; ensure its dir is importable both as
+# a script (python tools/cast_ast_classes.py) and as a module under pytest.
+_TOOLS_DIR = Path(__file__).resolve().parent
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
 
-import sysml2py
+from _cast_pins import REQUIRED_ALIASED_CLASSES
 
 from sysml2py_lab.ir import ir_to_json, parse_ir
 from sysml2py_lab.normalize import canonical_equals
 
-# Pinned expected set of aliased classes (C1): derived as a literal so that
-# emptying IR_KIND_ALIASES cannot vacate the cast gates.
-REQUIRED_ALIASED_CLASSES = frozenset(
-    {
-        "Package",
-        "PartUsage",
-        "AttributeUsage",
-        "ActionUsage",
-        "ItemUsage",
-        "PortUsage",
-        "StateUsage",
-        "TransitionUsage",
-        "ConstraintUsage",
-        "InterfaceUsage",
-        "ConnectionUsage",
-        "OccurrenceUsage",
-        "RequirementUsage",
-        "UseCaseUsage",
-        "ObjectiveRequirementUsage",
-        "SubjectUsage",
-        "ActorUsage",
-        "Message",
-        "Succession",
-        "AliasMember",
-        "Import",
-        "Comment",
-        "RootNamespace",
-    }
-)
+# NOTE: the CLI's sys.path setup + `import sysml2py` happen inside main()
+# (r7 W1): importing this module must not have side effects (the acceptance
+# test imports it under pytest).
 
 
-def cast_file(path):
+def _setup_env(gen_dir: Path):
+    """Insert lab src + generated package on sys.path (CLI only)."""
+    sys.path.insert(0, str(LAB / "src"))
+    sys.path.insert(0, str(gen_dir))
+    import sysml2py
+
+    return sysml2py
+
+
+def cast_file(path, sm):
     """Return (ok, message, hist, unsup) for one file."""
     src = path.read_text(encoding="utf-8")
     try:
@@ -80,7 +64,7 @@ def cast_file(path):
     hist: dict[str, int] = {}
     unsup: set[str] = set()
     try:
-        tree = sysml2py.Node.from_ir(j)
+        tree = sm.Node.from_ir(j)
         dumped = tree.dump()
     except Exception as exc:  # noqa: BLE001
         return (False, f"generated-class build failed: {exc.__class__.__name__}: {exc}", {}, set())
@@ -93,8 +77,8 @@ def cast_file(path):
         ir_kind = getattr(node, "ir_kind", None)
         if (
             type(node).__name__ == "Unsupported"
-            and ir_kind in sysml2py.IR_KIND_ALIASES
-            and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
+            and ir_kind in sm.IR_KIND_ALIASES
+            and sm.IR_KIND_ALIASES[ir_kind] != "Unsupported"
         ):
             unsup.add(f"{path.name}:{ir_kind}")
         stack.extend(getattr(node, "children", []) or [])
@@ -102,14 +86,17 @@ def cast_file(path):
 
 
 def main() -> None:
-    files = sorted(CORPUS.rglob("*.sysml"))
+    gen = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else LAB / "out" / "sysml2py" / "src"
+    corpus = LAB / "corpus"
+    sm = _setup_env(gen)
+    files = sorted(corpus.rglob("*.sysml"))
     passed = 0
     failed = 0
     waivers: list[tuple[str, str]] = []
     histogram: dict[str, int] = {}
     unsupported_for_aliased: set[str] = set()
     for f in files:
-        ok, why, hist, unsup = cast_file(f)
+        ok, why, hist, unsup = cast_file(f, sm)
         if ok:
             passed += 1
             for cls, n in hist.items():
@@ -117,7 +104,7 @@ def main() -> None:
             unsupported_for_aliased |= unsup
         else:
             failed += 1
-            waivers.append((str(f.relative_to(CORPUS)), why))
+            waivers.append((str(f.relative_to(corpus)), why))
     print(f"CAST: {passed}/{len(files)} passed, {failed} failed")
     if unsupported_for_aliased:
         print(f"UNSUPPORTED-FOR-ALIASED: {sorted(unsupported_for_aliased)}")
@@ -129,7 +116,7 @@ def main() -> None:
     if missing:
         print(f"MISSING-ALIASED-CLASSES: {missing}")
         failed += len(missing)
-    if not REQUIRED_ALIASED_CLASSES <= set(sysml2py.IR_KIND_ALIASES.values()):
+    if not REQUIRED_ALIASED_CLASSES <= set(sm.IR_KIND_ALIASES.values()):
         print("IR_KIND_ALIASES shrank below the pinned required set")
         failed += 1
     top = sorted(histogram.items(), key=lambda kv: -kv[1])[:12]

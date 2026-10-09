@@ -137,8 +137,10 @@ def test_every_class_has_dump_and_get_definition(tmp_path):
 def test_zero_not_implemented_error(tmp_path):
     """Acceptance: zero NotImplementedError raises in generated output."""
     pkg = _gen(tmp_path)
-    # N6: scan every generated .py (provenance/__init__ could carry a raise)
-    for f in sorted((_src(pkg) / "sysml2py").glob("*.py")):
+    # N6: scan EVERY generated .py.  _src(pkg) IS the package dir
+    # (pkg/src/sysml2py) — globbing one level deeper would scan zero files
+    # (r7 C1 regression), so keep the root correct here.
+    for f in sorted(_src(pkg).glob("*.py")):
         if f.name == "normalize.py":
             continue  # verbatim lab copy (issue #8)
         src = f.read_text(encoding="utf-8")
@@ -371,11 +373,13 @@ def test_unsupported_get_definition_preserves_children(tmp_path):
     try:
         import sysml2py
 
-        # block has no IR_KIND_ALIASES -> Unsupported, but carries a child
+        # block has no IR_KIND_ALIASES -> Unsupported, but carries real data
         u = sysml2py.Node.from_ir(
             {
                 "kind": "block",
                 "name": "B",
+                "modifiers": ["abstract"],
+                "multiplicity": "[1]",
                 "children": [
                     {"kind": "part", "name": "x", "children": []},
                 ],
@@ -383,13 +387,16 @@ def test_unsupported_get_definition_preserves_children(tmp_path):
         )
         assert type(u).__name__ == "Unsupported", type(u).__name__
         d = u.get_definition()
+        # payload must survive (r7 C2): kind, real name, modifiers, children
+        assert d.get("kind") == "block", f"kind lost: {d!r}"
+        assert d.get("name") == "B", f"real name overwritten by kind: {d!r}"
+        assert d.get("modifiers") == ["abstract"], f"modifiers lost: {d!r}"
+        assert d.get("multiplicity") == "[1]", f"multiplicity lost: {d!r}"
         assert d.get("children"), f"subtree dropped: {d!r}"
-        # a real comment child recurses too (partial round-trip identity)
-        u2 = sysml2py.Node.from_ir(
-            {"kind": "comment", "name": "", "children": [{"kind": "part", "name": "y"}]}
+        # idempotence: from_ir(get_definition()) must reproduce the dict
+        assert sysml2py.Node.from_ir(d).get_definition() == d, (
+            f"not idempotent: {sysml2py.Node.from_ir(d).get_definition()!r} != {d!r}"
         )
-        d2 = u2.get_definition()
-        assert d2.get("children"), f"comment subtree dropped: {d2!r}"
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
@@ -438,9 +445,9 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
     from sysml2py_lab.ir import ir_to_json, parse_ir
     from sysml2py_lab.normalize import canonical_equals
 
-    # N4: single source of the pinned set — import it from the cast tool so
-    # the two cannot drift.
-    from tools.cast_ast_classes import REQUIRED_ALIASED_CLASSES
+    # N4/r7-W1: single source of the pinned set — import the side-effect-free
+    # pins module (not the CLI tool, whose import must not touch sys.path).
+    from tools._cast_pins import REQUIRED_ALIASED_CLASSES
 
     pkg = _gen(tmp_path)
     sys.path.insert(0, str(pkg / "src"))
@@ -479,6 +486,19 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
                     and sysml2py.IR_KIND_ALIASES[ir_kind] != "Unsupported"
                 ):
                     unsupported_for_aliased.add(f"{f.name}:{ir_kind}")
+            # Fixed-point identity (r7): get_definition -> from_ir ->
+            # get_definition must be stable for the WHOLE corpus tree.  This
+            # is the gate that would have caught r6's C1 and r7's C2 (an
+            # Unsupported node that drops kind/name/modifiers/children is not
+            # a fixed point).
+            try:
+                gd = tree.get_definition()
+                fp = sysml2py.Node.from_ir(gd).get_definition()
+            except Exception as exc:  # noqa: BLE001
+                failed.append((str(f.relative_to(corpus)), f"fixed-point error: {exc}"))
+                continue
+            if fp != gd:
+                failed.append((str(f.relative_to(corpus)), "fixed-point mismatch"))
             if not canonical_equals(dumped, src):
                 failed.append((str(f.relative_to(corpus)), "canonical mismatch"))
         assert not unsupported_for_aliased, (

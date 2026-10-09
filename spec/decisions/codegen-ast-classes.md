@@ -52,9 +52,11 @@ exposes:
   kinds; the generated classes are fine-grained grammar classes.  This alias
   lifts IR trees onto generated nodes (`Node.from_ir`).
 
-## Generated class shape <!-- illustrative: simplified for readability; the
-real emitted ctor sets self._definition in textX mode and never synthesizes
-{"name": ...} for definition=None. See templates/ast_classes.py.j2. -->
+## Generated class shape
+
+> **Illustrative** — simplified for readability. The real emitted ctor sets
+> `self._definition` in textX mode and never synthesizes `{"name": ...}` for
+> `definition=None`. See `templates/ast_classes.py.j2` for the exact shape.
 
 Every generated class implements the uniform triad:
 
@@ -102,8 +104,10 @@ CLASS_TO_BODY = {"Package": "PackageBody", "PartUsage": "UsageBody", ...}
 def dispatch_member(parent_body: str, member_kind: str):
     """Return the class handling `member_kind` inside `parent_body`, or
     Unsupported if the grammar allows it but no modelled class exists."""
-    cls_name = MEMBERSHIP_DISPATCH.get(parent_body, {}).get(member_kind)
-    return getattr(ast_classes, cls_name, Unsupported) if cls_name else Unsupported
+    cls_name = _resolve_kind(member_kind)  # IR coarse kind -> class name
+    table = MEMBERSHIP_DISPATCH.get(parent_body, {})
+    child = table.get(cls_name) or table.get(member_kind)
+    return getattr(ast_classes, child, Unsupported) if child else Unsupported
 ```
 
 `CLASS_TO_BODY` maps each class to the body it **owns** (derived from the
@@ -159,12 +163,18 @@ dirs or `--overwrite`.)
 - `>= 266` node kinds generated (the generator emits 700+, and the parity
   test pins every hand-written 0.5.3 class name plus the 8 helper
   composites); every one has both `dump()` and `get_definition()`.
-- Zero `NotImplementedError` in generated output.
+- Zero `NotImplementedError` in generated output — scanned over **every**
+  generated `.py` (ast_classes, ast_dispatch, provenance, `__init__`; minimal
+  `normalize.py` is a verbatim lab copy, issue #8).
 - The CAST: corpus → IR → `Node.from_ir` → generated tree → `dump()` →
   canonical-compare against original source.  **62/62 corpus files round-trip
   losslessly.**  (The grammar_test.py suite needs textX, which is not
   installable in this environment; the IR/dump casting is the equivalent
   round-trip gate over the same 62 corpus files.)
+- **Fixed-point identity** (r7): every corpus tree's `get_definition()` →
+  `Node.from_ir` → `get_definition()` must reproduce the dict exactly, so an
+  `Unsupported` node that drops `kind`/`name`/`modifiers`/`children` (the r7
+  C2 bug) fails the CAST.
 - `generate` does NOT overwrite `sysml2py/src/` without an explicit flag.
 
 ## Casting found a real bug

@@ -87,10 +87,8 @@ def dispatch_children(parent_body: str, children: list[dict]) -> list[Any]:
     for c in children:
         kind = c.get("kind", "")
         cls = dispatch_member(parent_body, kind)
-        if cls is Unsupported:
-            out.append(Unsupported.from_ir(c))
-        elif hasattr(cls, "from_ir"):
-            out.append(cls.from_ir(c))
-        else:
-            out.append(Unsupported.from_ir(c))
+        # every member has from_ir (Unsupported included — r7 N7), so a single
+        # branch suffices: known kinds lift, unknown kinds become Unsupported
+        # carrying raw_text AND children.
+        out.append(cls.from_ir(c))
     return out

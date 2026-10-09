@@ -131,13 +131,26 @@ class Unsupported:
         return "".join(out)
 
     def get_definition(self):
-        out = dict(self.definition) if isinstance(self.definition, dict) else {}
-        out.setdefault("name", self.kind or "Unsupported")
-        if self.raw_text is not None:
-            out["raw_text"] = self.raw_text
-        if self.children:
-            out["children"] = [c.get_definition() for c in self.children]
-        return out
+        if isinstance(self.definition, dict):
+            out = dict(self.definition)
+            out.setdefault("name", self.kind or "Unsupported")
+            if self.raw_text is not None:
+                out["raw_text"] = self.raw_text
+            if self.children:
+                out["children"] = [c.get_definition() for c in self.children]
+            return out
+        return {
+            "kind": self.ir_kind or self.kind or "Unsupported",
+            "name": self.name,
+            "short_name": self.short_name,
+            "modifiers": list(self.modifiers),
+            "type_refs": list(self.type_refs),
+            "multiplicity": self.multiplicity,
+            "source_span": list(self.source_span),
+            "raw_text": self.raw_text if self.raw_text is not None else "",
+            "fidelity": self.fidelity,
+            "children": [c.get_definition() for c in self.children],
+        }
 
     @classmethod
     def from_ir(cls, d: dict) -> Unsupported:
