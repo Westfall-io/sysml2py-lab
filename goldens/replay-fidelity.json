@@ -1,0 +1,560 @@
+{
+  "family/family.sysml": {
+    "fidelity": {
+      "modelled": 146,
+      "opaque": 66,
+      "partial": 25
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/attribute_def_subusage__commented.sysml": {
+    "fidelity": {
+      "modelled": 5,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/attribute_definition__commented.sysml": {
+    "fidelity": {
+      "modelled": 2,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/attribute_usage__commented.sysml": {
+    "fidelity": {
+      "modelled": 2,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/package__commented.sysml": {
+    "fidelity": {
+      "modelled": 2,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/package_owned_members__commented.sysml": {
+    "fidelity": {
+      "modelled": 7,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/package_with_alias_member__commented.sysml": {
+    "fidelity": {
+      "modelled": 6,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/package_with_imported_package__commented.sysml": {
+    "fidelity": {
+      "modelled": 6,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/subpackage__commented.sysml": {
+    "fidelity": {
+      "modelled": 5,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Action_Decomposition.sysml": {
+    "fidelity": {
+      "modelled": 26,
+      "opaque": 7,
+      "partial": 5
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Action_Definition_Example.sysml": {
+    "fidelity": {
+      "modelled": 16,
+      "opaque": 13,
+      "partial": 6
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Action_Shorthand_Example.sysml": {
+    "fidelity": {
+      "modelled": 23,
+      "opaque": 6,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Action_Succession_Example_1.sysml": {
+    "fidelity": {
+      "modelled": 18,
+      "opaque": 12,
+      "partial": 6
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Action_Succession_Example_2.sysml": {
+    "fidelity": {
+      "modelled": 19,
+      "opaque": 10,
+      "partial": 6
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Analysis_Analysis_Case_Definition_Example.sysml": {
+    "fidelity": {
+      "modelled": 43,
+      "opaque": 18,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Analysis_Analysis_Case_Usage_Example.sysml": {
+    "fidelity": {
+      "modelled": 23,
+      "opaque": 5,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Analysis_Trade_Study_Analysis_Example.sysml": {
+    "fidelity": {
+      "modelled": 33,
+      "opaque": 34,
+      "partial": 1
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Binding_Connectors_Example_1.sysml": {
+    "fidelity": {
+      "modelled": 26,
+      "opaque": 2,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Binding_Connectors_Example_2.sysml": {
+    "fidelity": {
+      "modelled": 29,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Calculations_Calculation_Definitions.sysml": {
+    "fidelity": {
+      "modelled": 15,
+      "opaque": 22,
+      "partial": 1
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Calculations_Calculation_Usages_1.sysml": {
+    "fidelity": {
+      "modelled": 18,
+      "opaque": 20,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Calculations_Calculation_Usages_2.sysml": {
+    "fidelity": {
+      "modelled": 20,
+      "opaque": 6,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Connections_Connections_Example.sysml": {
+    "fidelity": {
+      "modelled": 35,
+      "opaque": 4,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Constraints_Analytical_Constraints.sysml": {
+    "fidelity": {
+      "modelled": 11,
+      "opaque": 26,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_1.sysml": {
+    "fidelity": {
+      "modelled": 23,
+      "opaque": 6,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_2.sysml": {
+    "fidelity": {
+      "modelled": 25,
+      "opaque": 8,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Constraints_Constraints_Example_1.sysml": {
+    "fidelity": {
+      "modelled": 23,
+      "opaque": 5,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Constraints_Constraints_Example_2.sysml": {
+    "fidelity": {
+      "modelled": 25,
+      "opaque": 3,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Constraints_Derivation_Constraints.sysml": {
+    "fidelity": {
+      "modelled": 15,
+      "opaque": 8,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Constraints_Time_Constraints.sysml": {
+    "fidelity": {
+      "modelled": 28,
+      "opaque": 11,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_1.sysml": {
+    "fidelity": {
+      "modelled": 14,
+      "opaque": 4,
+      "partial": 1
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_2.sysml": {
+    "fidelity": {
+      "modelled": 20,
+      "opaque": 16,
+      "partial": 1
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example.sysml": {
+    "fidelity": {
+      "modelled": 30,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example_2.sysml": {
+    "fidelity": {
+      "modelled": 30,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Expressions_Mass_Rollup_1.sysml": {
+    "fidelity": {
+      "modelled": 19,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Expressions_Mass_Rollup_2.sysml": {
+    "fidelity": {
+      "modelled": 19,
+      "opaque": 3,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Flow_Connection_Definition_Example.sysml": {
+    "fidelity": {
+      "modelled": 13,
+      "opaque": 3,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Flow_Connection_Interface_Example.sysml": {
+    "fidelity": {
+      "modelled": 13,
+      "opaque": 4,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Flow_Connection_Usage_Example.sysml": {
+    "fidelity": {
+      "modelled": 9,
+      "opaque": 2,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Generalization_Generalization_Example.sysml": {
+    "fidelity": {
+      "modelled": 16,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Interfaces_InterfaceDecomposition_Example.sysml": {
+    "fidelity": {
+      "modelled": 17,
+      "opaque": 4,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Interfaces_Interface_Example.sysml": {
+    "fidelity": {
+      "modelled": 13,
+      "opaque": 2,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Items_Items_Example.sysml": {
+    "fidelity": {
+      "modelled": 16,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Packages_Comment_Example.sysml": {
+    "fidelity": {
+      "modelled": 11,
+      "opaque": 1,
+      "partial": 1
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Packages_Documentation_Example.sysml": {
+    "fidelity": {
+      "modelled": 8,
+      "opaque": 3,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Packages_Package_Example.sysml": {
+    "fidelity": {
+      "modelled": 9,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_PartDefinition_PartDefinition_Example.sysml": {
+    "fidelity": {
+      "modelled": 15,
+      "opaque": 2,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Parts_Parts_Example_1.sysml": {
+    "fidelity": {
+      "modelled": 29,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Parts_Parts_Example_2.sysml": {
+    "fidelity": {
+      "modelled": 30,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Ports_Port_Conjugation_Example.sysml": {
+    "fidelity": {
+      "modelled": 20,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Ports_Port_Example.sysml": {
+    "fidelity": {
+      "modelled": 26,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Redefinition_Redefinition_Example.sysml": {
+    "fidelity": {
+      "modelled": 29,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Requirements_Requirement_Definitions.sysml": {
+    "fidelity": {
+      "modelled": 27,
+      "opaque": 8,
+      "partial": 5
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Requirements_Requirement_Groups.sysml": {
+    "fidelity": {
+      "modelled": 20,
+      "opaque": 5,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Requirements_Requirement_Satisfaction.sysml": {
+    "fidelity": {
+      "modelled": 15,
+      "opaque": 5,
+      "partial": 4
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Requirements_Requirement_Usages.sysml": {
+    "fidelity": {
+      "modelled": 17,
+      "opaque": 4,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example.sysml": {
+    "fidelity": {
+      "modelled": 14,
+      "opaque": 2,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example_2.sysml": {
+    "fidelity": {
+      "modelled": 11,
+      "opaque": 5,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_States_State_Actions.sysml": {
+    "fidelity": {
+      "modelled": 25,
+      "opaque": 12,
+      "partial": 5
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_States_State_Decomp1.sysml": {
+    "fidelity": {
+      "modelled": 12,
+      "opaque": 5,
+      "partial": 2
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_States_State_Decomp2.sysml": {
+    "fidelity": {
+      "modelled": 18,
+      "opaque": 5,
+      "partial": 3
+    },
+    "fidelity_class": "partial",
+    "ir_roundtrip": true
+  },
+  "grammar-2023-07/test_Training_Subsetting_Subsetting_Example.sysml": {
+    "fidelity": {
+      "modelled": 15,
+      "opaque": 0,
+      "partial": 0
+    },
+    "fidelity_class": "full",
+    "ir_roundtrip": true
+  }
+}

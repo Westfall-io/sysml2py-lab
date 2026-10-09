@@ -1,0 +1,10 @@
+{
+  "coverage": {
+    "buildable": 21,
+    "files": 62,
+    "ir_roundtrip_files": 62,
+    "modelled": 1255,
+    "opaque": 387,
+    "partial": 146
+  }
+}
