@@ -276,6 +276,11 @@ class CodegenModel:
             return None
         calls: list[str] = []
         self._collect_calls(r.get("body", {}), calls)
+        # r2 W1-1: scan the body-rules FIRST, before recursing into optional
+        # value/feature parts.  e.g. UsageCompletion = "ValuePart? UsageBody"
+        # — collecting calls preserves text order, so without this pass the
+        # optional ValuePart (ExpressionBody etc.) is followed before the real
+        # UsageBody and the resolved "owned body" is wrong.
         for c in calls:
             if c.endswith("Body") and c in self._by_name:
                 # a body rule that merely delegates to another body rule is an
@@ -289,6 +294,7 @@ class CodegenModel:
                     if sub_res is not None:
                         return sub_res
                 return c
+        for c in calls:
             if c in self._by_name:
                 res = self._owned_body_for(c, _depth + 1)
                 if res is not None:
@@ -345,7 +351,7 @@ class CodegenModel:
     # by the coverage test).  Each maps to a generated class via
     # IR_KIND_ALIASES; every aliased kind not denied gets a builder.
     BUILDER_DENY: frozenset[str] = frozenset(
-        {"brace_open", "brace_close", "root", "unknown", "import"}
+        {"brace_open", "brace_close", "root", "unknown"}
     )
 
     def builder_ir_kinds(self) -> list[str]:
@@ -356,7 +362,10 @@ class CodegenModel:
             "use_case", "requirement", "interface", "message", "objective",
             "succession", "transition", "comment", "alias",
         ]
-        # include any alias not denied that isn't already listed (future-proof)
+        # W2-1: filter the deny-list out of BOTH the explicit order list and
+        # the future-proof extra tail, so BUILDER_DENY is the single source
+        # of truth for what is excluded.
+        order = [k for k in order if k not in self.BUILDER_DENY]
         extra = [
             k for k in IR_KIND_ALIASES
             if k not in self.BUILDER_DENY and k not in order
@@ -387,7 +396,6 @@ class CodegenModel:
                     "is_definition": ir_kind == "package",
                     "owned_body": owned_body,
                     "owned_body_lit": repr(owned_body),
-                    "modifier_slots": self.modifier_slots("BasicUsagePrefix"),
                 }
             )
         # legal children per owned body, from children.json (advisory — the
@@ -400,11 +408,7 @@ class CodegenModel:
         return {
             "builder_classes": kinds_out,
             "legal_children": legal,
-            "definition_modifier_slots": self.modifier_slots("BasicDefinitionPrefix"),
             "usage_modifier_slots": self.modifier_slots("BasicUsagePrefix"),
-            "named_kinds": sorted(
-                {slot.wrapper for body in self.body_names() for slot in self.body_slots(body)}
-            ),
         }
 
     # -- provenance -------------------------------------------------------

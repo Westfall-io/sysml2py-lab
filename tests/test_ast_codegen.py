@@ -719,13 +719,13 @@ def test_builder_api_casts_semantic_content(tmp_path):
         # hand-written expected IR: if _to_ir (or from_ir) drops any authored
         # field, the equality fails — not just the spot-checks.
         expected = {
-            "kind": "PartUsage",
+            "kind": "part",
             "name": "Satellite",
             "children": [
                 {
-                    "kind": "PartUsage",
+                    "kind": "part",
                     "name": "Panel",
-                    "modifiers": ["isAbstract"],
+                    "modifiers": ["abstract"],
                 }
             ],
         }
@@ -774,15 +774,17 @@ def test_builder_syntactic_dump_parses_back(tmp_path):
         sat._set_child(sysml2py.PartUsageBuilder("Panel"))
         text = sat.dump()
         assert "{" in text and "}" in text
-        assert "PartUsage Satellite" in text
-        assert "PartUsage Panel" in text
+        assert "part Satellite" in text
+        assert "part Panel" in text
 
         from sysml2py_lab.ir import parse_ir
 
         ir = parse_ir(text)
-        # the node owning brace_open must have a descendant carrying Panel
-        # (the recovered shape — re-nesting loses this, W1-9)
-        assert _has_descendant_text(ir, "Panel"), "child name not recovered"
+        # W2-3: assert on the node that OWNS the open brace (the brace block),
+        # not from the root, so a flattened recovery (sibling re-shape) fails.
+        owner = _find_brace_owner(ir)
+        assert owner is not None, "no brace block recovered"
+        assert _has_descendant_text(owner, "Panel"), "child name not under brace owner"
         assert any(k == "brace_open" for k in _flatten_kinds(ir))
     finally:
         sys.path.remove(str(pkg / "src"))
@@ -798,6 +800,18 @@ def _has_descendant_text(node, text) -> bool:
             return True
         stack.extend(getattr(n, "children", []) or [])
     return False
+
+
+def _find_brace_owner(node):
+    """Return the node that OWNS an opening brace (a brace block), else None."""
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        for child in getattr(n, "children", []) or []:
+            if getattr(child, "kind", "") == "brace_open":
+                return n
+            stack.append(child)
+    return None
 
 
 def _flatten_kinds(node) -> list[str]:
@@ -830,6 +844,10 @@ def test_builder_coverage_matches_ir_aliases(tmp_path):
             for k in expected if m.IR_KIND_ALIASES[k] != "Unsupported"
         }
         have = set(builders_mod._BUILDER_BY_NAME.keys())
+        # W2-2: assert SET EQUALITY (both directions) so an unintended builder
+        # is caught, not just a missing one.
+        unexpected = have - expected_cls
+        assert not unexpected, f"unexpected builder kinds: {sorted(unexpected)}"
         missing = expected_cls - have
         assert not missing, f"builder kinds missing: {sorted(missing)}"
         assert "PartUsage" in have and "InterfaceUsage" in have
@@ -866,12 +884,12 @@ def test_builder_behavior_traversal_printer_directed(tmp_path):
         # printer routes a builder-built tree through _render_sysml (W1-7);
         # pass the builder (the natural authoring handle), not the lifted Node
         text = print_model(sat)
-        assert "PartUsage Sat" in text and "{" in text
+        assert "part Sat" in text and "{" in text
         assert canonical(sat)  # canonicalizes without error
 
         # a bare Node still renders via dump()
         text_node = print_model(node)
-        assert "PartUsage Sat" in text_node
+        assert "part Sat" in text_node
 
         # _get_child feature chain
         got = sat._get_child("Bus.Power")

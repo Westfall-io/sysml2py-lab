@@ -270,7 +270,15 @@ class Node:
         else:
             parts: list[str] = []
             parts.extend(self.modifiers)
-            if self.ir_kind or self.kind:
+            if self.short_name:
+                # W1-4 r2: reconstruct the short name so build_node()->dump()
+                # does not silently drop it (SysML member-alias "~name").
+                head0 = (self.ir_kind or self.kind)
+                if self.name:
+                    parts.append(f"~{self.short_name} {head0} {self.name}")
+                else:
+                    parts.append(f"~{self.short_name} {head0}")
+            elif self.ir_kind or self.kind:
                 head = self.ir_kind or self.kind
                 if self.name:
                     parts.append(f"{head} {self.name}")
@@ -283,6 +291,10 @@ class Node:
                 parts.append(self.name)
             if self.multiplicity:
                 parts.append(self.multiplicity)
+            if self.type_refs:
+                # W1-4 r2: reconstruct the typed reference (": ref"), matching
+                # the builder's _render_sysml, so it isn't dropped on Node.dump.
+                parts.extend(f": {t}" for t in self.type_refs)
             if parts:
                 out.append(" ".join(parts))
         for c in self.children:

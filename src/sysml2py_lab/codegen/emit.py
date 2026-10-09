@@ -80,9 +80,7 @@ def _emit_builders(model: CodegenModel) -> str:
         builder_class_names=[b["name"] for b in bm["builder_classes"]],
         builder_classes=bm["builder_classes"],
         legal_children=bm["legal_children"],
-        definition_modifier_slots=bm["definition_modifier_slots"],
         usage_modifier_slots=bm["usage_modifier_slots"],
-        named_kinds=bm["named_kinds"],
     )
 
 

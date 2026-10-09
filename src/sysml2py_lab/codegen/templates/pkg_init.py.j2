@@ -41,7 +41,6 @@ from .provenance import (
 )
 from .builders import (
     Builder,
-    UPSERT_CHILD_KINDS,
     LEGAL_CHILDREN,
 {% for name in builder_class_names %}
     {{ name }},
@@ -86,7 +85,6 @@ __all__ = [
     "GENERATOR_VERSION",
     "GENERATED_AT",
     "Builder",
-    "UPSERT_CHILD_KINDS",
     "LEGAL_CHILDREN",
 {% for name in builder_class_names %}
     "{{ name }}",
