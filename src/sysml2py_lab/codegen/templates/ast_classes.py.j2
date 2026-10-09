@@ -216,11 +216,10 @@ class Node:
         # while a child one got fidelity="unsupported".
         if node_cls is Unsupported:
             return Unsupported.from_ir(d)
-        children: list[Node] = []
-        for c in d.get("children", []):
-            child_cls_name = IR_KIND_ALIASES.get(c.get("kind", ""), c.get("kind", ""))
-            child_cls = KIND_REGISTRY.get(child_cls_name, Unsupported)
-            children.append(child_cls.from_ir(c))
+        # N1: children route through Node.from_ir directly (their own kind
+        # re-resolves in the registry), matching Unsupported.from_ir's single
+        # payload path.
+        children: list[Node] = [Node.from_ir(c) for c in d.get("children", [])]
         result = node_cls(
             kind=kind,
             name=d.get("name", ""),

@@ -406,17 +406,25 @@ def test_unsupported_get_definition_preserves_children(tmp_path):
 
 
 def test_from_ir_forwards_full_ir_key_set(tmp_path):
-    """r8 C1 gate (generic): from_ir must consume the SAME key set as __init__.
+    """generic gate: from_ir must forward EVERY field its class models.
 
     The Unsupported payload path dropped a different field in three
     consecutive rounds (r6 children -> r7 payload dict -> r8 short_name)
     because each gate only observed the field it was written for.  This
-    closes the whole class: every IR dict key that `Unsupported.__init__`
-    / `Node.__init__` accepts must be forwarded by its `from_ir`.  Belt:
-    assert an explicit short_name survives an Unsupported lift (see the
-    dedicated C1 test).  Braces: assert the forwarded key set == the
-    init-parameter set, so a future omission is caught the moment it is
-    introduced, not the round after.
+    closes the whole class (r8 remedy, r9 fixed to actually reach both
+    payload paths and derive the probe dict from the ctor signature):
+
+      * the probe dict is built from ``inspect.signature(cls.__init__)``, so
+        a NEW init parameter enters the probe automatically;
+      * it probes BOTH paths: an aliasless kind (``bogus`` -> Unsupported)
+        and a modelled kind (``package`` -> Package), so both constructors
+        are executed and checked;
+      * each field is set to a distinctive sentinel and asserted to survive.
+
+    Two legitimate exceptions to the forwarding rule are pinned explicitly:
+    ``ir_kind`` is derived from ``kind`` (not read from ``d["ir_kind"]``),
+    and on the modelled path ``self.kind`` is overwritten with the generated
+    class name (``Package``) while the IR kind stays in ``ir_kind``.
     """
     pkg = _gen(tmp_path)
     sys.path.insert(0, str(pkg / "src"))
@@ -426,44 +434,45 @@ def test_from_ir_forwards_full_ir_key_set(tmp_path):
 
         import sysml2py
 
-        for cls, from_ir in ((sysml2py.Node, sysml2py.Node.from_ir),
-                             (sysml2py.Unsupported, sysml2py.Unsupported.from_ir)):
-            init_params = set(inspect.signature(cls.__init__).parameters) - {"self"}
-            # pass DISTINCTIVE values for every field the class models, so any
-            # field from_ir fails to forward is caught by the attribute value.
-            d = {
-                "kind": "bogus",
-                "name": "zzz",
-                "short_name": "zz",
-                "modifiers": ["abstract"],
-                "type_refs": ["T"],
-                "multiplicity": "[1]",
-                "children": [],
-                "source_span": [3, 7],
-                "raw_text": "raw",
-                "fidelity": "test",
-                "ir_kind": "bogus",
-            }
-            node = from_ir(d)
-            want = {
-                "kind": "bogus", "name": "zzz", "short_name": "zz",
-                "modifiers": ["abstract"], "type_refs": ["T"],
-                "multiplicity": "[1]", "fidelity": "test", "ir_kind": "bogus",
-            }
-            for k, v in want.items():
-                assert getattr(node, k, None) == v, (
-                    f"{cls.__name__}: field {k!r} not forwarded from_ir"
-                    f" (got {getattr(node, k, None)!r}, want {v!r})"
-                )
-            # children are re-listed (should be [] preserved)
-            assert list(getattr(node, "children", [])) == [], (
-                f"{cls.__name__}: children not forwarded"
+        SENT = {
+            "name": "zzz", "short_name": "zz", "modifiers": ["abstract"],
+            "type_refs": ["T"], "multiplicity": "[1]",
+            "source_span": [3, 7], "raw_text": "raw", "fidelity": "test",
+        }
+        # (kind, resolved_class_name); bogus routes to Unsupported, package
+        # to Package (the modelled path at ast_classes.py.j2:224-236).
+        for kind, resolved in (("bogus", "Unsupported"), ("package", "Package")):
+            cls = sysml2py.Node if kind == "bogus" else sysml2py.Package
+            from_ir = sysml2py.Node.from_ir
+            init_params = (
+                set(inspect.signature(cls.__init__).parameters)
+                - {"self", "definition", "kwargs"}
             )
-            if hasattr(cls, "__dataclass_fields__"):
-                dc = set(cls.__dataclass_fields__)
-                assert init_params == dc, (
-                    f"{cls.__name__}: ctor params {sorted(init_params - dc)} "
-                    f"!= dataclass fields {sorted(dc - init_params)}"
+            d = {"kind": kind, "children": [], **SENT}
+            node = from_ir(d)
+            assert type(node).__name__ == resolved, (
+                f"{kind!r} resolved to {type(node).__name__!r}, want {resolved!r}"
+            )
+            # every non-derive field must survive with its sentinel value
+            for p in init_params:
+                if p in ("kind", "ir_kind"):
+                    continue  # pinned exceptions below
+                got = getattr(node, p)
+                expect = SENT.get(p, [] if p == "children" else None)
+                if p == "source_span":
+                    expect = tuple(SENT[p])  # both paths normalize to tuple
+                assert got == expect, (
+                    f"{kind!r}->{resolved}: field {p!r} lost in from_ir"
+                    f" (got {got!r}, want {expect!r})"
+                )
+            # pinned exceptions: kind/ir_kind follow the resolve rule
+            if kind == "bogus":
+                assert node.kind == "bogus" and node.ir_kind == "bogus", (
+                    f"bogus path kind/ir_kind wrong: {node.kind!r}/{node.ir_kind!r}"
+                )
+            else:
+                assert node.kind == "Package" and node.ir_kind == "package", (
+                    f"package path kind/ir_kind wrong: {node.kind!r}/{node.ir_kind!r}"
                 )
     finally:
         sys.path.remove(str(pkg / "src"))
