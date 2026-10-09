@@ -95,7 +95,18 @@ class Builder:
         return self
 
     def _set_text(self, text):
-        """Set a free-text payload (W2-8; meaningful for Comment)."""
+        """Set a free-text payload (r2 W2-8; meaningful ONLY for Comment).
+
+        r6 W2-1: text has an IR home (``raw_text``) only for Comment; on any
+        other kind there is no IR field that carries it, so setting it would
+        silently vanish from ``build()``/``get_definition()`` while showing in
+        ``dump()``.  Refuse rather than emit content that cannot be cast.
+        """
+        if self._kind != "comment":
+            raise TypeError(
+                f"_set_text is only supported on Comment builders "
+                f"(got kind {self._kind!r}; text has no IR field on this kind)"
+            )
         self._text = text
         return self
 
@@ -165,6 +176,9 @@ class Builder:
         membership data → never reject.
         """
         body = self.owned_body
+        if body is None:
+            # owns no body at all (e.g. _DefaultReferenceBuilder) — reject all
+            return False
         if body not in LEGAL_CHILDREN:
             return True  # no membership data for this body — never reject
         allowed = LEGAL_CHILDREN[body]
@@ -211,13 +225,12 @@ class Builder:
         W1-8) so multi-member brace blocks recover as separate IR statements;
         ``/* */`` free text for Comment (r3 W1-7).
         """
-        comment_txt = None
-        if self._text is not None:
-            if self._kind == "comment":
-                # Comment payload is free text (r3 W1-7): self-terminating so
-                # parse_ir yields a comment node rather than an unknown.
-                return f"/* {self._text} */"
-            comment_txt = self._text  # non-comment builders: appended later
+        # r6: _set_text is Comment-only (raises otherwise, W2-1), so no
+        # non-comment carry of _text through _render_sysml is needed.
+        if self._text is not None and self._kind == "comment":
+            # Comment payload is free text (r3 W1-7): self-terminating so
+            # parse_ir yields a comment node rather than an unknown.
+            return f"/* {self._text} */"
 
         # W2-10: emit modifiers in canonical slot order, not insertion order,
         # so e.g. `abstract` before ``out`` (valid RefPrefix) survives.
@@ -256,8 +269,6 @@ class Builder:
             head += f" [{self._multiplicity}]"
         if self._typed_by is not None:
             head += f" : {self._typed_by._name}"
-        if comment_txt is not None:
-            head += f" /* {comment_txt} */"
         lines = [head]
         kids = [c for c in self._children if c is not None]
         if kids:

@@ -1,7 +1,7 @@
 # Issue #10 — Phase-5 Developer API: Dependency Posture & Casting Status
 
-Status: foundation through r4 (r1→r4: every REQUEST CHANGES cycle fixed,
-r4 fixes under re-review).  Casting clean at semantic
+Status: APPROVED at r6 (no blockers/W1; 5 non-blocking W2 follow-ups fixed in
+post-r6 commit).  Casting clean at semantic
 (build → Node → get_definition) and coarse-IR syntactic-parse-back levels;
 multi-member brace structure recovered via `;` (r3 W1-8).  Full 0.5.3
 compat contract is a follow-up (see Deliberate Breaks).
@@ -193,6 +193,21 @@ byte-identical; PR #19.
 Gate: 168 tests pass; source + generated ruff-clean; determinism
 byte-identical; PR #19.
 
+### r6 (APPROVE) — 5 non-blocking W2 follow-ups, fixed (post-approval commit)
+- **W2-1** `_set_text` now REFUSES non-Comment builders (text has no IR field
+  on other kinds — would silently vanish from build()/get_definition() while
+  showing in dump()).  Comment-only; test rewritten to assert the raise.
+- **W2-2** gap #7 re-scoped + new gap #8: comment NAME is dropped on BOTH
+  emit paths (not just Node.dump), stated plainly.
+- **W2-3** `resolve_chain` root guard `fc[0]` truthy (`Node.short_name`
+  defaults to "" vs Builder None) — restores parity with `_walk_chain`.
+- **W2-4** `is_legal_child`: `owned_body is None` → reject (was
+  conservative-True via the unknown-key branch); Import unaffected.
+- **W2-5** status header bumped (foundation → APPROVED at r6).
+
+Gate: 168 tests pass; source + generated ruff-clean; determinism
+byte-identical; PR #19.
+
 ## Known gaps / deliberate breaks vs 0.5.3 (documented, follow-up)
 
 1. **Child-legality derivation**: now a REAL gate via `DefinitionBody`/body
@@ -216,8 +231,15 @@ byte-identical; PR #19.
    `raw_text`) the reconstruct branch emits headers/`<s>`/`: ref` but **no
    braces or `;`**, so re-parsing collapses the whole subtree into one
    statement (the r4 #8 newline only prevents word-gluing — it does not imply
-   structural recovery); a `CommentBuilder("C")._set_text(...)` drops the
-   name `C` in `dump()`; and a comment's text dumps undelimited on the Node
+   structural recovery); and a comment's text dumps undelimited on the Node
    path, re-parsing as `unknown`/opaque.  The BUILDER path
    (`_render_sysml`) is the canonical emitter and casts cleanly; the Node
-   reconstruct path is for parser-produced trees.
+   reconstruct path is for parser-produced trees.  (Comment *name* drop is a
+   separate, both-path loss — see gap #8.)
+8. **Comment name dropped on emit (r6 W2-2)**: `CommentBuilder("C")` is
+   emitted as bare `/* text */` — its *name* `C` has no representation in the
+   comment directive, so it is lost on **both** the builder and Node dump
+   paths.  `get_definition()` still carries the name; only the textual emit
+   drops it.  `_set_text` is Comment-only and raises on any other kind (r6
+   W2-1); a non-Comment has no IR field that could carry text, so it refuses
+   rather than emit content that cannot be cast.

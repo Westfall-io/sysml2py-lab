@@ -66,7 +66,10 @@ def resolve_chain(root: Node, featurechain: str) -> Node | None:
     if not isinstance(featurechain, str):
         raise TypeError("featurechain must be a str")
     fc = featurechain.split(".")
-    if fc and fc[0] in (root.name, root.short_name):
+    # r5 W2-4 + r6 W2-3: match root self-name against LONG or SHORT name;
+    # guard fc[0] truthy because Node.short_name defaults to "" (vs
+    # Builder._short_name = None), so resolve_chain(n, "") must not match root.
+    if fc and fc[0] and fc[0] in (root.name, root.short_name):
         fc = fc[1:]
         if not fc:
             return root

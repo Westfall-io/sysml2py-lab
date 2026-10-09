@@ -1106,24 +1106,28 @@ def test_builder_directed_feature_roundtrip_and_slot_order(tmp_path):
         sys.path.remove(str(REPO_ROOT / "src"))
 
 
-def test_builder_noncomment_set_text_keeps_subtree(tmp_path):
-    """Phase-5 r5 W2-2/3: a non-Comment builder's _set_text must not erase or
-    glue its subtree — dump() emits header + subtree + trailing text, and
-    build_node().dump() still shows the children (text not dropped into
-    raw_text)."""
+def test_builder_set_text_comment_only(tmp_path):
+    """Phase-5 r5 W2-2/3 + r6 W2-1: _set_text is meaningful only for Comment.
+
+    A non-Comment builder REFUSES _set_text (text has no IR field on other
+    kinds, so it would silently vanish from build()/get_definition() while
+    showing in dump()); the Comment path emits /* text */ and casts back."""
     pkg = _gen(tmp_path)
     sys.path.insert(0, str(pkg / "src"))
     try:
+        import pytest
         import sysml2py
 
-        p = (sysml2py.PartUsageBuilder("P")
+        # non-comment builders refuse text (r6 W2-1) — no silent loss
+        with pytest.raises(TypeError):
+            (sysml2py.PartUsageBuilder("P")
              ._set_child(sysml2py.PartUsageBuilder("x"))
              ._set_text("note"))
-        text = p.dump()
-        assert "part P" in text and "part x;" in text and "/* note */" in text, text
-        # node path: header + child, no glued text
-        node_text = p.build_node().dump()
-        assert "part P" in node_text and "part x" in node_text, node_text
-        assert "note" not in node_text  # text stays in _render_sysml only
+        # Comment still emits and casts (r3 W1-7)
+        c = sysml2py.CommentBuilder("C")._set_text("hi")
+        ctext = c.dump()
+        assert "/* hi */" in ctext, ctext
+        d = c.build_node().get_definition()
+        assert d["raw_text"] == "hi", d
     finally:
         sys.path.remove(str(pkg / "src"))
