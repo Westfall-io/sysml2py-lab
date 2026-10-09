@@ -378,6 +378,7 @@ def test_unsupported_get_definition_preserves_children(tmp_path):
             {
                 "kind": "block",
                 "name": "B",
+                "short_name": "b",
                 "modifiers": ["abstract"],
                 "multiplicity": "[1]",
                 "children": [
@@ -387,9 +388,11 @@ def test_unsupported_get_definition_preserves_children(tmp_path):
         )
         assert type(u).__name__ == "Unsupported", type(u).__name__
         d = u.get_definition()
-        # payload must survive (r7 C2): kind, real name, modifiers, children
+        # payload must survive (r7 C2 + r8 C1): kind, real name, short_name,
+        # modifiers, children
         assert d.get("kind") == "block", f"kind lost: {d!r}"
         assert d.get("name") == "B", f"real name overwritten by kind: {d!r}"
+        assert d.get("short_name") == "b", f"short_name lost in from_ir: {d!r}"
         assert d.get("modifiers") == ["abstract"], f"modifiers lost: {d!r}"
         assert d.get("multiplicity") == "[1]", f"multiplicity lost: {d!r}"
         assert d.get("children"), f"subtree dropped: {d!r}"
@@ -397,6 +400,71 @@ def test_unsupported_get_definition_preserves_children(tmp_path):
         assert sysml2py.Node.from_ir(d).get_definition() == d, (
             f"not idempotent: {sysml2py.Node.from_ir(d).get_definition()!r} != {d!r}"
         )
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_from_ir_forwards_full_ir_key_set(tmp_path):
+    """r8 C1 gate (generic): from_ir must consume the SAME key set as __init__.
+
+    The Unsupported payload path dropped a different field in three
+    consecutive rounds (r6 children -> r7 payload dict -> r8 short_name)
+    because each gate only observed the field it was written for.  This
+    closes the whole class: every IR dict key that `Unsupported.__init__`
+    / `Node.__init__` accepts must be forwarded by its `from_ir`.  Belt:
+    assert an explicit short_name survives an Unsupported lift (see the
+    dedicated C1 test).  Braces: assert the forwarded key set == the
+    init-parameter set, so a future omission is caught the moment it is
+    introduced, not the round after.
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import inspect
+
+        import sysml2py
+
+        for cls, from_ir in ((sysml2py.Node, sysml2py.Node.from_ir),
+                             (sysml2py.Unsupported, sysml2py.Unsupported.from_ir)):
+            init_params = set(inspect.signature(cls.__init__).parameters) - {"self"}
+            # pass DISTINCTIVE values for every field the class models, so any
+            # field from_ir fails to forward is caught by the attribute value.
+            d = {
+                "kind": "bogus",
+                "name": "zzz",
+                "short_name": "zz",
+                "modifiers": ["abstract"],
+                "type_refs": ["T"],
+                "multiplicity": "[1]",
+                "children": [],
+                "source_span": [3, 7],
+                "raw_text": "raw",
+                "fidelity": "test",
+                "ir_kind": "bogus",
+            }
+            node = from_ir(d)
+            want = {
+                "kind": "bogus", "name": "zzz", "short_name": "zz",
+                "modifiers": ["abstract"], "type_refs": ["T"],
+                "multiplicity": "[1]", "fidelity": "test", "ir_kind": "bogus",
+            }
+            for k, v in want.items():
+                assert getattr(node, k, None) == v, (
+                    f"{cls.__name__}: field {k!r} not forwarded from_ir"
+                    f" (got {getattr(node, k, None)!r}, want {v!r})"
+                )
+            # children are re-listed (should be [] preserved)
+            assert list(getattr(node, "children", [])) == [], (
+                f"{cls.__name__}: children not forwarded"
+            )
+            if hasattr(cls, "__dataclass_fields__"):
+                dc = set(cls.__dataclass_fields__)
+                assert init_params == dc, (
+                    f"{cls.__name__}: ctor params {sorted(init_params - dc)} "
+                    f"!= dataclass fields {sorted(dc - init_params)}"
+                )
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
@@ -507,6 +575,13 @@ def test_casting_corpus_roundtrip_via_generated_classes(tmp_path):
         missing_aliased = sorted(REQUIRED_ALIASED_CLASSES - set(histogram))
         assert not missing_aliased, (
             f"cast never instantiated aliased classes: {missing_aliased}"
+        )
+        # r8 C1 fix #4: the Unsupported path must be PROVABLY exercised by the
+        # corpus (brace_open/brace_close/block/unknown reach it in 43/62
+        # files).  A histogram with zero Unsupported would mean the payload
+        # gates below are testing an assumption, not the corpus.
+        assert histogram.get("Unsupported", 0) > 0, (
+            "Unsupported never reached by the corpus — payload-loss gates are vacuous"
         )
         assert not failed, f"CAST FAILED {len(failed)}/{len(files)}:\n" + "\n".join(
             f"  - {n}: {w}" for n, w in failed

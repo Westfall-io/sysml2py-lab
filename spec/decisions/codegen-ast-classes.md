@@ -172,10 +172,19 @@ dirs or `--overwrite`.)
   installable in this environment; the IR/dump casting is the equivalent
   round-trip gate over the same 62 corpus files.)
 - **Fixed-point identity** (r7): every corpus tree's `get_definition()` →
-  `Node.from_ir` → `get_definition()` must reproduce the dict exactly, so an
-  `Unsupported` node that drops `kind`/`name`/`modifiers`/`children` (the r7
-  C2 bug) fails the CAST.
+  `Node.from_ir` → `get_definition()` must reproduce the dict exactly.  This
+  catches losses inside `get_definition()` (the r6 C1 children drop and the
+  r7 C2 payload drop).  **Known limit (r8 W1): it cannot catch a loss in
+  `from_ir()` itself** — a field dropped on the way in (e.g. the r8 `short_name`
+  omission) is already absent from the first `get_definition()` and is trivially
+  reproduced, so the fixed point is stable at a lossy value.  Losses in
+  `from_ir` are covered by the dedicated key-set gate
+  `test_from_ir_forwards_full_ir_key_set`.
 - `generate` does NOT overwrite `sysml2py/src/` without an explicit flag.
+- **CLI note (r8 N3):** `generate` no longer takes a positional `corpus`
+  argument — it generates from the lab's own `corpus/` directory by default
+  (breaking change vs. the earlier MVP; release-note it).  `discover` still
+  takes a corpus path.
 
 ## Casting found a real bug
 

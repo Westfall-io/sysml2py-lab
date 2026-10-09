@@ -32,14 +32,15 @@ _TOOLS_DIR = Path(__file__).resolve().parent
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
+# NOTE (r8 W2): this outer module DOES touch sys.path at import (lines above)
+# so it can run as a standalone script.  It is NOT imported by the acceptance
+# test — the test imports the side-effect-free `tools/_cast_pins.py` for the
+# pinned set, and does all its own generated-package setup.  The heavier CLI
+# setup (`import sysml2py`) lives in main() to keep that path import-clean.
 from _cast_pins import REQUIRED_ALIASED_CLASSES
 
 from sysml2py_lab.ir import ir_to_json, parse_ir
 from sysml2py_lab.normalize import canonical_equals
-
-# NOTE: the CLI's sys.path setup + `import sysml2py` happen inside main()
-# (r7 W1): importing this module must not have side effects (the acceptance
-# test imports it under pytest).
 
 
 def _setup_env(gen_dir: Path):
@@ -110,6 +111,11 @@ def main() -> None:
         print(f"UNSUPPORTED-FOR-ALIASED: {sorted(unsupported_for_aliased)}")
         failed += len(unsupported_for_aliased)
     print(f"INSTANTIATED-CLASSES: {len(histogram)} distinct")
+    # r8 C1 fix #4: the Unsupported path must be PROVABLY exercised by the
+    # corpus, or the payload-loss gates would be testing an assumption.
+    if histogram.get("Unsupported", 0) <= 0:
+        print("UNSUPPORTED-NEVER-REACHED")
+        failed += 1
     # Pinned literal, NOT derived from IR_KIND_ALIASES (C1): emptying the
     # alias table must not shrink the expected set until the gate vacates.
     missing = sorted(REQUIRED_ALIASED_CLASSES - set(histogram))
