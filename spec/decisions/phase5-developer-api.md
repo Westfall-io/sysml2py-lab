@@ -114,8 +114,12 @@ byte-identical; PR #19.
 3. **textX `load`/`load_from_grammar`**: not reproduced (no runtime textX).
 4. **class_test.py 53-test parity**: not runnable in this environment (no
    textX/astropy); textX-gated / pending dependency posture.
-5. **`_render_sysml` is not fully grammatical SysML**: emits the coarse IR
-   kind + grammar modifier tokens (W1-3, comparable with `parse_ir`), but no
-   `;` terminators and no grammar-keyword verbatim parity.  The brace
-   structure casts through the coarse `parse_ir`; true grammar-keyword
-   emission is follow-up.
+5. **`_render_sysml` is not fully grammatical SysML, and the coarse
+   `parse_ir` does NOT recover multi-member brace blocks structurally**: a
+   single-child model (Sat{Panel}) recovers through `parse_ir`, but a
+   multi-member block (Sat{Panel, Mass}) is flattened by the coarse brace
+   parser — the members become siblings whose raw_text swallows the rest.
+   The syntactic dump is grammatical, human-readable SysML, and the
+   SEMANTIC cast (build -> Node -> get_definition) is element-for-element;
+   full grammar-keyword emission + structural multi-member parse-back is
+   follow-up.  The cast tests correctly assert only single-child recovery.
