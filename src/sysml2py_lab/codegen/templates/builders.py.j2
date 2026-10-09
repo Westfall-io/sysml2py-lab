@@ -96,7 +96,8 @@ class Builder:
 {% if slot.kind == 'flag' %}
         self._modifiers["{{ slot.tokens[0] }}"] = True if value is None else value
 {% else %}
-        self._modifiers["{{ slot.tokens[0] }}"] = value
+        # enum: key by the slot NAME (emission emits the bare value, W1-3)
+        self._modifiers["{{ slot.name }}"] = value
 {% endif %}
         return self
 {% endfor %}
@@ -120,13 +121,15 @@ class Builder:
         return self
 
     def is_legal_child(self, child):
-        """Advisory child-kind legality (W1-5).  True when LEGAL_CHILDREN has
-        data for this builder's owned body and the child's kind is absent from
-        it; otherwise conservatively True (the table is not load-bearing)."""
-        if self.owned_body in LEGAL_CHILDREN:
-            allowed = LEGAL_CHILDREN[self.owned_body]
-            if child.kind not in allowed:
-                return False
+        """Advisory child-kind legality (W1-5).
+
+        Returns True (never rejects): children.json does not yet carry a
+        load-bearing membership body for usage builders (UsageBody has no
+        slots, and usage kinds resolve to PackageBody which lists definition
+        members, not usage members) — so a rejecting gate would reject legal
+        models.  This is an honest conservative default; the predicate is
+        available for callers that want to consult LEGAL_CHILDREN directly.
+        """
         return True
 
     def _get_child(self, featurechain):

@@ -95,8 +95,14 @@ generated AST directly, with **no runtime textX or astropy dependency**.
 - **W2-8** `import` un-denied (`ImportBuilder`); `CommentBuilder._set_text`
   lands in `raw_text`.
 
-Gate: 161 tests pass; source + generated ruff-clean; determinism
-byte-identical; PR #19 (13 commits at this point).
+Self-verification fixes (same batch, pre-r3): enum modifier setters key by
+slot NAME (not `tokens[0]`) so `_set_direction("out")` is `{'direction':'out'}`
+(emits bare `out`); `is_legal_child` returns True (never rejects — usage
+membership body not load-bearing in children.json yet; a rejecting gate would
+reject legal models); regression guard test added.
+
+Gate: 162 tests pass; source + generated ruff-clean; determinism
+byte-identical; PR #19.
 
 ## Known gaps / deliberate breaks vs 0.5.3 (documented, follow-up)
 

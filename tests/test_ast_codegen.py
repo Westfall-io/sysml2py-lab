@@ -927,3 +927,29 @@ def test_builder_definition_cannot_be_typed(tmp_path):
             pkg_b._set_typed_by(sysml2py.PartUsageBuilder("X"))
     finally:
         sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_coarse_vocabulary_and_enum(tmp_path):
+    """Phase-5 W1-3: the builder emits the coarse canonical-IR kind and
+    grammar modifier tokens (comparable with parse_ir), and enum modifiers
+    are keyed by slot name and emitted as the bare value."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        p = sysml2py.PartUsageBuilder("P")._set_direction("out")
+        # enum keyed by slot name, emitted as bare value
+        assert p._modifiers == {"direction": "out"}, p._modifiers
+        d = p.build_node().get_definition()
+        assert d["kind"] == "part" and d["modifiers"] == ["out"], d
+        assert "out part P" in p.dump()
+        # flag -> grammar token
+        q = sysml2py.PartUsageBuilder("Q")._set_isAbstract()
+        assert q.build_node().get_definition()["modifiers"] == ["abstract"]
+        # directed feature default uses coarse "reference" kind
+        b = sysml2py.PartUsageBuilder("Bus").add_directed_feature("in", "fuel")
+        f = b._get_child("fuel")
+        assert f.build_node().get_definition()["kind"] == "reference"
+    finally:
+        sys.path.remove(str(pkg / "src"))
