@@ -173,6 +173,26 @@ harmless, kept for symmetry.
 Gate: 167 tests pass; source + generated ruff-clean; determinism
 byte-identical; PR #19.
 
+### r5 (REQUEST CHANGES) — 1 W1 + 5 W2, fixed (this commit)
+- **W1-1** `is_legal_child` dropped the conservative-True fallback: a body
+  with no children.json key (e.g. Import→RelationshipBody) rejected every
+  child.  Restored: bodies not in LEGAL_CHILDREN never reject.  Test added.
+- **W2-2** non-comment `_set_text` had no test → added
+  `test_builder_noncomment_set_text_keeps_subtree` (header + subtree + text).
+- **W2-3** non-comment `_set_text` landed in `raw_text`, so `Node.dump()`
+  dropped the header and glued the subtree.  Text now persisted only for
+  Comment; other kinds render text via `_render_sysml` only.
+- **W2-4** `resolve_chain` root segment matched name-only (vs `_walk_chain`
+  long-or-short) → now matches long OR short name.
+- **W2-5** decision doc now discloses the `Node.dump()` path losses
+  (no braces/`;` → subtree collapse on re-parse; comment name dropped;
+  comment text undelimited) as gap #7.
+- **W2-6** fallback modifier-skip matched only `s[1][0]`; now `k in s[1]`
+  (robust to multi-token flag slots on spec refresh).
+
+Gate: 168 tests pass; source + generated ruff-clean; determinism
+byte-identical; PR #19.
+
 ## Known gaps / deliberate breaks vs 0.5.3 (documented, follow-up)
 
 1. **Child-legality derivation**: now a REAL gate via `DefinitionBody`/body
@@ -192,3 +212,12 @@ byte-identical; PR #19.
 6. **`_get_grammar()` compat break**: returns `build_node()` (a generated
    Node), whereas 0.5.3 returned a textX model object.  Deliberate under the
    self-contained posture.
+7. **`Node.dump()` path losses (r5 W2-5)**: for BUILDER-BUILT trees (no
+   `raw_text`) the reconstruct branch emits headers/`<s>`/`: ref` but **no
+   braces or `;`**, so re-parsing collapses the whole subtree into one
+   statement (the r4 #8 newline only prevents word-gluing — it does not imply
+   structural recovery); a `CommentBuilder("C")._set_text(...)` drops the
+   name `C` in `dump()`; and a comment's text dumps undelimited on the Node
+   path, re-parsing as `unknown`/opaque.  The BUILDER path
+   (`_render_sysml`) is the canonical emitter and casts cleanly; the Node
+   reconstruct path is for parser-produced trees.

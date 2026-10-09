@@ -977,6 +977,10 @@ def test_builder_is_legal_child_rejects_disallowed(tmp_path):
         family = sysml2py.PackageBuilder("Family")
         assert family.is_legal_child(sysml2py.PartUsageBuilder("adult")) is True
         assert family.is_legal_child(sysml2py.AttributeUsageBuilder("mass")) is True
+        # r5 W1-1: a body with no children.json membership data never rejects
+        # (Import resolves to RelationshipBody, not a children.json key)
+        imp = sysml2py.ImportBuilder("x")
+        assert imp.is_legal_child(sysml2py.CommentBuilder("c")) is True
     finally:
         sys.path.remove(str(pkg / "src"))
 
@@ -1100,3 +1104,26 @@ def test_builder_directed_feature_roundtrip_and_slot_order(tmp_path):
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_noncomment_set_text_keeps_subtree(tmp_path):
+    """Phase-5 r5 W2-2/3: a non-Comment builder's _set_text must not erase or
+    glue its subtree — dump() emits header + subtree + trailing text, and
+    build_node().dump() still shows the children (text not dropped into
+    raw_text)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        p = (sysml2py.PartUsageBuilder("P")
+             ._set_child(sysml2py.PartUsageBuilder("x"))
+             ._set_text("note"))
+        text = p.dump()
+        assert "part P" in text and "part x;" in text and "/* note */" in text, text
+        # node path: header + child, no glued text
+        node_text = p.build_node().dump()
+        assert "part P" in node_text and "part x" in node_text, node_text
+        assert "note" not in node_text  # text stays in _render_sysml only
+    finally:
+        sys.path.remove(str(pkg / "src"))
