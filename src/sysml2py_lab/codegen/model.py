@@ -9,9 +9,13 @@ Jinja templates render into the generated ``sysml2py`` package:
 - ``DispatchMap`` — ``{parent_body: {member_kind: child_kind}}``
 
 Everything here is derived from committed metadata; nothing is hand-tuned at
-generation time except the explicit ``EXTRA_KINDS`` set below (composites the
-266-class hand-written API carried but that are not grammar rules — e.g.
-``RootNamespace``/``DefinitionElement`` dispatch roots).
+generation time except (a) the explicit ``EXTRA_KINDS`` set below (composites
+the 266-class hand-written API carried but that are not grammar rules — e.g.
+``RootNamespace``/``DefinitionElement`` dispatch roots), and (b) the
+``IR_KIND_ALIASES`` table further down — a hand-maintained mapping from the
+coarse issue-#7/#8 IR kinds (``package``, ``part``, ...) to generated class
+names.  ``IR_KIND_ALIASES`` is the most load-bearing artifact in the cast
+(both the registry-lift and the pinned coverage gate run through it).
 
 The generator is deterministic: loading the same spec files always yields the
 same descriptors, so ``generate`` is byte-reproducible.

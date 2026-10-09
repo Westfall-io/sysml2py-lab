@@ -38,9 +38,13 @@ MEMBERSHIP_DISPATCH: dict[str, dict[str, str]] = {
 }
 
 # {parent_class_name: owned_body} — the body a construct CONTAINS (derived
-# from the grammar rule's own body reference, following fragments).  Lets
-# from_ir dispatch children under the correct body context:
-#   Package -> PackageBody, PartDefinition/PartUsage -> DefinitionBody/UsageBody
+# from the grammar rule's own body reference, following fragments):
+#   Package -> PackageBody, PartDefinition -> DefinitionBody, PartUsage -> UsageBody
+#
+# ADVISORY (review r3/r5): `Node.from_ir` does NOT read this map — lifting is
+# registry-authoritative (IR_KIND_ALIASES -> KIND_REGISTRY).  This table is
+# the children.json membership view for future fine-grained IR and for
+# callers that want body-context dispatch explicitly.
 CLASS_TO_BODY: dict[str, str] = {
 {% for cls_name, body in class_to_body.items() %}
     "{{ cls_name }}": "{{ body }}",
