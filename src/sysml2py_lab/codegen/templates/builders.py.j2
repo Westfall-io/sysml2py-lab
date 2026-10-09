@@ -45,6 +45,16 @@ LEGAL_CHILDREN: dict[str, set[str]] = {
 
 
 
+# Canonical modifier-slot order (from modifiers.json BasicUsagePrefix).  Used
+# for slot-order emission (r2 W1-3 / r3 W2-10) and enum validation, so a
+# published list can't drift from the setter generation.
+_MODIFIER_SLOTS: list[tuple[str, tuple[str, ...], str]] = [
+{% for slot in usage_modifier_slots %}
+    ("{{ slot.name }}", {{ slot.tokens|list }}, "{{ slot.kind }}"),
+{% endfor %}
+]
+
+
 class Builder:
     """Base builder: accumulates a canonical-IR dict sub-tree.
 
@@ -62,6 +72,7 @@ class Builder:
         self._name = name
         self._short_name = None
         self._text = None
+        self._multiplicity = None
         self._modifiers: dict[str, object] = {}
         self._typed_by = None
         self._kind = kind or self.ir_kind  # coarse canonical-IR kind (W1-3)
@@ -94,9 +105,21 @@ class Builder:
     def _set_{{ slot.name }}(self, value=None):
         """Set the ``{{ slot.tokens|join(' ') }}`` modifier(s)."""
 {% if slot.kind == 'flag' %}
-        self._modifiers["{{ slot.tokens[0] }}"] = True if value is None else value
+        # W2-11: clear mutually-exclusive modifiers so e.g. abstract+variation
+        # can never both render.
+{% for t in slot.mex_tokens %}
+        self._modifiers.pop("{{ t }}", None)
+{% endfor %}
+{% for t in slot.tokens %}
+        self._modifiers["{{ t }}"] = True if value is None else value
+{% endfor %}
 {% else %}
-        # enum: key by the slot NAME (emission emits the bare value, W1-3)
+        # enum: validate against the allowed tokens, key by slot NAME
+        # (emission emits the bare value, W1-3 / r3 W2-12).
+        if value not in ({% for t in slot.tokens %}"{{ t }}"{% if not loop.last %}, {% endif %}{% endfor %}):
+            raise ValueError(
+                "{{ slot.name }} must be one of {{ slot.tokens|join(', ') }}, got " + repr(value)
+            )
         self._modifiers["{{ slot.name }}"] = value
 {% endif %}
         return self
@@ -112,6 +135,13 @@ class Builder:
         self._typed_by = typed
         return self
 
+    def _set_multiplicity(self, mult):
+        """Set the multiplicity (r3 W2-14); e.g. ``_set_multiplicity("1..*")``.
+        Accepted as ``[1..*]`` or bare ``1..*``; emitted in brackets."""
+        m = mult if isinstance(mult, str) else str(mult)
+        self._multiplicity = m.strip("[]")
+        return self
+
     # -- children -------------------------------------------------------
 
     def _set_child(self, child):
@@ -121,15 +151,20 @@ class Builder:
         return self
 
     def is_legal_child(self, child):
-        """Advisory child-kind legality (W1-5).
+        """Advisory child-kind legality (W1-5/r3 W1-4).
 
-        Returns True (never rejects): children.json does not yet carry a
-        load-bearing membership body for usage builders (UsageBody has no
-        slots, and usage kinds resolve to PackageBody which lists definition
-        members, not usage members) — so a rejecting gate would reject legal
-        models.  This is an honest conservative default; the predicate is
-        available for callers that want to consult LEGAL_CHILDREN directly.
+        ``child.kind`` must appear among this builder's owned-body's legal
+        child kinds (children.json) when that body has data; otherwise
+        conservatively True.  After r3 W1-3, usage builders own
+        ``DefinitionBody`` whose slot kinds are exactly the builder
+        vocabulary (PartUsage, PortUsage, …), so a rejecting gate is correct:
+        e.g. ActorUsage / RequirementUsage are not legal children of a part.
         """
+        body = self.owned_body
+        if body in LEGAL_CHILDREN:
+            allowed = LEGAL_CHILDREN[body]
+            if child.kind not in allowed:
+                return False
         return True
 
     def _get_child(self, featurechain):
@@ -164,30 +199,52 @@ class Builder:
     def _render_sysml(self) -> str:
         """Render this builder subtree as textual SysML.
 
-        Emits a ``KIND name`` header (modifiers upstream) and ``{ child ... }
-        `` body braces.  Uses the coarse canonical-IR kind + grammar modifier
-        tokens (W1-3) so the header vocabulary matches ``parse_ir``.  Omits
-        ``;`` terminators — the brace structure is what the coarse ``parse_ir``
-        recovers.
+        Emits a ``KIND name`` header (modifiers upstream, short name as
+        ``<s>``) and ``{ child ... }`` body braces.  Uses the coarse canonical
+        IR kind + grammar modifier tokens (W1-3) so the header vocabulary
+        matches ``parse_ir``.  ``;`` terminates childless statements (r3
+        W1-8) so multi-member brace blocks recover as separate IR statements;
+        ``/* */`` free text for Comment (r3 W1-7).
         """
+        if self._text is not None:
+            # Comment payload is free text (r3 W1-7): self-terminating so
+            # parse_ir yields a comment node rather than an unknown.
+            return f"/* {self._text} */"
+
+        # W2-10: emit modifiers in canonical slot order, not insertion order,
+        # so e.g. `abstract` before ``out`` (valid RefPrefix) survives.
         mods: list[str] = []
-        for k, v in self._modifiers.items():
+        for _name, _tokens, _kind in _MODIFIER_SLOTS:
+            v = self._modifiers.get(_name)
+            if v is None:
+                continue
             if v is True:
-                mods.append(k)
-            elif v is None or v is False:
+                mods.append(_tokens[0])
+            elif v is False:
                 continue
             elif isinstance(v, str):
                 mods.append(v)  # enum — bare value (W1-3)
             else:
+                mods.append(f"{_name}={v}")
+        for k, v in self._modifiers.items():
+            if any(s[0] == k for s in _MODIFIER_SLOTS):
+                continue
+            if v is True:
+                mods.append(k)
+            elif isinstance(v, str):
+                mods.append(v)
+            elif v is not None and v is not False:
                 mods.append(f"{k}={v}")
         mod_txt = (" ".join(mods) + " ") if mods else ""
         kind = self._kind or self.__class__.__name__.replace("Builder", "")
         head = f"{mod_txt}{kind}"
+        if self._short_name is not None:
+            head += f" <{self._short_name}>"  # r3 W1-5: angle (parse_ir vocab)
         if self._name is not None:
             head += f" {self._name}"
+        if self._multiplicity is not None:
+            head += f" [{self._multiplicity}]"
         if self._typed_by is not None:
-            # W2-5: render ":" (typing), not ":>" (specialization); use the
-            # referent's _name (long name), which matches the name IR field.
             head += f" : {self._typed_by._name}"
         lines = [head]
         kids = [c for c in self._children if c is not None]
@@ -196,6 +253,8 @@ class Builder:
             for c in kids:
                 lines.append(c._render_sysml())
             lines.append("}")
+        else:
+            lines[0] = head + ";"  # r3 W1-8: terminate childless statements
         return "\n".join(lines)
 
     def _to_ir(self):
@@ -206,15 +265,27 @@ class Builder:
             d["short_name"] = self._short_name
         if self._text is not None:
             d["raw_text"] = self._text
+        if self._multiplicity is not None:
+            d["multiplicity"] = self._multiplicity
         mods: list[str] = []
+        for _nm, _tk, _kd in _MODIFIER_SLOTS:
+            v = self._modifiers.get(_nm)
+            if v is None or v is False:
+                continue
+            if v is True:
+                mods.append(_tk[0])
+            elif isinstance(v, str):
+                mods.append(v)
+            else:
+                mods.append(f"{_nm}={v}")
         for k, v in self._modifiers.items():
+            if any(s[0] == k for s in _MODIFIER_SLOTS):
+                continue
             if v is True:
                 mods.append(k)
-            elif v is None or v is False:
-                continue
             elif isinstance(v, str):
-                mods.append(v)  # enum — bare value (W1-3)
-            else:
+                mods.append(v)
+            elif v is not None and v is not False:
                 mods.append(f"{k}={v}")
         if mods:
             d["modifiers"] = mods
@@ -252,7 +323,9 @@ def _walk_chain(root, featurechain):
     for seg in fc:
         found = None
         for child in cur._children:
-            if child._get_name() == seg:
+            # W2-15 (r3): match the LONG name first, then the short name, so a
+            # dotted chain keeps resolving even when a member has a short name.
+            if child._name == seg or child._short_name == seg:
                 found = child
                 break
         if found is None:

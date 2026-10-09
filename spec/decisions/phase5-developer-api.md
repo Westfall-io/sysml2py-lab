@@ -95,31 +95,62 @@ generated AST directly, with **no runtime textX or astropy dependency**.
 - **W2-8** `import` un-denied (`ImportBuilder`); `CommentBuilder._set_text`
   lands in `raw_text`.
 
-Self-verification fixes (same batch, pre-r3): enum modifier setters key by
-slot NAME (not `tokens[0]`) so `_set_direction("out")` is `{'direction':'out'}`
-(emits bare `out`); `is_legal_child` returns True (never rejects — usage
-membership body not load-bearing in children.json yet; a rejecting gate would
-reject legal models); regression guard test added.
+Self-verification fixes (pre-r3 batch): enum modifier setters key by slot
+NAME so `_set_direction("out")` is `{'direction':'out'}`; regression guard
+test added.
 
-Gate: 162 tests pass; source + generated ruff-clean; determinism
+### r3 (REQUEST CHANGES) — 2 blockers + 8 W1 + 6 W2, all fixed (this commit)
+- **B1** `_DefaultReferenceBuilder.ir_kind="reference"` was NOT in
+  `IR_KIND_ALIASES`, so every `add_directed_feature()` product silently lifted
+  to `Unsupported`.  Added `"reference": "ReferenceUsage"`; directed features
+  now build to a real `ReferenceUsage` node.  Test now asserts the NODE TYPE.
+- **B2** the direction enum (`in`/`out`/`inout`) was absent from
+  `_parse_header`'s modifier whitelist, so `out part P` reparsed as
+  `unknown`/opaque.  Added `in`/`out`/`inout` (+ `individual`/`snapshot`/
+  `timeslice`) to the `ir.py` modifier tuple.  (Tock coordination: shared
+  `ir.py` — flagged for his review.)
+- **W1-1→3** `owned_body_for` recursed from `DefinitionBody` and wandered to
+  `PackageBody`; now returns the delegated `*Body` directly → usage builders
+  own `DefinitionBody` (the populated membership body).
+- **W1-4** `is_legal_child` is now a REAL gate (not always-True): checks
+  `child.kind` against `LEGAL_CHILDREN[owned_body]`; e.g. rejects ActorUsage /
+  ObjectiveRequirementUsage under a part.  New test.
+- **W1-5/6** short name emitted as angle `<s>` in BOTH `_render_sysml` and
+  `Node.dump()` (was `~s` in one, dropped in the other).  New test.
+- **W1-7** `Comment._set_text` emits `/* text */` (self-terminating) so it
+  reparses as a `comment` node.  New test.
+- **W1-8** `_render_sysml` now emits `;` on childless statements → multi-member
+  brace blocks recover as SEPARATE IR statements (was one swallowed node).
+  New test; gap #5 rescoped.
+- **W1-9** field-level text round-trip tests added (kind/name/modifiers/
+  type_refs/multiplicity recovered per element from `parse_ir(builder.dump())`).
+- **W2-10** modifiers emitted in canonical slot order (was insertion order).
+- **W2-11** mutually-exclusive flag modifiers clear each other (abstract vs
+  variation).  New test.
+- **W2-12** enum setters validate against allowed tokens.  New test.
+- **W2-14** `_set_multiplicity` API added; emitted as `[n]`, preserved in IR.
+- **W2-15** `_walk_chain` matches LONG name then short name, so dotted chains
+  resolve even when members carry short names.
+
+Gate: 166 tests pass; source + generated ruff-clean; determinism
 byte-identical; PR #19.
 
 ## Known gaps / deliberate breaks vs 0.5.3 (documented, follow-up)
 
-1. **Child-legality derivation**: ADVISORY only — `owned_body_for()` resolves
-   usage kinds broadly; `UsageBody` is not a children.json body key.  A strict
-   per-kind containment gate is a follow-up.
+1. **Child-legality derivation**: now a REAL gate via `DefinitionBody`/body
+   slots; correctness depends on children.json already being accurate for the
+   resolved bodies.  Not yet a textX-grammar containment contract (follow-up).
 2. **Value API (astropy Quantity)**: not yet generated; the 0.5.3 21-level
    expression tower + `Attribute.set_value` Quantity path are not reproduced.
 3. **textX `load`/`load_from_grammar`**: not reproduced (no runtime textX).
 4. **class_test.py 53-test parity**: not runnable in this environment (no
    textX/astropy); textX-gated / pending dependency posture.
-5. **`_render_sysml` is not fully grammatical SysML, and the coarse
-   `parse_ir` does NOT recover multi-member brace blocks structurally**: a
-   single-child model (Sat{Panel}) recovers through `parse_ir`, but a
-   multi-member block (Sat{Panel, Mass}) is flattened by the coarse brace
-   parser — the members become siblings whose raw_text swallows the rest.
-   The syntactic dump is grammatical, human-readable SysML, and the
-   SEMANTIC cast (build -> Node -> get_definition) is element-for-element;
-   full grammar-keyword emission + structural multi-member parse-back is
-   follow-up.  The cast tests correctly assert only single-child recovery.
+5. **`_render_sysml` emits coarse IR vocabulary, not full grammatical SysML**:
+   kinds are coarse IR words (`part`, `attribute`) and `use_case` renders as
+   `use_case` (not `use case`), enum values emit bare — so it is comparable
+   with `parse_ir` but not keyword-perfect SysML.  `;` terminators (r3 W1-8)
+   mean multi-member brace blocks DO recover structurally now.  True
+   grammar-keyword emission is follow-up.
+6. **`_get_grammar()` compat break**: returns `build_node()` (a generated
+   Node), whereas 0.5.3 returned a textX model object.  Deliberate under the
+   self-contained posture.

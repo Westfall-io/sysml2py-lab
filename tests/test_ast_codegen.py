@@ -947,9 +947,117 @@ def test_builder_coarse_vocabulary_and_enum(tmp_path):
         # flag -> grammar token
         q = sysml2py.PartUsageBuilder("Q")._set_isAbstract()
         assert q.build_node().get_definition()["modifiers"] == ["abstract"]
-        # directed feature default uses coarse "reference" kind
+        # directed feature default uses coarse "reference" kind, and lifts to
+        # a real ReferenceUsage node (r3 B1 — not Unsupported)
         b = sysml2py.PartUsageBuilder("Bus").add_directed_feature("in", "fuel")
         f = b._get_child("fuel")
-        assert f.build_node().get_definition()["kind"] == "reference"
+        fn = f.build_node()
+        assert fn.__class__.__name__ == "ReferenceUsage", type(fn).__name__
+        assert fn.get_definition()["kind"] == "reference"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_is_legal_child_rejects_disallowed(tmp_path):
+    """Phase-5 r3 W1-4: is_legal_child rejects kinds that are not legal
+    children of the owned body (DefinitionBody for usage builders)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Sat")
+        assert sat.is_legal_child(sysml2py.AttributeUsageBuilder("A")) is True
+        assert sat.is_legal_child(sysml2py.PartUsageBuilder("P")) is True
+        # ActorUsage / ObjectiveRequirementUsage / TransitionUsage are NOT
+        # legal children of a part (they live in other bodies).
+        assert sat.is_legal_child(sysml2py.ActorUsageBuilder("AC")) is False
+        assert sat.is_legal_child(sysml2py.ObjectiveRequirementUsageBuilder("O")) is False
+    finally:
+        sys.path.remove(str(pkg / "src"))
+
+
+def test_builder_syntactic_multimember_roundtrip(tmp_path):
+    """Phase-5 r3 W1-8/9: with ';' terminators, a multi-member brace block
+    parses back into SEPARATE child nodes (not a swallowed single node), and
+    kind/name/modifiers recover per element from the builder's own dump()."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Satellite")
+        sat._set_child(sysml2py.PartUsageBuilder("Panel")._set_isAbstract())
+        sat._set_child(sysml2py.AttributeUsageBuilder("Mass")._set_typed_by(
+            sysml2py.PartUsageBuilder("MassDef")))
+        text = sat.dump()
+
+        from sysml2py_lab.ir import parse_ir
+
+        root = parse_ir(text)
+        sat_node = next((n for n in root.children if getattr(n, "kind", "") == "part"), None)
+        assert sat_node is not None and sat_node.name == "Satellite"
+        # brace-opener's owner carries the members; Panel and Mass are separate
+        owner = _find_brace_owner(root)
+        assert owner is not None
+        members = [c for c in getattr(owner, "children", [])
+                   if getattr(c, "kind", "") in ("part", "attribute")]
+        kinds = {c.kind for c in members}
+        assert "part" in kinds and "attribute" in kinds, [c.kind for c in members]
+        # the abstract modifier on Panel is preserved
+        panel = next((c for c in members if c.kind == "part"), None)
+        assert panel is not None and panel.modifiers == ["abstract"]
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_short_name_and_comment_text(tmp_path):
+    """Phase-5 r3 W1-5/6/7: builder short_name is emitted once, in angle form,
+    and reconstructs; Comment text is emitted as /* */ and reconstructs."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        sat = sysml2py.PartUsageBuilder("Satellite")._set_short_name("S")
+        # both dump paths now emit the short name once in angle form (r3 W1-5/6)
+        b_text = sat.dump()
+        assert "<S>" in b_text and "Satellite" in b_text, b_text
+        n_text = sat.build_node().dump()
+        assert "<S>" in n_text, n_text
+
+        cm = sysml2py.CommentBuilder("C")._set_text("hello world")
+        c_text = cm.dump()
+        assert "/* hello world */" in c_text, c_text
+
+        from sysml2py_lab.ir import parse_ir
+
+        # comment reparses (not unknown) once text is /* */ self-terminating
+        root = parse_ir(c_text)
+        kinds = list(_flatten_kinds(root))
+        assert "comment" in kinds, kinds
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_builder_enum_validation_and_mutual_exclusion(tmp_path):
+    """Phase-5 r3 W2-12/11: enum setters reject invalid values; mutually
+    exclusive flag modifiers clear each other (cannot both render)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        with pytest.raises(ValueError):
+            sysml2py.PartUsageBuilder("P")._set_direction("sideways")
+        # abstract and variation are mutually exclusive
+        p = sysml2py.PartUsageBuilder("P")._set_isAbstract()._set_isVariation()
+        d = p.build_node().get_definition()
+        mods = d.get("modifiers", [])
+        assert not ({"abstract", "variation"} <= set(mods)), mods
     finally:
         sys.path.remove(str(pkg / "src"))

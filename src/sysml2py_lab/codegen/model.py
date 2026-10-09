@@ -77,6 +77,7 @@ IR_KIND_ALIASES: dict[str, str] = {
     "package": "Package",
     "part": "PartUsage",
     "port": "PortUsage",
+    "reference": "ReferenceUsage",
     "requirement": "RequirementUsage",
     "root": "RootNamespace",
     "state": "StateUsage",
@@ -131,6 +132,7 @@ class ModifierSlot:
     kind: str  # flag | value | enum
     cardinality: str | None
     mutually_exclusive_with: tuple[str, ...] = ()
+    mex_tokens: tuple[str, ...] = ()
 
 
 class CodegenModel:
@@ -284,15 +286,16 @@ class CodegenModel:
         for c in calls:
             if c.endswith("Body") and c in self._by_name:
                 # a body rule that merely delegates to another body rule is an
-                # alias — follow it so we land on the real containing body.
+                # alias for the real containing body.  PartUsage's body is
+                # `UsageBody`, whose own body is a delegation to `DefinitionBody`
+                # — return the delegated *Body directly (r3 W1-3), rather than
+                # recursing through it and wandering past `PackageBody`.
                 rc = self._by_name.get(c)
                 sub: list[str] = []
                 if rc is not None:
                     self._collect_calls(rc.get("body", {}), sub)
                 if len(sub) == 1 and sub[0].endswith("Body") and sub[0] in self._by_name:
-                    sub_res = self._owned_body_for(sub[0], _depth + 1)
-                    if sub_res is not None:
-                        return sub_res
+                    return sub[0]
                 return c
         for c in calls:
             if c in self._by_name:
@@ -302,15 +305,22 @@ class CodegenModel:
         return None
 
     def modifier_slots(self, prefix: str) -> list[ModifierSlot]:
+        slots = self._modifiers.get(prefix, {}).get("slots", [])
+        # slot-name -> tokens, to resolve mutually_exclusive_with (which names
+        # OTHER slots by slot name) into the token keys stored in _modifiers.
+        name_to_tokens = {s.get("name", ""): tuple(s.get("tokens", [])) for s in slots}
         out = []
-        for slot in self._modifiers.get(prefix, {}).get("slots", []):
+        for slot in slots:
+            mex = tuple(slot.get("mutually_exclusive_with", []))
+            mex_tokens = tuple(t for n in mex for t in name_to_tokens.get(n, ()))
             out.append(
                 ModifierSlot(
                     name=slot.get("name", ""),
                     tokens=tuple(slot.get("tokens", [])),
                     kind=slot.get("kind", ""),
                     cardinality=slot.get("cardinality"),
-                    mutually_exclusive_with=tuple(slot.get("mutually_exclusive_with", [])),
+                    mutually_exclusive_with=mex,
+                    mex_tokens=mex_tokens,
                 )
             )
         return out

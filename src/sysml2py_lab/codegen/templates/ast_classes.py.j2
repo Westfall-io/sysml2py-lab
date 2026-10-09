@@ -271,13 +271,14 @@ class Node:
             parts: list[str] = []
             parts.extend(self.modifiers)
             if self.short_name:
-                # W1-4 r2: reconstruct the short name so build_node()->dump()
-                # does not silently drop it (SysML member-alias "~name").
+                # W1-4 r2 / r3 W1-6: reconstruct the short name as the angle
+                # form "<s>" (parse_ir's short-name vocabulary), so build_node()
+                # -> dump() does not drop it and does not emit non-SysML "~s".
                 head0 = (self.ir_kind or self.kind)
                 if self.name:
-                    parts.append(f"~{self.short_name} {head0} {self.name}")
+                    parts.append(f"{head0} <{self.short_name}> {self.name}")
                 else:
-                    parts.append(f"~{self.short_name} {head0}")
+                    parts.append(f"{head0} <{self.short_name}>")
             elif self.ir_kind or self.kind:
                 head = self.ir_kind or self.kind
                 if self.name:
