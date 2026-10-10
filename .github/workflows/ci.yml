@@ -26,7 +26,7 @@ jobs:
         # and exclusions are auditable from config.  Gate covers the PR's
         # changed files + the generated package (which ships its own config).
         run: |
-          ruff check src/sysml2py_lab/regress.py src/sysml2py_lab/cli.py src/sysml2py_lab/ir.py tests/test_regress.py tests/test_mvp_roundtrip.py
+          ruff check src/sysml2py_lab/regress.py src/sysml2py_lab/cli.py src/sysml2py_lab/ir.py src/sysml2py_lab/validate/ tests/test_regress.py tests/test_mvp_roundtrip.py tests/test_windtrader_validate.py
           rm -rf /tmp/ci-lint
           sysml2py-lab generate --out /tmp/ci-lint
           ruff check /tmp/ci-lint/sysml2py/src
@@ -60,3 +60,67 @@ jobs:
 
       - name: Corpus verify (sha + parse)
         run: sysml2py-lab corpus verify
+
+      - name: Windtrader gate (hermetic, committed fixtures — no JVM)
+        # Issue #12: replay recorded verdicts.  Any adapter_error fails; new
+        # unbaselined files fail; valid->invalid (or input-valid/roundtrip-
+        # invalid) regressions fail.  Baseline invalid verdicts are tracked,
+        # deliberate WIP (see validate/protocol.md §5) — the LIVE job below
+        # guards round-trip emission against the real validator.
+        # --generated replays the committed ROUND-TRIP digests offline too
+        # (r4 W1-1): the package is built above; without it AC#2's ratchet
+        # axis would be inert in this job.
+        run: sysml2py-lab validate corpus --offline corpus/validate-fixtures.json --generated /tmp/ci-gen
+
+  validate-roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+      - name: Install lab + windtrader
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Generate package
+        run: |
+          rm -rf /tmp/ci-gen
+          sysml2py-lab generate --out /tmp/ci-gen
+      - name: Live windtrader round-trip validation (real validator + JVM)
+        # AC#2: generator-emitted text for every corpus file is validated
+        # against the live windtrader-java oracle, not just the recorded
+        # fixtures.  Fails on any adapter_error (tooling broken).  Invalid
+        # verdicts are reported and tracked (baseline in protocol.md).
+        run: sysml2py-lab validate corpus --generated /tmp/ci-gen
+
+      - name: Windtrader fixture-drift check (B3)
+        # Re-record the committed fixtures from the LIVE oracle and diff
+        # against what's committed, using the SAME single builder the CLI
+        # uses (r2 W1-1) — any drift means a recorded verdict silently
+        # diverged from the real jar — fail the build.
+        run: |
+          python - <<'EOF'
+          import sys, json, subprocess, hashlib
+          from pathlib import Path
+          sys.path.insert(0, "/tmp/ci-gen/sysml2py/src")
+          sys.path.insert(0, "src")
+          from sysml2py_lab.validate import corpus
+          sd = Path("corpus")
+          verdicts = corpus.compute_verdicts(sd, generated_pkg=Path("/tmp/ci-gen/sysml2py"))
+          fresh = corpus.build_fixture_dict(
+              sd, verdicts, version="0.2.0",
+              rt_texts=corpus._roundtrip_outputs(sd, Path("/tmp/ci-gen/sysml2py"))[0],
+          )
+          committed = json.loads((sd / "validate-fixtures.json").read_text())
+          if fresh != committed:
+              print("FIXTURE DRIFT: committed fixtures differ from the live oracle")
+              print("   committed entries:", len(committed), " fresh entries:", len(fresh))
+              sys.exit(1)
+          print("fixture drift: OK (%d entries match live)" % len(fresh))
+          EOF
+

@@ -32,7 +32,13 @@
       "sha256": "e5e0c8ded1cb5d1830f1935326e8d18bfefbbd89979812b182c521a33391b08c",
       "source": "Internal",
       "source_url": "https://github.com/Westfall-io/sysml2py-lab",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/attribute_def_subusage__commented.sysml": {
       "fidelity": {
@@ -48,7 +54,13 @@
       "sha256": "d513da2fff216e348664fce79a3a76980e6f21992eba6456b9c6c8568700dc50",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/attribute_definition__commented.sysml": {
       "fidelity": {
@@ -64,7 +76,13 @@
       "sha256": "ce33fe5100a3d6c540a5dd107cd076dbd0d000ad192aacc60e83f036500f66de",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/attribute_usage__commented.sysml": {
       "fidelity": {
@@ -80,7 +98,13 @@
       "sha256": "659ec2eb4572246baeb8d3c7b2eb4d1e41d38bf9ce0543831d948dd3dc92cd23",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/package__commented.sysml": {
       "fidelity": {
@@ -96,7 +120,13 @@
       "sha256": "8b6cc7f3ec057ea6d05fc9fea77880bfef6337dfdf7480fde80626c2b50a73a3",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/package_owned_members__commented.sysml": {
       "fidelity": {
@@ -113,7 +143,13 @@
       "sha256": "5b8a21543847e513282d67c831b199e2d8228c2bf42e29e340d6d82983881fc0",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/package_with_alias_member__commented.sysml": {
       "fidelity": {
@@ -130,7 +166,13 @@
       "sha256": "aa791a9662c7f3b82399b56ce4193e3d0925e8694ad6ed15de80d8106233757a",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/package_with_imported_package__commented.sysml": {
       "fidelity": {
@@ -147,7 +189,13 @@
       "sha256": "ac80094c20e5cc422e8e10dffa74ea0396594825803b6c1997b89716c9695786",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/subpackage__commented.sysml": {
       "fidelity": {
@@ -163,7 +211,13 @@
       "sha256": "5b9a8ca4c57305341f080ae60d606c1317e1f4aa1b2bd72e135d9f9ebe50e324",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Action_Decomposition.sysml": {
       "fidelity": {
@@ -182,7 +236,13 @@
       "sha256": "1927fe2a49996e059cd1328add1a0ffd5175c6751676d43e9d7feaf7c482bafa",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Action_Definition_Example.sysml": {
       "fidelity": {
@@ -201,7 +261,13 @@
       "sha256": "ad2c5ad6aaf7a5908f8115a57a305a83b9fb7ed962c4e2308986068f744ce9ae",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Action_Shorthand_Example.sysml": {
       "fidelity": {
@@ -220,7 +286,13 @@
       "sha256": "a617f966ef89e8e8becf00c17659f146c6bcce65e11a56b4ee7765fd83fc1616",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Action_Succession_Example_1.sysml": {
       "fidelity": {
@@ -239,7 +311,13 @@
       "sha256": "4f4e02bce1e1ccfb27bf0dd46eaad97a4d19df53fec0004f3d3635b9b0eef047",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Action_Succession_Example_2.sysml": {
       "fidelity": {
@@ -259,7 +337,13 @@
       "sha256": "63e3c1664955dca2877922f222c5e59dcebee207ab1beda8209a79a811155058",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Analysis_Analysis_Case_Definition_Example.sysml": {
       "fidelity": {
@@ -282,7 +366,13 @@
       "sha256": "7770d4908e8ae1850fbcc9197189715bcccb8c7a4f40b3c1ccc20e28e71696b8",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Analysis_Analysis_Case_Usage_Example.sysml": {
       "fidelity": {
@@ -304,7 +394,13 @@
       "sha256": "88b62dc649ee206670fe50527dae09a7f06f71e1a8c6d25da5caffd1fc04c0a0",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Analysis_Trade_Study_Analysis_Example.sysml": {
       "fidelity": {
@@ -325,7 +421,13 @@
       "sha256": "db2d283bd941f7683be07a7f5cf205fa3902e24c1fe52ca30731c6509ed3bde9",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Binding_Connectors_Example_1.sysml": {
       "fidelity": {
@@ -345,7 +447,13 @@
       "sha256": "c79fc5abdf85bb100783622f5f36aa96c0ca8d6d36e54f9077cb0cc17b16d6f2",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Binding_Connectors_Example_2.sysml": {
       "fidelity": {
@@ -365,7 +473,13 @@
       "sha256": "433c9cc71cf1f0e8c2547815f80f3154a215da57d1fabac8a381bc671a47c59b",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Calculations_Calculation_Definitions.sysml": {
       "fidelity": {
@@ -384,7 +498,13 @@
       "sha256": "9ccf672a8d259ed212a61a0178cdb881e5a54ce80a6bc13a1671ca5b640fe305",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Calculations_Calculation_Usages_1.sysml": {
       "fidelity": {
@@ -405,7 +525,13 @@
       "sha256": "3d9c401a52000cb8958b5aaf3db89a4e911229e9262ac2a45687229fb570a786",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Calculations_Calculation_Usages_2.sysml": {
       "fidelity": {
@@ -425,7 +551,13 @@
       "sha256": "77634db36b17cdda83c8e8a855dd6426401ccd70bec10bb6c8368e8c65e1c9d2",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Connections_Connections_Example.sysml": {
       "fidelity": {
@@ -444,7 +576,13 @@
       "sha256": "c749ceb69ed67a56ac944e4b2c8381af1d33e274abea44144e6d528f69edc8c8",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Constraints_Analytical_Constraints.sysml": {
       "fidelity": {
@@ -465,7 +603,13 @@
       "sha256": "986a224c79e115c31349c7d6fc9f4ec3da10448ee230eed1d4d1e8a31683d930",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_1.sysml": {
       "fidelity": {
@@ -486,7 +630,13 @@
       "sha256": "c14e4f16705265acfd245f9be000de952b0cf418458637f8312349b2304eed3d",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_2.sysml": {
       "fidelity": {
@@ -507,7 +657,13 @@
       "sha256": "fa5948130964ed2024afe3e0f983be1e904a9b901d425768047048dfe68f49e2",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Constraints_Constraints_Example_1.sysml": {
       "fidelity": {
@@ -528,7 +684,13 @@
       "sha256": "2d9b66a42a557263f9f11accefe0fdfd975f7ac1a74c5875a50a2cdf36c06226",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Constraints_Constraints_Example_2.sysml": {
       "fidelity": {
@@ -549,7 +711,13 @@
       "sha256": "4b1ec8eb7d5b6b9e79de9953fd4c01ed261470e9102984ea64df63be9474b798",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Constraints_Derivation_Constraints.sysml": {
       "fidelity": {
@@ -570,7 +738,13 @@
       "sha256": "45375f040792ec753cf20bfe0eb0386a56cbddc147a851584e3e9fa52e559deb",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Constraints_Time_Constraints.sysml": {
       "fidelity": {
@@ -592,7 +766,13 @@
       "sha256": "07642bcea0c3458fa293edf0e6dd78a5ff1c4ae4871bf5b733ceeaa698441b69",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_1.sysml": {
       "fidelity": {
@@ -612,7 +792,13 @@
       "sha256": "3a560fafc25999a1047fc772b58445d800302e897bb67d07a30c5f5acada01df",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_2.sysml": {
       "fidelity": {
@@ -631,7 +817,13 @@
       "sha256": "8521b4aa0257c7ed6b1472093c74ef64e3dd18b75551b010c415371fab26bb4e",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example.sysml": {
       "fidelity": {
@@ -650,7 +842,13 @@
       "sha256": "f8deeeda2ff79cc82cd7a8576d8c7c6e41db899d389c75a2257bb8fbd0462b19",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example_2.sysml": {
       "fidelity": {
@@ -669,7 +867,13 @@
       "sha256": "a1fb03bbc2f1d3dcbe5309244c0955ec7a290419190eef28db52e85c5fd8bb84",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Expressions_Mass_Rollup_1.sysml": {
       "fidelity": {
@@ -688,7 +892,13 @@
       "sha256": "e4a52c05baeb36f4cf7e4ccacf92469f70df36093536f6d5ba13fb88d88d1a23",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Expressions_Mass_Rollup_2.sysml": {
       "fidelity": {
@@ -708,7 +918,13 @@
       "sha256": "c7ae31f0f1f399c9187820809bd3e056a318707d481bb8b3ea9ac66ca94f12fa",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Flow_Connection_Definition_Example.sysml": {
       "fidelity": {
@@ -728,7 +944,13 @@
       "sha256": "ac63f675f1a35fecad067b3fd29b5f628535a3cde81f8f8062be2f0b1f8482d1",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Flow_Connection_Interface_Example.sysml": {
       "fidelity": {
@@ -748,7 +970,13 @@
       "sha256": "407af7c08e4af6637fa90f78e2abdcdbf33967614086562e3d69a0bb1e0e2274",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Flow_Connection_Usage_Example.sysml": {
       "fidelity": {
@@ -767,7 +995,13 @@
       "sha256": "840779d434566d2d3ec31d436a373507fb6c66bd43113f8bab1abd938064eeec",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Generalization_Generalization_Example.sysml": {
       "fidelity": {
@@ -784,7 +1018,13 @@
       "sha256": "c00ddeeb9c62d76c5a97f97271d2c474f4ee58b2e6501af4aac43cb6fc6ecd69",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Interfaces_InterfaceDecomposition_Example.sysml": {
       "fidelity": {
@@ -803,7 +1043,13 @@
       "sha256": "af36e8481e9f91d517f8711403d2786b49bad22484c3efdc0770a74ede9a0e4e",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Interfaces_Interface_Example.sysml": {
       "fidelity": {
@@ -823,7 +1069,13 @@
       "sha256": "05c3a670e778f6bdc10836e29a34acc71343b6735a1c0113454836d53984f879",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Items_Items_Example.sysml": {
       "fidelity": {
@@ -843,7 +1095,13 @@
       "sha256": "310f86eb95d400353cef7fa1a7c98f5c97548f431c1c9fe27ffced169c7cda79",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Packages_Comment_Example.sysml": {
       "fidelity": {
@@ -861,7 +1119,13 @@
       "sha256": "ede108ab5a643a737cdca97282d424854a5bd5f08025de7d7ef69db036bc35b3",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Packages_Documentation_Example.sysml": {
       "fidelity": {
@@ -879,7 +1143,13 @@
       "sha256": "27692331dbc039f2e0e514dff1f1aa6526bdaef0f6eafae86ed37f6f25331cbf",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Packages_Package_Example.sysml": {
       "fidelity": {
@@ -898,7 +1168,13 @@
       "sha256": "0e2a335119338f7a3c4ee81f70fcc2fe3f214e438ab6bd4c64c19207ff10cd65",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_PartDefinition_PartDefinition_Example.sysml": {
       "fidelity": {
@@ -918,7 +1194,13 @@
       "sha256": "ccb5c6c8dda4e03328663ed6394dba4dabc7d348816c67daf3540ccf474f76ac",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Parts_Parts_Example_1.sysml": {
       "fidelity": {
@@ -935,7 +1217,13 @@
       "sha256": "7b1a2c261d033f4c85be7ef45dcd1cf05179cdaa996786092d93c3c15afbaf4d",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Parts_Parts_Example_2.sysml": {
       "fidelity": {
@@ -952,7 +1240,13 @@
       "sha256": "8e0b7b71737bf27d2404bc0f9ba3ed8a1ec63ef3f382ac3e6bf3e9bbd22daabb",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Ports_Port_Conjugation_Example.sysml": {
       "fidelity": {
@@ -972,7 +1266,13 @@
       "sha256": "f77b4edd9ed15c7239c866dfbd71dbd7bf1b953429598c2bc15a5d33c9c2389b",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Ports_Port_Example.sysml": {
       "fidelity": {
@@ -992,7 +1292,13 @@
       "sha256": "9adbfbb5e2139eb998d4d21d12f42842554eea0b02d817e551c388464d5ffef7",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Redefinition_Redefinition_Example.sysml": {
       "fidelity": {
@@ -1009,7 +1315,13 @@
       "sha256": "706c2369ab0d451e72024d803ee9865bc425121bc02cd149a2b13bae64e01cd3",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Requirements_Requirement_Definitions.sysml": {
       "fidelity": {
@@ -1032,7 +1344,13 @@
       "sha256": "6b96ef769433e6400e89dd651e21c4bd51fd296181f1b5462f65e4f875b0638f",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Requirements_Requirement_Groups.sysml": {
       "fidelity": {
@@ -1054,7 +1372,13 @@
       "sha256": "ca7551a2d7e1d2c78f451006f5c546904558fb0bfc084e9008fb9236b5f8ec33",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Requirements_Requirement_Satisfaction.sysml": {
       "fidelity": {
@@ -1075,7 +1399,13 @@
       "sha256": "f44218b5d7216e244129e6549de5def55f31a49237cb5efeaf26a325f4586676",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Requirements_Requirement_Usages.sysml": {
       "fidelity": {
@@ -1096,7 +1426,13 @@
       "sha256": "089160cf4030086490e9e986dd4b329d59f9753b908a38b698d16fd8ef502609",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 2,
+        "roundtrip_exit": 2,
+        "roundtrip_status": "invalid",
+        "status": "invalid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example.sysml": {
       "fidelity": {
@@ -1116,7 +1452,13 @@
       "sha256": "366ba1643b212af8f69dd2887064abb7237028a48ccb3b3fb12e8ca983081d00",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example_2.sysml": {
       "fidelity": {
@@ -1135,7 +1477,13 @@
       "sha256": "48fbbbc25ab73174afe5cd690aecfc0bcc839f70e7c0ec7c3ad64b864b8c49e3",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_States_State_Actions.sysml": {
       "fidelity": {
@@ -1156,7 +1504,13 @@
       "sha256": "2d33f49ba4ba1465c992afdc448aec21a27cabb576212a5990a22b6663d6a17f",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_States_State_Decomp1.sysml": {
       "fidelity": {
@@ -1175,7 +1529,13 @@
       "sha256": "726e560b96e7ca644704f6d5a274bb6e186a8c2337658199db3f5236019d3267",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_States_State_Decomp2.sysml": {
       "fidelity": {
@@ -1194,7 +1554,13 @@
       "sha256": "3f307fbc8bce6ccf2d77b60acbc3b70a9c02883cf8c15b5973be24622b0de48a",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     },
     "grammar-2023-07/test_Training_Subsetting_Subsetting_Example.sysml": {
       "fidelity": {
@@ -1211,7 +1577,13 @@
       "sha256": "7817d7b7258f04438b647c686faefe79fc0c7368e3f630d129df9ce6cf74e4f1",
       "source": "SysML-v2-Release",
       "source_url": "https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src",
-      "windtrader": "unverified"
+      "windtrader": {
+        "exit_code": 0,
+        "roundtrip_exit": 0,
+        "roundtrip_status": "valid",
+        "status": "valid",
+        "version": "0.2.0"
+      }
     }
   },
   "format": 1,

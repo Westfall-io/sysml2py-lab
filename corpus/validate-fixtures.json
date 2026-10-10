@@ -1,0 +1,1004 @@
+{
+  "077e068c9d665943788e1e61214c8cfba0b7f53984921862bcc80782335d0154": {
+    "diagnostics": [
+      "error: line=2 offset=42 near=import",
+      "error: line=2 offset=69 near=::",
+      "error: line=26 offset=610 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Satisfaction.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "085739227ce002c2c36a97cbc3b0228a7034b71b418188dc4e1d6fcd2c62a5f1": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Parts_Parts_Example_1.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "0b0e3c0c0bcf8c9299281372dcb0dc8c057c84708f3f3202ebbb8b76f9f4be25": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Shorthand_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "0f8e2d91d5b886d6c4b2bcb09ff4995894533bb246f5e0bdf4f73278632b3ba0": {
+    "diagnostics": [
+      "error: line=2 offset=43 near=import",
+      "error: line=2 offset=62 near=::",
+      "error: line=3 offset=106 near=::",
+      "error: line=32 offset=725 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "127e349e24cf4e11fae480f60b7e5ffb8a306d905fe3f6d882a8d90ef226e61c": {
+    "diagnostics": [
+      "error: line=2 offset=52 near=import",
+      "error: line=2 offset=73 near=::",
+      "error: line=21 offset=468 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Flow_Connection_Definition_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "13fbada3c87592dd3edf9917444948c62ef35804c8f6b9a91e27da989a08c4da": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "14138964f7c12b3718b120c297144d388363b161ffe41c8564ba8b65f152a788": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "family/family.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "14ccd824e97a10436c6754ba0602d022b96fe7d4aae16defd0f1fba4ef588610": {
+    "diagnostics": [
+      "error: line=2 offset=46 near=import",
+      "error: line=2 offset=67 near=::",
+      "error: line=26 offset=614 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Binding_Connectors_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "15950b7d23f9a4b15ddc97921f62defa77c1e7ed01a9b30ba5c1ad6cd9cd147c": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Analysis_Analysis_Case_Definition_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "1bc843798320aae016b9ba79116b9855d17f2afef9474510b9c1c63388d9118a": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "1d1bab257c74eb78734239f8f3feb9de392b6470f9a699fa6d2c4651fcb5fafe": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Generalization_Generalization_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "1d8e2026aa81419e2ef0c1a9836c9261cf492582f9f17ebc6192cb84873e6a34": {
+    "diagnostics": [
+      "error: line=2 offset=41 near=import",
+      "error: line=2 offset=51 near=::",
+      "error: line=3 offset=70 near=::",
+      "error: line=42 offset=1361 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Definitions.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "1e893345032ecbc91d5d950c8e15ca6a50b13a628fb3f7bfaa231fe886f70249": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Satisfaction.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "21d8063b9867c881c985762ac8b5f47930b96f49218b3d3cf8e84027f67f319c": {
+    "diagnostics": [
+      "error: line=2 offset=45 near=import",
+      "error: line=2 offset=86 near=::",
+      "error: line=31 offset=904 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Analysis_Analysis_Case_Usage_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "25699d54378b80c83821a7cda142cfcbd52ea9323e2f123cb193357a33bba94c": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Succession_Example_2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "2766b37adefcb9527eed6f116c5857c9fa0e5c0c052ac1199e230fc124898db1": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Time_Constraints.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "28fad3c236815c4960ed6d0957e9e549b2411f624358f1f3ec8fe299b267fa8b": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraints_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "2e2736d201633306345e2885c1ca7cd28397f569745e837d9c59b52a43fb7d50": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "family/family.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "3181c4637b27551cb5b53c70a9d780757810e4e0ba29190e6ba2674617309fe2": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Decomposition.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "3510fc92ecc12418aa5bfad2c6312ffa730dbe8b810db2875a452b0b67420a87": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "35fdb42ef1fc743e77f2e30733c4ab7687aac0994690e961331eb1a52dd841e0": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Calculations_Calculation_Usages_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "3a6036b59a65268753a8e8a8f69724a1ce037b306074ce2eab4b3a825373e6a1": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Packages_Comment_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "3ab1edd15f6431f1d798c2e9e405d6f9eb676f6edef9d7c5208a5eff58191b0a": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Interfaces_Interface_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "3f59766dda8657ad69474b6c951c26a1733da93aa1841af25aa8d102d8be69c3": {
+    "diagnostics": [
+      "error: line=2 offset=36 near=import",
+      "error: line=2 offset=45 near=::",
+      "error: line=3 offset=87 near=::",
+      "error: line=25 offset=679 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Usages.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "4176d6d1bd45120baf32d7c85a76ae4221cc823cc581d53b704aaca3d7a92245": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Packages_Comment_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "4206afdd208dacca69fc06bfeca12922c7ecf293ba38b15ccdc0a0dbc5ba7c82": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Ports_Port_Conjugation_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "45379a9836854bf9c7dd52acdbc338546fa94ad5a9f34b32a6559be9c0621de6": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Analysis_Analysis_Case_Usage_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "464f1c6de22323e70f0f867f9ab013953a5ab861faa550ce8042ef484625b518": {
+    "diagnostics": [
+      "error: line=2 offset=27 near=import",
+      "error: line=2 offset=42 near=::",
+      "error: line=4 offset=87 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/package_with_imported_package__commented.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "47c2806843faba98d2dae251cdfeac4ea2a084064b9c4dafee8f92218e10639d": {
+    "diagnostics": [
+      "error: line=2 offset=46 near=import",
+      "error: line=2 offset=67 near=::",
+      "error: line=29 offset=667 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Binding_Connectors_Example_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "4b92e41a0182654578722732c15f3d5d9b9dcf1d4eb45914361e65609591f09e": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/package_owned_members__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "4efe2c7d6cebff9ac4828fbfa6070abd9183afd704a9f8f2d2191fc0b9ed462e": {
+    "diagnostics": [
+      "error: line=2 offset=27 near=import",
+      "error: line=2 offset=52 near=::",
+      "error: line=19 offset=466 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Mass_Rollup_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "50141599ae7bcbb9fe9ae2a0e81fe56b80a49d8c0df6f001313bfd76b3ab3c1a": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Flow_Connection_Interface_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "513bf9ab2985b33dc178da063b1de76d94b0c416a782bd8a2a0eecae28214f9a": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Packages_Documentation_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "5456ba82f50ce91a85685602e078b6431c0c5c01f73abf8aca34422b60956abf": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_PartDefinition_PartDefinition_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "5474b0d5ecb2ae013c9e08401d26d2d781fcadeb843c2a2f6fb051ff1940f749": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Ports_Port_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "54c3f51be7d4b7525a8672e37e164cf4e01a17cdf22f1d16a31b245d680c7613": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Succession_Example_1.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "54ce8cf26e1285b3f23f229d8a90297ed8d42178b1ec83e01408d89986a1c061": {
+    "diagnostics": [
+      "error: line=2 offset=41 near=import",
+      "error: line=2 offset=51 near=::",
+      "error: line=3 offset=70 near=::",
+      "error: line=4 offset=105 near=::",
+      "error: line=32 offset=752 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "59d45494625c3975cbe75b71664ba60046785cefe28172753dfe8aa814d60b92": {
+    "diagnostics": [
+      "error: line=2 offset=39 near=import",
+      "error: line=2 offset=49 near=::",
+      "error: line=3 offset=68 near=::",
+      "error: line=4 offset=103 near=::",
+      "error: line=32 offset=770 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraints_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "5e81c6793185a759b127277d51d2a615da2cf4b359de490d4e10818bea3ebdf4": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Analysis_Trade_Study_Analysis_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "5fddb0c19d6c242a5f467a66864b37d05785943a88597db120a080a91d376a04": {
+    "diagnostics": [
+      "error: line=2 offset=47 near=import",
+      "error: line=2 offset=68 near=::",
+      "error: line=18 offset=418 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Flow_Connection_Usage_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "6026669ae5cecc29beb52273bfec09cfafa46e4d19b12f3ea91c3f09f0c84bce": {
+    "diagnostics": [
+      "error: line=2 offset=31 near=import",
+      "error: line=2 offset=50 near=::",
+      "error: line=17 offset=252 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Items_Items_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "6166e0a24a9e896e781a556b3e86517565b9f65924cbbab9d41c6b0ca85852d8": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Definition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "61ac466a55d158efdefd1dafa5f30907c31d45bbdaf0cd82b527a854874dbcda": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/package_with_imported_package__commented.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "61bd2119a1a28166b67c43b4c6d60d58ee2aa3f82022374544876b3cdef5befa": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Definition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "69452b2e2ca981adaab5d8759c332a06cc145e291f6f825b1ae507f2367406dd": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Flow_Connection_Usage_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "6a97a76859d2e34f0dc367bfdcf26535900700e963c2061093e85ff15ed7ab2e": {
+    "diagnostics": [
+      "error: line=2 offset=43 near=import",
+      "error: line=2 offset=62 near=::",
+      "error: line=3 offset=90 near=::",
+      "error: line=19 offset=460 near=import"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "6d35831d9097ddc1bf508ec35fc3f66d73e57e7dc91fc7e9385016a3bdc6361e": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Subsetting_Subsetting_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "6da58003b770338df1dad1ff67821bbd4cc93844509b9d3e16ef0ea4b9349b0d": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_States_State_Actions.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "7529a7c02c2c53202fa164427cf58f17271b19d448802ea20d8ffe8a1a18de5f": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_States_State_Decomp1.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "7a98c7309dc3e1465088829756f604145774d0c53434e0ad5c974b1c23800746": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraints_Example_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "81573402eecfe453cbfb5263d16cdc216e1e8b26e3de8d90c3ee0b887182f14b": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Flow_Connection_Definition_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "824169252c42ece00f0a378deff89c30054e1e7d41ef8c39482fdef200486c68": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Calculations_Calculation_Definitions.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "831cfd8664dadd70e5d382a9da1190d6d41ee3d88a9b33e1750a09622f8f232a": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Packages_Documentation_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "83df7dc04a6fc2b9838a82eb1534c538d13600e328b2980ca4d388ae71b914ff": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "8414501717c338f89069daa2550a699d640d288f4289aa3f126b9e63002ebdbf": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "855d2f8e37a3f855a31acfc254ec64c8ac160ed9385d873f1b9edf10e3acaa9e": {
+    "diagnostics": [
+      "error: line=2 offset=50 near=import",
+      "error: line=2 offset=82 near=::",
+      "error: line=3 offset=123 near=::",
+      "error: line=4 offset=156 near=::",
+      "error: line=5 offset=190 near=::",
+      "error: line=6 offset=203 near=import"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Analysis_Analysis_Case_Definition_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "85a526bc4a7ce153dd67325d796b48bad2f4dc67405ff84c54e07a002767d64a": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Shorthand_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "8648c19ecab22f0e3ad90a3e82934fb0b8d7aad1cd1da5ac2d58189268789633": {
+    "diagnostics": [
+      "error: line=2 offset=36 near=import",
+      "error: line=2 offset=68 near=::",
+      "error: line=3 offset=105 near=::",
+      "error: line=33 offset=831 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Groups.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "86906709a46ad088ea711ffdddf18a79ff66733af187a41d7ee9efc9d3ea5f07": {
+    "diagnostics": [
+      "error: line=2 offset=40 near=import",
+      "error: line=2 offset=70 near=::",
+      "error: line=24 offset=673 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Derivation_Constraints.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "86beb507689384bf3321174a950be80925b28bfabee4fa20bf931f65319d0a29": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Derivation_Constraints.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "870ef37410280634bbec0534477d01a69aad6c467382f2844f2f8cecad41249f": {
+    "diagnostics": [
+      "error: line=2 offset=34 near=import",
+      "error: line=2 offset=66 near=::",
+      "error: line=27 offset=689 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Calculations_Calculation_Usages_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "88ca78eeee39ae2ce8c12f90708fafb988e32e516cceff82b097f3a6174f1fb9": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_States_State_Actions.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "895927438269e974cd634b3e80b6bf8f1b570093317766213af75bbd970e67e9": {
+    "diagnostics": [
+      "error: line=2 offset=51 near=import",
+      "error: line=2 offset=72 near=::",
+      "error: line=22 offset=587 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Flow_Connection_Interface_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "8a8dafe5a55fc026d0fef4b166f98e378b0c3cf51c0048e9fe7f076b0f51b2ab": {
+    "diagnostics": [
+      "error: line=2 offset=41 near=import",
+      "error: line=2 offset=51 near=::",
+      "error: line=3 offset=70 near=::",
+      "error: line=4 offset=105 near=::",
+      "error: line=37 offset=858 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "8b922fb812ffc96da69696dd3686a8d5c7d06cd1141fae8cf3ae50b3fa97c417": {
+    "diagnostics": [
+      "error: line=2 offset=46 near=import",
+      "error: line=2 offset=65 near=::",
+      "error: line=3 offset=78 near=import"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Analysis_Trade_Study_Analysis_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "8ba50f02f75525b9427c321b752fb8de38d57295f043baba2dbd6fc5ad78ff73": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/attribute_def_subusage__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "8c4234fa6d3216c4af0175bff24bf87d22e5e8e85012efca7cbd94bdc396f509": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Redefinition_Redefinition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "8cb76ee1062002ecdb91141dd7e61204407c0c539673502d5f88f97913cc57b9": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Mass_Rollup_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "8e7c425aa10f21701515e4b90e212297892626760499f12c02865ef220b6dd31": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Binding_Connectors_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "8fdfc41e7f54dbcc9846e060d423b6d72ea612fa22219194e1ccca79dd0fc1c2": {
+    "diagnostics": [
+      "error: line=38 offset=981 near=[",
+      "error: line=38 offset=988 near=to",
+      "error: line=38 offset=991 near=wheel",
+      "error: line=38 offset=996 near=.",
+      "error: line=38 offset=998 near=.",
+      "error: line=39 offset=1044 near=[",
+      "error: line=39 offset=1051 near=to",
+      "error: line=39 offset=1054 near=hub",
+      "error: line=39 offset=1057 near=."
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Connections_Connections_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "91adc7f6fd65e822fe60400c7baf3505882315d25f82e0ffa24ac8cf1aa41a86": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "92af247d844cd3ac2bb8623378503d0d0b85742c318ad81348bd1b1befc09777": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example_2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "92c8674276363118e754e8fbe6d02f055ea6f593e5e3b211d39d5e6847ec4c39": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Packages_Package_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "94db436e0a79e855c250ca1d98ad9d5619cea6cec08e38c734ed5a7d9d0b44dd": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Parts_Parts_Example_1.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "952bb5e723baf6e6e4380d80f42d2f088177430d301e575673a2bf302cb0d69a": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_States_State_Decomp2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "9780be19f1fc9072a263a811a44b4fd2461c5ea364b3937dd977268d2d8d4bde": {
+    "diagnostics": [
+      "error: line=2 offset=40 near=import",
+      "error: line=2 offset=72 near=::",
+      "error: line=42 offset=1100 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Analytical_Constraints.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "9ab23097c6671e79a240aa0d11dd158c31971b6bce83abd89b9b68a338795cbf": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Ports_Port_Conjugation_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "9c7bbbae1cfd7c4491c9deebf9718d902130f363399017ac62aed0e6419895eb": {
+    "diagnostics": [
+      "error: line=2 offset=35 near=import",
+      "error: line=2 offset=54 near=::",
+      "error: line=3 offset=82 near=::",
+      "error: line=19 offset=426 near=import"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Car_Mass_Rollup_Example_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "9f6eec5e7966af958a58d54f2ac7dd89b339e23b1ea5084d0d5dade9578df114": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Generalization_Generalization_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "9fdeb9be9a344628c327da911109939191d2d333f7bec4bf4a94d7bfe86066b5": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Analytical_Constraints.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "a3493ec51b756aeb45eee5b500ec73500fa8fe5070f939771d0ad922fa56fda7": {
+    "diagnostics": [
+      "error: line=2 offset=35 near=import",
+      "error: line=2 offset=56 near=::",
+      "error: line=19 offset=444 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Interfaces_Interface_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "a52907dbd7314788913545b442d63dd646e8874406975c00d0441acca4cb34d0": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Decomposition.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "a6f222d317e574a0cd41b49c7e00e676b31f7e048a88a13b0420fa32cd74a8ba": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Succession_Example_2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "a9375b393fd1f4f862adec561d868e1f476e22698ce9a34c09cc7a8459233da2": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_States_State_Decomp1.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "a975aae0bb15031ed123a9ef9dd45722c1121f4e291b5844db277465d16752b7": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/package__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "acc385a754feec1a0e218d938d9a43be40e3661bd40981470cc87ea6110f1516": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Packages_Package_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "acc496fe6765c7231739d7273975742afb26401b8f369115277aef13869867cd": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraint_Assertions_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "ad37e0629995917a32ff45702ef24b2be18571a7ce5f7e62c386b387ec4f7156": {
+    "diagnostics": [
+      "error: line=2 offset=38 near=import",
+      "error: line=2 offset=70 near=::",
+      "error: line=40 offset=917 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Calculations_Calculation_Usages_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "ad90246ba534640ed86658429a31de10a628051f776efab282100e77467bf5df": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Definitions.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "ae09e796708f4ec2f8d284e3b7a7e249c230c0e83c05704ff4bf43dbe359e5e8": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/attribute_definition__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "b15d65f461b3d8535edf9fbee094459eeb4757059626a540a375c6402105ca46": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Action_Succession_Example_1.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "b2d557597fca2c713e14d4097cfd47b7805fcba480a9ec8494f4bd7daca0cf1e": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Redefinition_Redefinition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "b696c0591cae47d814807a6f674f328aa7be66b69cb69213cfdf925a4c8057e2": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Calculations_Calculation_Usages_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "b89799613f8fa92e839971017e8ac20c3e43885be6fc1b383d83a0ffcb7ee66d": {
+    "diagnostics": [
+      "error: line=2 offset=27 near=import",
+      "error: line=2 offset=52 near=::",
+      "error: line=21 offset=611 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Mass_Rollup_2.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "bc546059b94f7a743799ce9e13a71e24043c2796dfdbccf703ca7753e05db5af": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/attribute_def_subusage__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "bd11ef459319006c9ff856e45842cd3e08763dc327c1f3b5ca1dcf8cefa0c268": {
+    "diagnostics": [
+      "error: line=2 offset=34 near=import",
+      "error: line=2 offset=44 near=::",
+      "error: line=3 offset=69 near=import"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Time_Constraints.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "be65a2788d22266db695c476442352c24b92018513f5a02c26f71ad229973ff0": {
+    "diagnostics": [
+      "error: line=2 offset=43 near=import",
+      "error: line=2 offset=62 near=::",
+      "error: line=17 offset=387 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_EnumerationDefinitions_Enumeration_Example_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "c10a8f2baaf8699367f4520d5f0e62994e054fefe70acae4d366ea0c13e058ab": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Interfaces_InterfaceDecomposition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "c1beb7fc8ea40930c9210c28ab777ee97d3fbe6d96566d2db55665c914065e8e": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/package_with_alias_member__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "c326794cb2560c32d2e840940de21310937a5f72e20ff4f8b67d1ad56a046122": {
+    "diagnostics": [
+      "error: line=2 offset=39 near=import",
+      "error: line=2 offset=49 near=::",
+      "error: line=3 offset=68 near=::",
+      "error: line=4 offset=103 near=::",
+      "error: line=32 offset=742 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Constraints_Constraints_Example_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "c6c6411240657fa582b05e0b68d50142747a2477f00f3e3745ce67cda8132767": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Interfaces_InterfaceDecomposition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "cb7b4ceb6809ef10634d1aff43a11385f14703b97cf42e2ccc6dd7b3d0552027": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Groups.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "cbfc2fd2d700dcfcfe5356614f2f8f67008b437522953487ed92dd08e6653ad8": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Ports_Port_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "cc20bfb5085f1ce5a1e8dc312ac517a1376fa02c364fa3af910526b88eca6e9e": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example_2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "d2c67a3fb54c8f9ace7f3e2541fe65a8ca30cbb34b18734b739bffac76a51985": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/attribute_usage__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "d7ec727c5903f0023a46ccb89845c433a60497a5a2e83ba3ab23bdbba5b83682": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Expressions_Mass_Rollup_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "e3dc6ed702222b2faf486cea28ba1d777b97a9a22dc8df4320bb2a81a43b9575": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/subpackage__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "eba5585cf1b1a3ddad73b3b80d36dba36a7d7076f69fbb8fcbf5e4ec2c8e4203": {
+    "diagnostics": [
+      "error: line=2 offset=41 near=import",
+      "error: line=2 offset=60 near=::",
+      "error: line=3 offset=73 near=import"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Calculations_Calculation_Definitions.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "ee575ac7ffd95c6a976b5923986ffcc0e3680f2c31fd83d6e7b0494db623694b": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Parts_Parts_Example_2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "f2a45e5ef6bcca02a8c16cc35c0c82a76c036b089240f3ef71b6c92ef46467ea": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Requirements_Requirement_Usages.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "f2bfc5bf8a2ba0fcceb510af093e5d8002b972b42f08f158bdbe016011e11884": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/subpackage__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "f2f4b67c112c9f6f194fcb5e545c91ffc8ac5e55775c506a386394b73f571864": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_State_Definitions_State_Definition_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "f33ec29727888d7f6d507389cd13f49a49264bdf9ffef3192c2edb7378f310a0": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Subsetting_Subsetting_Example.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "f3eb8764e4ed3b5fcb43023ea83cbbf3842015ae5dd0bb192ae78111ba33b4bd": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Binding_Connectors_Example_1.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "f402694d1a63ca8c5ba378ebd9e09a5196d8d8c8898b7e817eab58b0cc03799f": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/package_with_alias_member__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "f6e882ff879d3d69b588b7b808dbb82f73a0816bd3e38d6806aef9c88d76346c": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Connections_Connections_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "fa086673dc7bab5cbcb6488ad1369adac9ba2eb85dd478c9cf49804e17d72f96": {
+    "diagnostics": [],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_Items_Items_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "fa145acde6d9d1f557d970a73688084fb31f4851ea18c5290ad5e446c3620690": {
+    "diagnostics": [
+      "error: line=2 offset=41 near=import",
+      "error: line=2 offset=60 near=::",
+      "error: line=20 offset=380 near=}"
+    ],
+    "exit_code": 2,
+    "file": "grammar-2023-07/test_Training_PartDefinition_PartDefinition_Example.sysml",
+    "status": "invalid",
+    "version": "0.2.0"
+  },
+  "fd754b9d670267a06f625b9a0b3f17b8613d1b4f5e847f087f69a0c3bba96029": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/package_owned_members__commented.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "fef31cea787dc2cabcfdba712443358c7ec789a72ba8c4a36e8491d0dcdcc5f4": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_States_State_Decomp2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  },
+  "ffc667b0d0211f5e515af8fd4dc5b2f5e9962dbaf0b37ef6e493ef718976952b": {
+    "diagnostics": [],
+    "exit_code": 0,
+    "file": "grammar-2023-07/test_Training_Parts_Parts_Example_2.sysml",
+    "status": "valid",
+    "version": "0.2.0"
+  }
+}

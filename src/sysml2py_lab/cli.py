@@ -151,6 +151,13 @@ def main(argv: list[str] | None = None) -> int:
     cp_add.add_argument("--dest", default="local", help="Destination subdir under the corpus root")
     cp_add.add_argument("--function", default=None, help="Source test function name (provenance)")
     cp_add.add_argument("--model", type=Path, default=None, help="children.json path")
+    cp_add.add_argument("--allow-invalid", action="store_true",
+                        help="Issue #12: allow adding a file that windtrader rejects (WIP escape). "
+                             "Default: REFUSE to add a file lacking a passing windtrader verdict (AC#3).")
+    cp_add.add_argument("--offline", type=Path, default=None,
+                        help="Issue #12: replay committed windtrader fixtures (no JVM needed).")
+    cp_add.add_argument("--windtrader-version", default="0.2.0",
+                        help="windtrader-java version to validate against (default: 0.2.0).")
     cp_verify = cp_sub.add_parser("verify", help="Verify sha256 + parseability of every corpus file.")
     cp_verify.add_argument("--corpus", type=Path, default=Path("corpus"), help="Corpus root (default: ./corpus)")
     cp_verify.add_argument("--model", type=Path, default=None, help="children.json path")
@@ -181,7 +188,36 @@ def main(argv: list[str] | None = None) -> int:
     for flag, h in _rg_common:
         rg_cov.add_argument(flag, type=Path, default=None, help=h)
 
+    vl = sub.add_parser("validate", help="Issue #12 windtrader gate: validate SysML text/corpus + round-trip output.")
+    vl.add_argument("target", type=Path, help="A .sysml file, or a corpus dir (has manifest.json).")
+    vl.add_argument("--generated", type=Path, default=None,
+                    help="Generated package root (enables round-trip-output validation; default: inputs only).")
+    vl.add_argument("--version", default=None,
+                    help="windtrader-java version (default: 0.2.0).")
+    vl.add_argument("--record", type=Path, default=None,
+                    help="Record live verdicts and write a fixtures JSON here (e.g. corpus/validate-fixtures.json).")
+    vl.add_argument("--offline", type=Path, default=None,
+                    help="Replay committed fixtures from this JSON path (no JVM needed).")
+    vl.add_argument("--manifest", action="store_true",
+                    help="Write input verdicts into corpus/manifest.json windtrader field.")
+    vl.add_argument("--force", action="store_true",
+                    help="Write --manifest/--record even when the gate fails "
+                         "(deliberate re-baseline after a legitimate verdict change).")
+
     args = p.parse_args(argv)
+
+    # r4 W2-1/W2-2: reject incoherent validate flag combos BEFORE any work
+    # or on-disk writes, so a failing run has no partial side effects.
+    if args.cmd == "validate":
+        if args.record is not None and args.offline is not None:
+            print("validate: --record and --offline are mutually exclusive "
+                  "(recording writes fresh fixtures; offline replays them)",
+                  file=sys.stderr)
+            return 2
+        if args.record is not None and args.generated is None:
+            print("validate: --record requires --generated (round-trip "
+                  "digests are part of the fixture contract)", file=sys.stderr)
+            return 2
 
     if args.cmd == "discover":
         res = discover_corpus(args.corpus)
@@ -327,6 +363,41 @@ def main(argv: list[str] | None = None) -> int:
         from .corpus import add_file, corpus_stats, verify_corpus
         try:
             if args.corpus_cmd == "add":
+                # Issue #12 AC#3: a new example cannot enter the corpus
+                # without a passing windtrader verdict — unless the caller
+                # explicitly opts in (--allow-invalid, WIP escape).
+                from .validate import windtrader as vwt
+                version = args.windtrader_version or vwt.DEFAULT_VERSION
+                recorded = None
+                if args.offline is not None:
+                    # r4 W2-4: a NEW file's digest is absent from committed
+                    # fixtures by construction, so --offline cannot succeed
+                    # for corpus add. Warn and refuse up front instead of
+                    # reaching the dead-end AdapterError below.
+                    print(f"corpus add REFUSED: --offline cannot validate a NEW "
+                          f"file (its digest is not in {args.offline}) — run "
+                          f"live (no --offline) to add it", file=sys.stderr)
+                    return 1
+                text = args.file.read_text(encoding="utf-8")
+                try:
+                    verb = vwt.validate_text(text, version=version,
+                                             recorded=recorded)
+                except vwt.AdapterError as exc:
+                    # r4 W1-3: --allow-invalid does NOT bypass an adapter
+                    # error (only a non-valid verdict) — don't advertise a
+                    # dead escape hatch.
+                    print(f"corpus add REFUSED: windtrader could not validate "
+                          f"({exc}) — adapter failure, not a verdict", file=sys.stderr)
+                    return 1
+                if verb.status != "valid":
+                    if args.allow_invalid:
+                        print(f"corpus add WARNING: {args.file} is invalid per windtrader "
+                              f"({verb.exit_code}) but --allow-invalid given", file=sys.stderr)
+                    else:
+                        diag = (verb.diagnostics or [""])[0]
+                        print(f"corpus add REFUSED: {args.file} does not pass windtrader "
+                              f"validation (AC#3): {verb.status} {diag}", file=sys.stderr)
+                        return 1
                 rel = add_file(
                     args.corpus, args.file,
                     source=args.source, source_url=args.source_url,
@@ -334,6 +405,30 @@ def main(argv: list[str] | None = None) -> int:
                     model_path=str(args.model) if args.model else None,
                     function=args.function,
                 )
+                # Thread the verdict so the file is immediately baselined in
+                # the manifest (r1 W1-6; r2 W1-5; r3 W1-D): stamp the
+                # windtrader field with the ACTUAL verdict — valid OR
+                # invalid.  An invalid-but-allowed file is a legitimate
+                # tracked-WIP baseline (exactly what the 33 committed
+                # invalid entries look like); leaving it "unverified" would
+                # make the very next `validate corpus` reject it.
+                # The fixture file is NOT touched here — corpus add has no
+                # round-trip output, so a half fixture would guarantee drift
+                # (r2 W1-5); re-record deliberately with
+                # `sysml2py-lab validate --record`.
+                try:
+                    mpath = args.corpus / "manifest.json"
+                    m = _json.loads(mpath.read_text(encoding="utf-8"))
+                    m["files"][rel]["windtrader"] = {
+                        "status": verb.status,
+                        "version": version,
+                        "exit_code": verb.exit_code,
+                    }
+                    mpath.write_text(_json.dumps(m, indent=2, sort_keys=True) + "\n",
+                                     encoding="utf-8")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"corpus add WARNING: file added but could not stamp "
+                          f"manifest windtrader field: {exc}", file=sys.stderr)
                 print(f"corpus add OK: {rel}")
                 return 0
             if args.corpus_cmd == "verify":
@@ -424,6 +519,155 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         except Exception as e:
             print(f"regress {cmd} FAILED: {e}", file=sys.stderr)
+            return 1
+
+    if args.cmd == "validate":
+        from .validate import corpus as vcor
+        from .validate import windtrader as vwt
+
+        try:
+            version = args.version or vwt.DEFAULT_VERSION
+            # offline / fixture replay mode
+            recorded = None
+            if args.offline is not None:
+                recorded = vwt.load_fixtures(args.offline)
+
+            target = args.target.resolve()
+            is_dir = target.is_dir()
+            verdicts: dict = {}
+            v = None
+
+            if is_dir:
+                verdicts = vcor.compute_verdicts(
+                    target, version=version,
+                    generated_pkg=args.generated,
+                    recorded=recorded,
+                )
+                summary = vcor.summarize(verdicts)
+
+                print(f"validate: {summary['files']} files")
+                print(f"  input_valid: {summary['input_valid']}")
+                if summary["roundtrip_present"]:
+                    print(f"  roundtrip_valid: {summary['roundtrip_valid']} / "
+                          f"{summary['roundtrip_present']}")
+                print(f"  input_invalid: {summary['input_invalid']}")
+                if summary["roundtrip_invalid"]:
+                    print(f"  roundtrip_invalid: {summary['roundtrip_invalid']}")
+                print(f"  input_adapter_errors: {summary['input_adapter_errors']}")
+                if summary["roundtrip_adapter_errors"]:
+                    print(f"  roundtrip_adapter_errors: {summary['roundtrip_adapter_errors']}")
+                if summary["roundtrip_emit_errors"]:
+                    print(f"  roundtrip_emit_errors: {summary['roundtrip_emit_errors']}")
+                for rel, e in sorted(verdicts.items()):
+                    st = e.get("input_status")
+                    rt_bad = e.get("roundtrip_status") not in (None, "valid")
+                    if st != "valid" or rt_bad:
+                        tag = f"input={st}"
+                        if "roundtrip_status" in e:
+                            tag += f" rt={e.get('roundtrip_status')}"
+                        # r2 W1-3: on a round-trip failure show the ROUND-TRIP
+                        # diagnostics (what the generator emitted wrong), not
+                        # the input's.
+                        if e.get("roundtrip_status") not in (None, "valid", "emit_error", "adapter_error"):
+                            diag = (e.get("roundtrip_diagnostics") or [""])[0]
+                        else:
+                            diag = (e.get("diagnostics") or [""])[0]
+                        print(f"  FAIL {rel}: {tag} {diag}")
+            else:
+                if args.generated is not None:
+                    print("validate: --generated applies only to corpus scope; "
+                          "ignored for a single file", file=sys.stderr)
+                if args.record is not None or args.manifest:
+                    print("validate: --record/--manifest apply only to corpus scope; "
+                          "ignored for a single file", file=sys.stderr)
+                text = target.read_text(encoding="utf-8")
+                try:
+                    v = vwt.validate_text(text, version=version, recorded=recorded)
+                except vwt.AdapterError as exc:
+                    # r3 W2-J: an expected condition (offline digest miss /
+                    # no JVM), not a crash — report it like the directory
+                    # path does.
+                    print(f"GATE: adapter_error — {exc}", file=sys.stderr)
+                    return 1
+                # Single-file summary goes through the SAME summarize() used
+                # for corpus scope (r3 W1-A): the r2 blocker was this
+                # summary being hand-duplicated and drifting out of sync.
+                summary = vcor.summarize({
+                    str(target): {
+                        "input_status": v.status,
+                        "input_exit": v.exit_code,
+                        "diagnostics": v.diagnostics,
+                    }
+                })
+                print(f"validate: status={v.status} exit={v.exit_code}")
+                diag = (v.diagnostics or [""])[0]
+                if diag:
+                    print("  " + diag)
+
+            # Gate (ratchet, issue-#12 protocol §6):
+            #  * directory scope — fail on: adapter_errors (tooling broke),
+            #    ratchet regressions (valid → invalid/adapter, input AND
+            #    round-trip), round-trip regressions (input valid but
+            #    generator output invalid — B1), emit_errors (generator
+            #    crashed — B5), and unbaselined/new files (AC#3, B2).
+            #    Baseline invalids are tracked WIP, NOT gate failures.
+            #  * single-file scope — strict: any invalid/adapter fails.
+            failed = False
+            if summary["input_adapter_errors"] > 0 or summary["roundtrip_adapter_errors"] > 0:
+                print("GATE: adapter_errors present — tooling failure, not a verdict", file=sys.stderr)
+                failed = True
+            if is_dir:
+                regressions = vcor.ratchet_regressions(target, verdicts)
+                if regressions:
+                    print("GATE: ratchet regressions", file=sys.stderr)
+                    for r in regressions:
+                        print(f"  {r}", file=sys.stderr)
+                    failed = True
+                rt_regressions = vcor.roundtrip_regressions(verdicts)
+                if rt_regressions:
+                    print("GATE: round-trip (AC#2) regressions", file=sys.stderr)
+                    for r in rt_regressions:
+                        print(f"  {r}", file=sys.stderr)
+                    failed = True
+                emit_errs = vcor.emit_error_files(verdicts)
+                if emit_errs:
+                    print("GATE: generator emit_errors", file=sys.stderr)
+                    for r in emit_errs:
+                        print(f"  {r}", file=sys.stderr)
+                    failed = True
+                unbaselined = vcor.unbaselined_files(target, verdicts)
+                if unbaselined:
+                    print("GATE: unbaselined files without a passing verdict (AC#3)", file=sys.stderr)
+                    for u in unbaselined:
+                        print(f"  {u}", file=sys.stderr)
+                    failed = True
+                if summary["input_invalid"] > 0:
+                    print(f"  (note: {summary['input_invalid']} baseline invalid verdicts are tracked WIP — see validate/protocol.md §5)")
+            else:
+                if v is not None and v.status == "invalid":
+                    print("GATE: invalid verdicts present", file=sys.stderr)
+                    failed = True
+
+            # On-disk writes only AFTER the gate passes (r2 W1-2): a failing
+            # run must never clobber the committed baseline or trust anchor.
+            # --force overrides for a deliberate re-baseline (r3 W2-E).
+            if args.cmd == "validate" and is_dir and (not failed or args.force):
+                if args.manifest:
+                    vcor.update_manifest_verdicts(target, verdicts)
+                if args.record is not None and args.offline is None:
+                    # --record without --generated was already rejected at
+                    # parse time (r4 W2-1).
+                    vcor.write_fixture_file(
+                        target, verdicts,
+                        dest=args.record,
+                        generated_pkg=args.generated,
+                        version=version,
+                    )
+            return 1 if failed else 0
+        except Exception as e:
+            import traceback
+            print(f"validate FAILED: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
             return 1
 
     return 2
