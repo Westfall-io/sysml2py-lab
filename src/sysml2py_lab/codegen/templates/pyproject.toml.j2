@@ -20,6 +20,10 @@ dev = [
 
 [tool.hatch.build]
 packages = ["src/sysml2py"]
+include = [
+  "src/sysml2py/**/*.py",
+  "src/sysml2py/grammar/*.tx",
+]
 
 # Formatting config is pinned here (NOT discovered by walking up), so ruff /
 # black agree with `_ruff_format` regardless of where the tree is generated.

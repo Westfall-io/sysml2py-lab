@@ -1,0 +1,52 @@
+# Phase-8 — Package, provenance, release the generated library (issue #13)
+
+## Decision: name/version
+
+Chris (product owner) decided the generated distribution ships under the
+existing name **`sysml2py`** at version **1.0.0** — the next major line that
+supersedes the hand-maintained 0.5.x textX/astropy parser (rather than a
+distinct `-gen`/`-core` name, and rather than a 0.0.0 stub).
+
+## What changed (PR #__)
+
+Generated package (`templates/` + `codegen/emit.py`):
+- `EmitOptions.version` and CLI `generate --version` default **0.0.0 → 1.0.0`.
+  Flows into `pyproject.toml` (name/version), `__init__.__version__`, and
+  `provenance.generator_version` (single source of truth).
+- `__init__.py` now exposes `__version__` and carries the do-not-edit header
+  (all other emitted `.py` already did).
+- Compiled grammar (`spec/tx/*.tx`) now ships as package data under
+  `src/sysml2py/grammar/` (issue #13 AC2 "the wheel contains the grammar
+  resource"); pyproject declares `grammar/*.tx` in `[tool.hatch.build].include`.
+- README states version + migration pointer; runtime stays pure-stdlib.
+
+Acceptance tests (tests/test_ast_codegen.py, issue #13 section):
+- default version is 1.0.0 (init/pyproject/provenance).
+- every emitted `.py` carries the do-not-edit header.
+- wheel ships >=3 grammar `.tx` and pyproject declares them.
+- import-graph: clean-venv import pulls no `textx`/`astropy`/`yaml`/`sysml2py_lab`
+  (AC3, subprocess with clean `sys.modules`).
+
+Release machinery:
+- `.github/workflows/release.yml` — on `v*` tag (or manual dispatch):
+  regenerate deterministically → unit+corpus+cast suite → regress
+  replay/roundtrip/goldens/coverage → corpus verify → windtrader hermetic
+  gate → build wheel+sdist → assert wheel contents (grammar/provenance/
+  version) → clean-venv import-graph smoke → upload artifacts; `publish`
+  job (trusted publishing, `environment: pypi`) publishes on tagged runs.
+- `docs/migration-0.5-to-1.0.md` — migration note for 0.5.x consumers.
+
+## Reproducibility
+
+A release is reproducible from `(lab commit, spec, corpus manifest)` alone:
+`generate` is deterministic (fixed `generated_at`), and `provenance.py` hashes
+the committed grammar/spec/children/modifiers/corpus manifests + generator
+version, so the installed wheel self-identifies its exact inputs.
+
+## Publishing note (owner action)
+
+`release.yml` `publish` job uses PyPI **trusted publishing**
+(`id-token: write`, `environment: pypi`). Chris (owner) must configure the
+repo `pypi` environment + a PyPI trusted-publisher mapping to the
+`sysml2py` project before the first tagged publish. Until then, tagged runs
+build + verify + upload artifacts but do not publish.

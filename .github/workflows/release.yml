@@ -1,0 +1,120 @@
+name: Release
+
+# Issue #13 (phase-8): release the generated sysml2py library.
+#
+# Triggers:
+#   - a version tag `v1.0.0`, `v1.1.0`, … (normal release)
+#   - manual `workflow_dispatch` (dry-run / artifact-only, no publish)
+#
+# The release is REPRODUCIBLE from (lab commit, spec, corpus manifest)
+# alone: `sysml2py-lab generate` is deterministic, provenance hashes the
+# committed spec + corpus artifacts, and the build runs the full regression
+# suite + windtrader gate on exactly the wheel that ships.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-verify:
+    name: Build + verify wheel (regenerate, regress, windtrader gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install lab (dev extra) + build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install build
+
+      - name: Run unit + corpus + cast regression suite
+        run: pytest tests/ -q
+
+      - name: Generate the release package (deterministic)
+        run: |
+          rm -rf /tmp/rel-gen
+          sysml2py-lab generate --out /tmp/rel-gen
+
+      - name: Regress replay + roundtrip + goldens + coverage
+        run: |
+          sysml2py-lab regress replay --generated /tmp/rel-gen
+          sysml2py-lab regress roundtrip --generated /tmp/rel-gen
+          sysml2py-lab regress goldens --generated /tmp/rel-gen
+          sysml2py-lab regress coverage --generated /tmp/rel-gen
+
+      - name: Corpus verify (sha + parse)
+        run: sysml2py-lab corpus verify
+
+      - name: Windtrader gate (hermetic, committed fixtures — no JVM)
+        run: sysml2py-lab validate corpus --offline corpus/validate-fixtures.json --generated /tmp/rel-gen
+
+      - name: Build the wheel + sdist
+        run: |
+          python -m build --outdir /tmp/dist /tmp/rel-gen/sysml2py
+
+      - name: Assert wheel contents (grammar resource + provenance + version)
+        run: |
+          python - <<'EOF'
+          import glob, zipfile
+          wheels = glob.glob("/tmp/dist/*.whl")
+          assert wheels, "no wheel built"
+          w = wheels[0]
+          names = set(zipfile.ZipFile(w).namelist())
+          assert any(n.endswith(".tx") for n in names), "grammar .tx missing"
+          assert any(n.endswith("provenance.py") for n in names), "provenance missing"
+          assert "sysml2py-1.0.0" in w.split("/")[-1] or "sysml2py-1." in w.split("/")[-1], w
+          print("wheel ok:", w.split("/")[-1])
+          EOF
+
+      - name: Import-graph smoke (clean venv, no lab/heavy deps)
+        run: |
+          python -m venv /tmp/rel-venv
+          /tmp/rel-venv/bin/pip install --quiet /tmp/dist/*.whl
+          /tmp/rel-venv/bin/python - <<'EOF'
+          import sys
+          import sysml2py
+          forbidden = {"textx", "astropy", "yaml", "sysml2py_lab"}
+          loaded = {m.split(".")[0] for m in sys.modules}
+          bad = sorted(forbidden & loaded)
+          assert not bad, f"forbidden runtime deps: {bad}"
+          assert sysml2py.__version__.startswith("1."), sysml2py.__version__
+          print("clean import OK:", sysml2py.__version__)
+          EOF
+
+      - name: Upload wheel + sdist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: /tmp/dist/*
+
+  publish:
+    name: Publish to PyPI (tagged release only)
+    needs: build-and-verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: /tmp/dist
+      - name: Publish with trusted publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: /tmp/dist
