@@ -23,8 +23,11 @@ Design (per validate/protocol.md)
   keeps the lab's unit tests hermetic and lets CI run without Java when the
   fixtures are committed.
 
-The ``record_verdicts()`` helper writes fixture JSON for a corpus run; CI
-uses it to recompute the committed fixtures (drift = gate failure).
+The committed ``corpus/validate-fixtures.json`` is produced by
+``corpus.build_fixture_dict`` (single source of truth; CLI ``--record`` and
+the CI fixture-drift step both use it).  ``record_verdicts()`` below is the
+library primitive the tests exercise; production recording routes through
+``build_fixture_dict`` so shapes stay identical.
 """
 
 from __future__ import annotations
@@ -84,12 +87,15 @@ class Verdict:
         return self.status == STATUS_VALID
 
     def to_dict(self) -> dict[str, Any]:
+        # Shape matches corpus.build_fixture_dict exactly (status/exit_code/
+        # version/diagnostics [+ file when provenance]).  The old "recorded"
+        # key was dropped (r3 W2-G) — it was drift-incompatible with the
+        # single production fixture builder.
         return {
             "status": self.status,
             "exit_code": self.exit_code,
             "version": self.version,
             "diagnostics": self.diagnostics,
-            "recorded": self.recorded,
         }
 
 

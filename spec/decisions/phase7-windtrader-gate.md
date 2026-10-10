@@ -98,6 +98,31 @@ tracked WIP and pass. `--offline --generated` replays round-trip verdicts
     `pytest.raises` instead of assert-False; single-file `--generated` now
     warns it's ignored; on-disk-but-not-in-manifest files warned (invisible
     to the gate otherwise).
-- **r3: PENDING** — gate after fixes: 211 tests, ruff clean, single-file
-  valid→0 / invalid→1 (blocker smoke), offline corpus ratchet exit 0,
-  shared builder reproduces committed fixtures 62/62.
+- **r3: REQUEST CHANGES — 0 blockers, 4 W1 + 7 W2** (all r1/r2 blockers
+  genuinely fixed).
+  - **W1-A**: the r2 blocker's ROOT CAUSE was still present — the single-file
+    summary was hand-duplicated in parallel to `summarize()` and could drift
+    again. Now single-file goes through the SAME `vcor.summarize()`; two new
+    tests pin single-file valid→0 / invalid→1.
+  - **W1-B**: `build_fixture_dict`/`write_fixture_file` are the trust anchor
+    but had zero tests; added refusal-guard, round-trip-digest, and
+    round-trip-diagnostics tests + `emit_error_files`/`summarize` assertions.
+  - **W1-C**: `--record` without `--generated` would silently truncate the
+    committed 121-entry trust anchor to 62 input digests — now refuses with
+    a GATE error (verified exit 1 on real corpus).
+  - **W1-D**: `corpus add --allow-invalid` stamped nothing (escape hatch was
+    non-functional — next `validate corpus` would reject the "unverified"
+    file); now stamps the ACTUAL verdict (invalid-included) so it baselines
+    as tracked WIP.
+  - **W2**: `--force` override for deliberate re-baselining (W2-E);
+    `roundtrip_regressions` excludes `emit_error` so B5's gate is actually
+    pinned (W2-F); dead `_roundtrip_texts_for_recording` removed + `to_dict`
+    `recorded` key dropped + docstring corrected (W2-G); protocol §6
+    clarifies hermetic-vs-JVM round-trip replay (W2-H); single-file
+    `--record`/`--manifest` now warn (W2-I); single-file AdapterError is a
+    clean GATE error, not a traceback (W2-J); `_RT_CACHE` keyed on mtime +
+    `_ensure_pkg` inside try (W2-K); protocol §4 FILE-not-DIR + vestigial
+    filter removed (W2-L).
+- **r4: PENDING** — gate after fixes: 216 tests, ruff clean, offline ratchet
+  exit 0, single-file valid→0 / invalid→1, `--record`-without-`--generated`
+  refused.

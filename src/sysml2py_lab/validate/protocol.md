@@ -66,7 +66,7 @@ be `invalid` — see §5). `"unverified"` is never treated as valid.
 
 ## 4. CLI
 
-`sysml2py-lab validate <file|corpus> [--generated PKG] [--record DIR] [--offline DIR]`
+`sysml2py-lab validate <file|corpus> [--generated PKG] [--record FILE] [--offline FILE]`
 
 - validate a single file, or the whole corpus.
 - `--generated` enables round-trip-output validation.
@@ -112,7 +112,12 @@ lands. Until then the gate enforces:
 
 `sysml2py-lab validate corpus --offline corpus/validate-fixtures.json` as a
 CI gate on corpus + spec changes — a **ratchet** (same philosophy as issue
-#11's coverage/goldens ratchet). It FAILS if:
+#11's coverage/goldens ratchet). The hermetic CI job replays the committed
+fixtures from the dedicated `test` job (no JVM): it covers the INPUT digests
+and the gate failures below. When a generated package is present
+(`--generated /tmp/ci-gen` — the `validate-roundtrip` job), the same
+command additionally replays the ROUND-TRIP digests, so AC#2 is exercised
+offline as well as live against the real jar. It FAILS if:
 
 1. any `adapter_error` (tooling broken / missing fixture) — never masked,
 2. any file **regressed** valid → invalid/adapter since the committed

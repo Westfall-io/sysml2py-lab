@@ -200,6 +200,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="Replay committed fixtures from this JSON path (no JVM needed).")
     vl.add_argument("--manifest", action="store_true",
                     help="Write input verdicts into corpus/manifest.json windtrader field.")
+    vl.add_argument("--force", action="store_true",
+                    help="Write --manifest/--record even when the gate fails "
+                         "(deliberate re-baseline after a legitimate verdict change).")
 
     args = p.parse_args(argv)
 
@@ -380,26 +383,29 @@ def main(argv: list[str] | None = None) -> int:
                     function=args.function,
                 )
                 # Thread the verdict so the file is immediately baselined in
-                # the manifest (r1 W1-6; r2 W1-5): stamp the windtrader field
-                # with the ACTUAL verdict values.  The fixture file is NOT
-                # touched here — corpus add has no round-trip output, so a
-                # half fixture would guarantee drift on the next
-                # `validate --record` commit (r2 W1-5); re-record fixtures
-                # deliberately with `sysml2py-lab validate --record`.
-                if verb.status == "valid":
-                    try:
-                        mpath = args.corpus / "manifest.json"
-                        m = _json.loads(mpath.read_text(encoding="utf-8"))
-                        m["files"][rel]["windtrader"] = {
-                            "status": verb.status,
-                            "version": version,
-                            "exit_code": verb.exit_code,
-                        }
-                        mpath.write_text(_json.dumps(m, indent=2, sort_keys=True) + "\n",
-                                         encoding="utf-8")
-                    except Exception as exc:  # noqa: BLE001
-                        print(f"corpus add WARNING: file added but could not stamp "
-                              f"manifest windtrader field: {exc}", file=sys.stderr)
+                # the manifest (r1 W1-6; r2 W1-5; r3 W1-D): stamp the
+                # windtrader field with the ACTUAL verdict — valid OR
+                # invalid.  An invalid-but-allowed file is a legitimate
+                # tracked-WIP baseline (exactly what the 33 committed
+                # invalid entries look like); leaving it "unverified" would
+                # make the very next `validate corpus` reject it.
+                # The fixture file is NOT touched here — corpus add has no
+                # round-trip output, so a half fixture would guarantee drift
+                # (r2 W1-5); re-record deliberately with
+                # `sysml2py-lab validate --record`.
+                try:
+                    mpath = args.corpus / "manifest.json"
+                    m = _json.loads(mpath.read_text(encoding="utf-8"))
+                    m["files"][rel]["windtrader"] = {
+                        "status": verb.status,
+                        "version": version,
+                        "exit_code": verb.exit_code,
+                    }
+                    mpath.write_text(_json.dumps(m, indent=2, sort_keys=True) + "\n",
+                                     encoding="utf-8")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"corpus add WARNING: file added but could not stamp "
+                          f"manifest windtrader field: {exc}", file=sys.stderr)
                 print(f"corpus add OK: {rel}")
                 return 0
             if args.corpus_cmd == "verify":
@@ -548,17 +554,28 @@ def main(argv: list[str] | None = None) -> int:
                 if args.generated is not None:
                     print("validate: --generated applies only to corpus scope; "
                           "ignored for a single file", file=sys.stderr)
+                if args.record is not None or args.manifest:
+                    print("validate: --record/--manifest apply only to corpus scope; "
+                          "ignored for a single file", file=sys.stderr)
                 text = target.read_text(encoding="utf-8")
-                v = vwt.validate_text(text, version=version, recorded=recorded)
-                summary = {
-                    "files": 1,
-                    "input_valid": 1 if v.status == "valid" else 0,
-                    "input_invalid": 1 if v.status == "invalid" else 0,
-                    "input_adapter_errors": 1 if v.status == "adapter_error" else 0,
-                    "roundtrip_valid": 0, "roundtrip_present": 0,
-                    "roundtrip_invalid": 0, "roundtrip_adapter_errors": 0,
-                    "roundtrip_emit_errors": 0,
-                }
+                try:
+                    v = vwt.validate_text(text, version=version, recorded=recorded)
+                except vwt.AdapterError as exc:
+                    # r3 W2-J: an expected condition (offline digest miss /
+                    # no JVM), not a crash — report it like the directory
+                    # path does.
+                    print(f"GATE: adapter_error — {exc}", file=sys.stderr)
+                    return 1
+                # Single-file summary goes through the SAME summarize() used
+                # for corpus scope (r3 W1-A): the r2 blocker was this
+                # summary being hand-duplicated and drifting out of sync.
+                summary = vcor.summarize({
+                    str(target): {
+                        "input_status": v.status,
+                        "input_exit": v.exit_code,
+                        "diagnostics": v.diagnostics,
+                    }
+                })
                 print(f"validate: status={v.status} exit={v.exit_code}")
                 diag = (v.diagnostics or [""])[0]
                 if diag:
@@ -610,11 +627,20 @@ def main(argv: list[str] | None = None) -> int:
 
             # On-disk writes only AFTER the gate passes (r2 W1-2): a failing
             # run must never clobber the committed baseline or trust anchor.
-            if not failed and args.cmd == "validate":
-                if is_dir:
-                    if args.manifest:
-                        vcor.update_manifest_verdicts(target, verdicts)
-                    if args.record is not None and args.offline is None:
+            # --force overrides for a deliberate re-baseline (r3 W2-E).
+            if args.cmd == "validate" and is_dir and (not failed or args.force):
+                if args.manifest:
+                    vcor.update_manifest_verdicts(target, verdicts)
+                if args.record is not None and args.offline is None:
+                    if args.generated is None:
+                        # r3 W1-C: recording without --generated would
+                        # truncate the committed trust anchor to input
+                        # digests only — refuse rather than misdiagnose
+                        # drift later.
+                        print("GATE: --record requires --generated (round-trip "
+                              "digests are part of the fixture contract)", file=sys.stderr)
+                        failed = True
+                    else:
                         vcor.write_fixture_file(
                             target, verdicts,
                             dest=args.record,
@@ -629,11 +655,3 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     return 2
-
-
-def _roundtrip_texts_for_recording(
-    corpus_dir: Path, generated_pkg: Path | None
-) -> tuple[dict[str, str], dict[str, str]]:
-    """Expose the round-trip emitted texts for --record (B6/W1-11)."""
-    from .validate.corpus import _roundtrip_outputs
-    return _roundtrip_outputs(corpus_dir, generated_pkg)

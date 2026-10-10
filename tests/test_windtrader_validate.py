@@ -376,6 +376,83 @@ def test_record_verdicts_records_roundtrip_extra(monkeypatch, tmp_path):
     assert len(calls) == 2
 
 
+def test_single_file_valid_exits_zero(monkeypatch, tmp_path):
+    """r3 W1-A: a valid single file exits 0 (the r2 blocker was this
+    specific path returning 1 via KeyError)."""
+    f = tmp_path / "good.sysml"
+    f.write_text("part { attribute mass; }")
+    fx = {wt.digest_text("part { attribute mass; }"): {"status": "valid", "exit_code": 0,
+                                                       "version": "0.2.0", "diagnostics": []}}
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(f), "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 0
+
+
+def test_single_file_invalid_exits_one(monkeypatch, tmp_path):
+    """r3 W1-A: an invalid single file exits 1 with a GATE message."""
+    f = tmp_path / "bad.sysml"
+    f.write_text("part { bad syntax ; }")
+    fx = {wt.digest_text("part { bad syntax ; }"): {"status": "invalid", "exit_code": 2,
+                                                     "version": "0.2.0",
+                                                     "diagnostics": ["error: line=1 near=bad"]}}
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(f), "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 1
+
+
+def test_build_fixture_dict_refuses_adapter_error(tmp_path):
+    """r3 W1-B: the trust-anchor builder refuses to bake broken verdicts."""
+    cd = _make_corpus(tmp_path, {"a.sysml": "part { attribute x; }"})
+    verdicts = {"a.sysml": {"input_status": "adapter_error", "input_exit": None,
+                            "roundtrip_status": None, "diagnostics": []}}
+    with pytest.raises(wt.AdapterError):
+        vcor.build_fixture_dict(cd, verdicts, version="0.2.0")
+
+
+def test_build_fixture_dict_emits_roundtrip_digest_with_rt_diagnostics(tmp_path):
+    """r3 W1-B: round-trip digests are emitted and carry their OWN
+    diagnostics (never the input's)."""
+    cd = _make_corpus(tmp_path, {"a.sysml": "part { attribute x; }"})
+    verdicts = {
+        "a.sysml": {
+            "input_status": "valid", "input_exit": 0,
+            "roundtrip_status": "invalid", "roundtrip_exit": 2,
+            "diagnostics": ["input diag"],
+            "roundtrip_diagnostics": ["rt diag"],
+        }
+    }
+    fx = vcor.build_fixture_dict(cd, verdicts, version="0.2.0",
+                                 rt_texts={"a.sysml": "part { emitted }"})
+    assert len(fx) == 2  # input digest + round-trip digest
+    rt_dig = wt.digest_text("part { emitted }", "0.2.0")
+    assert fx[rt_dig]["status"] == "invalid"
+    assert fx[rt_dig]["diagnostics"] == ["rt diag"]  # NOT input diag
+
+
+def test_emit_error_files_and_summarize(tmp_path):
+    """r3 W1-B: emit_error_files surface generator crashes distinctly."""
+    verdicts = {
+        "a.sysml": {"input_status": "valid", "roundtrip_status": "emit_error",
+                    "emit_error": "ValueError: boom", "input_exit": 0}
+    }
+    assert vcor.emit_error_files(verdicts) == ["a.sysml: ValueError: boom"]
+    s = vcor.summarize(verdicts)
+    assert s["roundtrip_emit_errors"] == 1
+    assert s["roundtrip_present"] == 1
+
+
 def test_gate_offline_generated_replays_roundtrip(monkeypatch, tmp_path):
     """B6 coverage (r2 W1-4): `--generated --offline` replays the round-trip
     digests — this is the exact scenario the CLI now supports, and it was

@@ -32,7 +32,7 @@ from sysml2py_lab.validate import windtrader as wt
 # `--generated --record` would otherwise run the O(corpus) generator pass
 # TWICE in one CLI invocation (once in compute_verdicts, once in
 # write_fixture_file) — r2 W2.
-_RT_CACHE: dict[tuple[str, str | None], tuple[dict[str, str], dict[str, str]]] = {}
+_RT_CACHE: dict[tuple[str, str | None, str], tuple[dict[str, str], dict[str, str]]] = {}
 
 
 def _load_manifest(corpus_dir: Path) -> dict[str, Any]:
@@ -67,12 +67,15 @@ def _roundtrip_outputs(corpus_dir: Path, generated_pkg: Path | None):
     """
     if generated_pkg is None:
         return {}, {}
-    key = (str(corpus_dir.resolve()), str(generated_pkg))
+    # r3 W2-K: key on mtime so an edited corpus in the same process can't
+    # reuse stale emitted text.
+    key = (str(corpus_dir.resolve()), str(generated_pkg),
+           str(max((p.stat().st_mtime_ns for p in corpus_dir.rglob("*.sysml")), default=0)))
     if key in _RT_CACHE:
         return _RT_CACHE[key]
     from sysml2py_lab.regress import _ensure_pkg, _drop_pkg, _ir_to_json, dump_from_definition
-    _ensure_pkg(generated_pkg)  # puts <pkg>/src (or <pkg>/sysml2py/src) on sys.path
     try:
+        _ensure_pkg(generated_pkg)  # puts <pkg>/src (or <pkg>/sysml2py/src) on sys.path
         import sysml2py  # type: ignore[import-not-found]
         from sysml2py_lab.ir import parse_ir
 
@@ -138,7 +141,6 @@ def compute_verdicts(
     on_disk = sorted(
         p.relative_to(corpus_dir).as_posix()
         for p in corpus_dir.rglob("*.sysml")
-        if "validate-fixtures" not in p.name
     )
     missing_from_manifest = [rel for rel in on_disk if rel not in manifest.get("files", {})]
     if missing_from_manifest:
@@ -293,7 +295,7 @@ def roundtrip_regressions(verdicts: dict[str, dict[str, Any]]) -> list[str]:
         for rel, e in verdicts.items()
         if e.get("input_status") == "valid"
         and "roundtrip_status" in e
-        and e.get("roundtrip_status") != "valid"
+        and e.get("roundtrip_status") not in ("valid", "emit_error")  # r3 W2-F
     ]
 
 
