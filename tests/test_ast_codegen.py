@@ -1177,16 +1177,20 @@ def test_wheel_ships_grammar_resource(tmp_path):
     pyproj = (pkg / "pyproject.toml").read_text(encoding="utf-8")
     # wheel-target selection must stay implicit (no restrictive include);
     # the sdist target legitimately lists include patterns to keep src/
+    # Slice from the wheel header to the next table header (not just the
+    # first blank line) so include/only-include/exclude anywhere in the
+    # wheel table is caught (r2 W3).
     wheel_block = pyproj.split("[tool.hatch.build.targets.wheel]", 1)[1]
-    wheel_block = wheel_block.split("\n\n", 1)[0]
+    wheel_block = wheel_block.split("\n[", 1)[0]
     assert "packages = [\"src/sysml2py\"]" in wheel_block
     import re as _re
-    assert not _re.search(r"^\s*include\s*=", wheel_block, _re.MULTILINE), (
-        f"restrictive hatch include empties the wheel: {wheel_block}"
-    )
+    for kw in ("include", "only-include", "exclude"):
+        assert not _re.search(rf"^\s*{kw}\s*=", wheel_block, _re.MULTILINE), (
+            f"restrictive hatch {kw} empties the wheel: {wheel_block}"
+        )
     # sdist target must preserve the src/ prefix (hatchling flattens it)
     sdist_block = pyproj.split("[tool.hatch.build.targets.sdist]", 1)[1]
-    sdist_block = sdist_block.split("\n\n", 1)[0]
+    sdist_block = sdist_block.split("\n[", 1)[0]
     assert "src/sysml2py/**" in sdist_block, (
         f"sdist must keep src/ prefix or wheel-from-sdist is empty: {sdist_block}"
     )

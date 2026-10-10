@@ -45,14 +45,16 @@ jobs:
         run: pytest tests/ -q
 
       - name: Generate the release package (deterministic, version from tag)
-        # W2-1: derive the version from the git ref so a `v1.0.1`/`v1.1.0`
-        # tag builds 1.0.1/1.1.0 — not a re-publish of the baked-in 1.0.0
-        # default (PyPI rejects duplicate files).
+        # W2-1 + r2-fix: derive the version from the git ref ONLY for a
+        # tagged release.  On `workflow_dispatch` GITHUB_REF_NAME is the
+        # BRANCH name (e.g. "main"), not a tag — passing it to --version
+        # would emit an invalid PEP 440 version and fail the build.  Manual
+        # dispatch is the only pre-tag exerciser of the wheel (ci.yml never
+        # builds), so this must stay a valid build.
         run: |
           rm -rf /tmp/rel-gen
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [ -n "$VERSION" ]; then
-            sysml2py-lab generate --out /tmp/rel-gen --version "$VERSION"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            sysml2py-lab generate --out /tmp/rel-gen --version "${GITHUB_REF_NAME#v}"
           else
             sysml2py-lab generate --out /tmp/rel-gen
           fi
@@ -89,25 +91,35 @@ jobs:
           names = set(zipfile.ZipFile(w).namelist())
           assert any(n.endswith(".tx") for n in names), "grammar .tx missing"
           assert any(n.endswith("provenance.py") for n in names), "provenance missing"
-          # W2-1: wheel filename MUST carry the exact tag version
+          # W2-1: wheel filename MUST carry the exact tag version (compare
+          # PEP 440-normalized: `v1.0.0-rc1` → wheel `1.0.0rc1`)
           expected = "sysml2py-" + os.environ["EXPECTED_VERSION"].lstrip("v")
           fname = w.split("/")[-1]
-          assert fname.startswith(expected), f"{fname} != expected {expected}"
+          assert fname.replace("-", "").startswith(expected.replace("-", "")), (
+              f"{fname} != expected {expected}"
+          )
           print("wheel ok:", fname)
           EOF
 
       - name: Import-graph smoke (clean venv, no lab/heavy deps)
+        env:
+          EXPECTED_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
         run: |
           python -m venv /tmp/rel-venv
           /tmp/rel-venv/bin/pip install --quiet /tmp/dist/*.whl
           /tmp/rel-venv/bin/python - <<'EOF'
-          import sys
+          import os, sys
           import sysml2py
           forbidden = {"textx", "astropy", "yaml", "sysml2py_lab"}
           loaded = {m.split(".")[0] for m in sys.modules}
           bad = sorted(forbidden & loaded)
           assert not bad, f"forbidden runtime deps: {bad}"
-          assert sysml2py.__version__.startswith("1."), sysml2py.__version__
+          # W3: compare against the ACTUAL expected version from the tag
+          # (or the 1.0.0 default for manual dispatch), not a hard-coded "1."
+          expected = os.environ["EXPECTED_VERSION"].lstrip("v").replace("-", "")
+          assert sysml2py.__version__.replace("-", "") == expected, (
+              f"version {sysml2py.__version__} != expected {expected}"
+          )
           print("clean import OK:", sysml2py.__version__)
           EOF
 
