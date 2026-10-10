@@ -206,6 +206,19 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
+    # r4 W2-1/W2-2: reject incoherent validate flag combos BEFORE any work
+    # or on-disk writes, so a failing run has no partial side effects.
+    if args.cmd == "validate":
+        if args.record is not None and args.offline is not None:
+            print("validate: --record and --offline are mutually exclusive "
+                  "(recording writes fresh fixtures; offline replays them)",
+                  file=sys.stderr)
+            return 2
+        if args.record is not None and args.generated is None:
+            print("validate: --record requires --generated (round-trip "
+                  "digests are part of the fixture contract)", file=sys.stderr)
+            return 2
+
     if args.cmd == "discover":
         res = discover_corpus(args.corpus)
         print(f"files_scanned={res.files_scanned}")
@@ -357,14 +370,24 @@ def main(argv: list[str] | None = None) -> int:
                 version = args.windtrader_version or vwt.DEFAULT_VERSION
                 recorded = None
                 if args.offline is not None:
-                    recorded = vwt.load_fixtures(args.offline)
+                    # r4 W2-4: a NEW file's digest is absent from committed
+                    # fixtures by construction, so --offline cannot succeed
+                    # for corpus add. Warn and refuse up front instead of
+                    # reaching the dead-end AdapterError below.
+                    print(f"corpus add REFUSED: --offline cannot validate a NEW "
+                          f"file (its digest is not in {args.offline}) — run "
+                          f"live (no --offline) to add it", file=sys.stderr)
+                    return 1
                 text = args.file.read_text(encoding="utf-8")
                 try:
                     verb = vwt.validate_text(text, version=version,
                                              recorded=recorded)
                 except vwt.AdapterError as exc:
+                    # r4 W1-3: --allow-invalid does NOT bypass an adapter
+                    # error (only a non-valid verdict) — don't advertise a
+                    # dead escape hatch.
                     print(f"corpus add REFUSED: windtrader could not validate "
-                          f"({exc}) — add --allow-invalid to bypass AC#3", file=sys.stderr)
+                          f"({exc}) — adapter failure, not a verdict", file=sys.stderr)
                     return 1
                 if verb.status != "valid":
                     if args.allow_invalid:
@@ -632,21 +655,14 @@ def main(argv: list[str] | None = None) -> int:
                 if args.manifest:
                     vcor.update_manifest_verdicts(target, verdicts)
                 if args.record is not None and args.offline is None:
-                    if args.generated is None:
-                        # r3 W1-C: recording without --generated would
-                        # truncate the committed trust anchor to input
-                        # digests only — refuse rather than misdiagnose
-                        # drift later.
-                        print("GATE: --record requires --generated (round-trip "
-                              "digests are part of the fixture contract)", file=sys.stderr)
-                        failed = True
-                    else:
-                        vcor.write_fixture_file(
-                            target, verdicts,
-                            dest=args.record,
-                            generated_pkg=args.generated,
-                            version=version,
-                        )
+                    # --record without --generated was already rejected at
+                    # parse time (r4 W2-1).
+                    vcor.write_fixture_file(
+                        target, verdicts,
+                        dest=args.record,
+                        generated_pkg=args.generated,
+                        version=version,
+                    )
             return 1 if failed else 0
         except Exception as e:
             import traceback

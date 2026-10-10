@@ -70,8 +70,13 @@ be `invalid` — see §5). `"unverified"` is never treated as valid.
 
 - validate a single file, or the whole corpus.
 - `--generated` enables round-trip-output validation.
-- `--record` writes a fresh `validate-fixtures.json` (live run).
+- `--record` writes a fresh `validate-fixtures.json` (live run). Requires
+  `--generated`; mutually exclusive with `--offline`.
 - `--offline` replays committed fixtures (no JVM needed).
+- `--force` performs `--manifest`/`--record` writes even when the gate
+  fails — a deliberate re-baseline after a legitimate verdict change
+  (e.g. a windtrader version bump). Use sparingly; it records what the
+  oracle currently says.
 
 Exit:
 - **single-file scope** (strict): `0` when valid; `1` on any `invalid` or

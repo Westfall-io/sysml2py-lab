@@ -67,7 +67,10 @@ jobs:
         # invalid) regressions fail.  Baseline invalid verdicts are tracked,
         # deliberate WIP (see validate/protocol.md §5) — the LIVE job below
         # guards round-trip emission against the real validator.
-        run: sysml2py-lab validate corpus --offline corpus/validate-fixtures.json
+        # --generated replays the committed ROUND-TRIP digests offline too
+        # (r4 W1-1): the package is built above; without it AC#2's ratchet
+        # axis would be inert in this job.
+        run: sysml2py-lab validate corpus --offline corpus/validate-fixtures.json --generated /tmp/ci-gen
 
   validate-roundtrip:
     runs-on: ubuntu-latest

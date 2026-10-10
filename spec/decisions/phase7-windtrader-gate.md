@@ -123,6 +123,24 @@ tracked WIP and pass. `--offline --generated` replays round-trip verdicts
     clean GATE error, not a traceback (W2-J); `_RT_CACHE` keyed on mtime +
     `_ensure_pkg` inside try (W2-K); protocol §4 FILE-not-DIR + vestigial
     filter removed (W2-L).
-- **r4: PENDING** — gate after fixes: 216 tests, ruff clean, offline ratchet
-  exit 0, single-file valid→0 / invalid→1, `--record`-without-`--generated`
-  refused.
+- **r4: APPROVE — 0 blockers, 3 W1 + 5 W2 follow-ups** (all r3 fixes
+  confirmed; executed by inspection only). Address r4 follow-ups in r5:
+  - **W1-1**: hermetic CI gate now adds `--generated /tmp/ci-gen`
+    (doc promised it; verified locally exit 0) — AC#2's round-trip axis is
+    no longer inert in the no-JVM job.
+  - **W1-2**: `corpus add` CLI tests added (refusal without allow,
+    `--allow-invalid` stamps invalid baseline).
+  - **W1-3**: `corpus add` AdapterError message no longer advertises dead
+    `--allow-invalid` bypass.
+  - **W2-1/2**: incoherent flag combos rejected at parse time
+    (`--record`+`--offline`, `--record` without `--generated`), exit 2,
+    before any on-disk writes.
+  - **W2-3**: `update_manifest_verdicts` refuses adapter/emit statuses
+    (mirrors build_fixture_dict).
+  - **W2-4**: `corpus add --offline` refuses up front (a new file's digest
+    can't be in committed fixtures).
+  - **W2-5**: `--force` documented in protocol §4.
+  - **W2-6**: untracked `.sysml` on disk raises `UntrackedFilesError`
+    (AC#3 hard gate, not a warning).
+- **r5: PENDING** — gate after fixes: 221 tests, ruff clean,
+  offline+generated exit 0, all 62 corpus files tracked.

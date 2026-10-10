@@ -453,6 +453,78 @@ def test_emit_error_files_and_summarize(tmp_path):
     assert s["roundtrip_present"] == 1
 
 
+def test_corpus_add_refuses_invalid_without_allow(tmp_path, monkeypatch):
+    """r4 W1-2: corpus add refuses an invalid file (AC#3) by default."""
+    cd = _make_corpus(tmp_path, {})  # corpus dir + empty manifest
+    newf = tmp_path / "new.sysml"
+    newf.write_text("part { bad syntax ; }")
+    fx = {wt.digest_text("part { bad syntax ; }"): {"status": "invalid", "exit_code": 2,
+                                                     "version": "0.2.0", "diagnostics": ["err"]}}
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    monkeypatch.setattr(wt, "_import_validate", lambda: (lambda t, version="0.2.0": wt.Verdict(
+        status="invalid", exit_code=2, version="0.2.0", diagnostics=["err"])))
+    from sysml2py_lab import cli as cli_mod
+    # must pass --offline? no: use the monkeypatched live validator
+    rc = cli_mod.main(["corpus", "add", str(newf), "--corpus", str(cd)])
+    assert rc == 1
+    m = json.loads(open(cd / "manifest.json").read())
+    assert "new.sysml" not in m["files"]  # not added
+
+
+def test_corpus_add_allow_invalid_stamps_manifest(tmp_path, monkeypatch):
+    """r4 W1-2/W1-D: --allow-invalid adds the file AND stamps the manifest
+    with status invalid (baselines as tracked WIP, not unverified)."""
+    cd = _make_corpus(tmp_path, {})
+    newf = tmp_path / "new.sysml"
+    newf.write_text("part { bad syntax ; }")
+    monkeypatch.setattr(wt, "_import_validate", lambda: (lambda t, version="0.2.0": wt.Verdict(
+        status="invalid", exit_code=2, version="0.2.0", diagnostics=["err"])))
+    from sysml2py_lab import cli as cli_mod
+    rc = cli_mod.main(["corpus", "add", "--allow-invalid",
+                       str(newf), "--corpus", str(cd)])
+    assert rc == 0
+    m = json.loads(open(cd / "manifest.json").read())
+    assert "local/new.sysml" in m["files"]
+    wt_field = m["files"]["local/new.sysml"]["windtrader"]
+    assert wt_field["status"] == "invalid"
+
+
+def test_manifest_writer_refuses_adapter_error(tmp_path):
+    """r4 W2-3: update_manifest_verdicts refuses to bake adapter_error."""
+    cd = _make_corpus(tmp_path, {"a.sysml": "part { attribute mass; }"})
+    verdicts = {"a.sysml": {"input_status": "adapter_error", "input_exit": None}}
+    with pytest.raises(wt.AdapterError):
+        vcor.update_manifest_verdicts(cd, verdicts)
+
+
+def test_compute_verdicts_gates_untracked_file(tmp_path):
+    """r4 W2-6: a .sysml on disk with no manifest entry raises."""
+    cd = _make_corpus(tmp_path, {"a.sysml": "part { attribute mass; }"})
+    (cd / "rogue.sysml").write_text("part { attribute mass; }")
+    with pytest.raises(vcor.UntrackedFilesError):
+        vcor.compute_verdicts(cd, recorded={})
+
+
+def test_validate_flag_combos_rejected(tmp_path, monkeypatch):
+    """r4 W2-1/W2-2: incoherent flag combos exit 2 before any work."""
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", "corpus", "--record", "fx.json",
+                           "--offline", "other.json"])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 2
+    # --record without --generated
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc2 = cli_mod.main(["validate", "corpus", "--record", "fx.json"])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc2 == 2
+
+
 def test_gate_offline_generated_replays_roundtrip(monkeypatch, tmp_path):
     """B6 coverage (r2 W1-4): `--generated --offline` replays the round-trip
     digests — this is the exact scenario the CLI now supports, and it was

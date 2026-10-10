@@ -28,6 +28,15 @@ from typing import Any
 
 from sysml2py_lab.validate import windtrader as wt
 
+
+class UntrackedFilesError(ValueError):
+    """A .sysml file exists in the corpus dir but has no manifest entry.
+
+    Raised by compute_verdicts so the validate gate refuses to silently
+    pass over a file that bypasses AC#3 (r4 W2-6).
+    """
+
+
 # Cache of the last full-corpus round-trip pass, keyed by (corpus_dir, pkg).
 # `--generated --record` would otherwise run the O(corpus) generator pass
 # TWICE in one CLI invocation (once in compute_verdicts, once in
@@ -144,9 +153,12 @@ def compute_verdicts(
     )
     missing_from_manifest = [rel for rel in on_disk if rel not in manifest.get("files", {})]
     if missing_from_manifest:
-        print(f"WARNING: {len(missing_from_manifest)} .sysml file(s) on disk not in "
-              f"manifest (invisible to the gate): {missing_from_manifest[:3]}",
-              file=sys.stderr)
+        # r4 W2-6: an untracked .sysml in corpus/ is the one remaining route
+        # to land an unvalidated file — gate it hard (AC#3), not warn.
+        raise UntrackedFilesError(
+            f"{len(missing_from_manifest)} .sysml file(s) on disk not in the "
+            f"manifest (invisible to the gate; AC#3): {missing_from_manifest[:5]}"
+        )
 
     # Hoist the full-corpus round-trip pass ABOVE the per-file loop (r1 W1-1:
     # calling it inside the loop was O(n²) — n full-corpus passes).
@@ -338,7 +350,21 @@ def update_manifest_verdicts(
 
     Returns (valid_count, invalid_count) over the INPUT verdicts, so the
     gate can require valid_count == files.
+
+    Refuses to bake an adapter_error/emit_error status, mirroring
+    build_fixture_dict (r4 W2-3): a broken run must never rewrite a valid
+    baseline to "adapter_error".
     """
+    bad = [
+        f"{rel}: {entry.get('input_status')}"
+        for rel, entry in verdicts.items()
+        if entry.get("input_status") in ("adapter_error", "emit_error", None)
+    ]
+    if bad:
+        raise wt.AdapterError(
+            "refusing to write manifest verdicts for broken statuses: "
+            + "; ".join(bad[:5])
+        )
     manifest = load_manifest(corpus_dir)
     valid = invalid = 0
     for rel, entry in verdicts.items():
