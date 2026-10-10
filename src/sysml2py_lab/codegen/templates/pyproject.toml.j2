@@ -18,8 +18,20 @@ dev = [
   "pytest>=7.4",
 ]
 
-[tool.hatch.build]
+[tool.hatch.build.targets.sdist]
+# src-layout MUST be preserved in the sdist or `python -m build` (wheel from
+# sdist) produces an EMPTY wheel: hatchling flattens `src/sysml2py` to
+# `sysml2py/` at the sdist root unless the sdist target is given an explicit
+# include.  Keep the src/ prefix (verified against hatchling 1.32.4, issue
+# #13 review W2-3).
+include = ["src/sysml2py/**", "README.md", "pyproject.toml"]
+
+[tool.hatch.build.targets.wheel]
 packages = ["src/sysml2py"]
+# NOTE: do NOT add an `include` filter here.  `packages = ["src/sysml2py"]`
+# selects EVERYTHING under that dir (the AST .py modules AND grammar/*.tx).
+# An `include` list on the wheel target is RESTRICTIVE and silently empties
+# the wheel; keep package-data selection implicit.
 
 # Formatting config is pinned here (NOT discovered by walking up), so ruff /
 # black agree with `_ruff_format` regardless of where the tree is generated.

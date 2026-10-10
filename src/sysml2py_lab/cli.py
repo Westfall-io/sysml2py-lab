@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Generate a sysml2py package with AST classes from the spec + corpus.",
     )
     g.add_argument("--out", type=Path, default=Path("out"))
-    g.add_argument("--version", default="0.0.0")
+    g.add_argument("--version", default="1.0.0")
     g.add_argument(
         "--overwrite",
         action="store_true",
