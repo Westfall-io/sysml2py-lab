@@ -1,5 +1,5 @@
 package 'Flow Connection Usage Example' {
-    	import 'Port Example'::*;
+    	public import 'Port Example'::*;
 
     	part def Vehicle;
 

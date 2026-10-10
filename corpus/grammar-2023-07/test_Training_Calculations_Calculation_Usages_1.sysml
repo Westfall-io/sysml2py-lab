@@ -1,5 +1,5 @@
 package 'Calculation Usages-1' {
-    	import 'Calculation Definitions'::*;
+    	public import 'Calculation Definitions'::*;
     	
     	part def VehicleDynamics {
     		attribute C_d : Real;

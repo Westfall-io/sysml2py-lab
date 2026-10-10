@@ -1,6 +1,6 @@
 package 'Enumeration Definitions-2' {
-    	import ScalarValues::*;
-    	import 'Enumeration Definitions-1'::*;
+    	public import ScalarValues::*;
+    	public import 'Enumeration Definitions-1'::*;
 
     	attribute def ClassificationLevel {
     		attribute code : String;

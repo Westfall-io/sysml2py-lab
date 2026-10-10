@@ -1,6 +1,6 @@
 package 'Calculation Definitions' {
-    	import ScalarValues::Real;
-    	import ISQ::*;
+    	public import ScalarValues::Real;
+    	public import ISQ::*;
     	
     	calc def Power { in whlpwr : PowerValue; in Cd : Real; in Cf : Real; in tm : MassValue; in v : SpeedValue;
     		attribute drag = Cd * v;

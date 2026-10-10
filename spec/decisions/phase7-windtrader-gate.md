@@ -36,25 +36,46 @@ for the full interface spec.
    missing fixture = adapter error, never a silent valid.
 
 ## Casting / oracle integrity (the honest finding)
-Running the real validator over the corpus for the first time produced:
+Running the real validator over the corpus for the first time produced the
+**original baseline**:
 - **29 / 62 files valid** (input AND round-trip output),
 - **33 / 62 files invalid** — dominated by a systematic `import X::*;`
   namespace-import form windtrader-java 0.2.0 rejects (`near=import`).
 
 Crucially, **round-trip output validates exactly as the input does**: the
 generator does NOT mask or "fix" what the oracle rejects — the cast is honest
-at both levels.  When Tock's windtrader-java gains `import ::*` support, those
-files flip to valid and the ratchet records the improvement.
+at both levels.
 
-Because 33 invalid files are a tracked baseline, the GATE is a **ratchet**
+### KERML-74 resolution (post-#12 follow-up, PR #22)
+The `import ::*` failures turned out to be **spec-invalid corpus syntax, not
+a validator bug**: per **windtrader-java issue #10** (closed not-a-bug) and
+KerML FTF **KERML-74**, the textual notation requires an explicit visibility
+indicator on import declarations, so bare `import X::*;` is correctly
+rejected. Upstream models round-trip 96/96 because they always write
+`public|private import`.
+
+Fix (PR #22): added explicit `public` visibility to the 32 bare-import
+corpus files (upstream style; the OMG visibility-contrast fixture
+`package_with_imported_package__commented.sysml` keeps its public-vs-private
+demonstration), re-recorded the trust anchor, refreshed manifest sha256 +
+verdicts. Current state:
+
+- **61 / 62 files valid** (input AND round-trip — parity preserved, cast honest).
+- **1 invalid** — `test_Training_Connections_Connections_Example.sysml`,
+  a `connect … to …;` construct failing `near=[`; **no imports**, a separate
+  syntax area, deliberate tracked WIP.
+
+Because the invalid files are a tracked baseline, the GATE is a **ratchet**
 (same philosophy as issue #11), not a strict all-invalid-fails barrier:
 it fails on **adapter errors** (tooling broke), **valid→invalid regressions**,
 and **unverified/new files** (AC#3), while the tracked baseline invalids are
-WIP that Tock's validator fix will retire.
+WIP. The remaining 1 tracked WIP; validator/corpus work that would retire it
+is separate.
 
 ## Acceptance criteria — status
 - ✔ Every corpus file has a recorded Windtrader verdict (manifest
-  `windtrader` = valid/invalid + version, all 62).
+  `windtrader` = valid/invalid + version, all 62: 61 valid / 1 invalid
+  after KERML-74 visibility fix).
 - ✔ Generator-emitted text (round-trip output) validated for every file
   (roundtrip_valid computed; equals input_valid = honest cast).
 - ✔ A new example cannot enter the corpus without a passing verdict

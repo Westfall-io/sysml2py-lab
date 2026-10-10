@@ -93,22 +93,26 @@ never conflated).
 
 ## 5. Current corpus verdicts (recorded vs windtrader-java 0.2.0)
 
-As first recorded (the honest baseline):
+First recorded (the honest baseline) was **29 / 62 valid**, 33 invalid, the
+bulk failing on `import PackageX::*;` namespace imports at `near=import`.
+That turned out to be **spec-invalid corpus syntax**, not a parser bug:
+per KerML FTF **KERML-74** the textual notation requires explicit visibility
+on import declarations, so bare `import X::*;` is correctly rejected
+(triaged in windtrader-java issue #10, closed as not-a-bug). The upstream
+96-file corpus round-trips 96/96 because it always writes
+`public|private import`.
 
-- **29 / 62 files** validate (input AND round-trip).
-- **33 / 62 files** the validator rejects. The dominant systematic cause:
-  `import PackageX::*;` namespace imports — windtrader-java 0.2.0 rejects
-  `near=import` at these lines. A smaller set fails on other syntax
-  (e.g. `near=[` in some attribute forms). Round-trip output preserves the
-  same invalid constructs (roundtrip_valid == input_valid), so the
-  generator does **not** mask or "fix" what the oracle rejects — the cast
-  is honest.
+Resolution in this repo (follow-up PR): added explicit visibility to the 32
+bare-import corpus files, re-recorded the trust anchor, refreshed the
+manifest sha256 + verdicts. Current state:
 
-These 33 files predate the windtrader gate (manifest said `"unverified"`).
-The systematic `import ::*` grammar gap is **Tock Ratchetpin's to fix** in
-`windtrader-java`; the lab will record and gate against that fix once it
-lands. Until then the gate enforces:
+- **61 / 62 files** validate (input AND round-trip) — parity preserved, the
+  cast is honest (generator does not mask what the oracle rejects).
+- **1 / 62 files** invalid — `test_Training_Connections_Connections_Example.sysml`,
+  a connections/`near=[` construct with **no imports**; a separate syntax
+  area, tracked as deliberate WIP (not due to imports).
 
+The gate enforces (regardless of the tracked 1 baseline):
 - **no file regresses** valid → invalid (ratchet),
 - **no NEW/unverified file may enter** the corpus without a passing verdict,
 - **no adapter_error** (the tooling must always run).
@@ -139,11 +143,11 @@ digests) AND live (real oracle). It FAILS if:
 5. any corpus file that is **unbaselined / new** without a passing verdict
    (AC#3 — enforced separately by the `corpus add` gate).
 
-The 33 **baseline** invalid verdicts are tracked, deliberate WIP (see §5),
-NOT gate failures: the gate reports them as a note and passes.  When Tock's
-windtrader-java gains the `import ::*` grammar (or the lab's corpus files are
-corrected), those files flip to valid and the ratchet records the
-improvement.  A separate **live** CI job (`validate corpus --generated`)
+The baseline **invalid** verdicts are tracked, deliberate WIP (see §5, now
+1 file), NOT gate failures: the gate reports them as a note and passes.
+When that file is corrected (or the validator gains the `near=[` construct),
+it flips to valid and the ratchet records the improvement.  A separate
+**live** CI job (`validate corpus --generated`)
 runs the real validator against round-trip output and fails on any
 adapter_error/regression, so the recorded baseline can never drift silently
 from what the actual jar says.

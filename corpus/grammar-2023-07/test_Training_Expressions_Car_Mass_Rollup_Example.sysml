@@ -1,6 +1,6 @@
 package 'Car Mass Rollup Example 1' {
-    	import ScalarValues::*;
-    	import MassRollup1::*;
+    	public import ScalarValues::*;
+    	public import MassRollup1::*;
     	
     	part def CarPart :> MassedThing {			
     		attribute serialNumber: String;
@@ -16,7 +16,7 @@ package 'Car Mass Rollup Example 1' {
     		part transmission :> simpleThing, carParts;
     	}
     	
-    	import SI::kg;
+    	public import SI::kg;
     	part c :> car {
     		attribute :>> simpleMass = 1000[kg];
     		part :>> engine {

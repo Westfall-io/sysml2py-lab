@@ -1,6 +1,6 @@
 package 'Requirement Definitions' {
-    	import ISQ::*;
-    	import SI::*;
+    	public import ISQ::*;
+    	public import SI::*;
 
     	requirement def MassLimitationRequirement {
     		doc /* The actual mass shall be less than or equal to the required mass. */
