@@ -180,7 +180,8 @@ def emit_sysml2py(
             f"- Compiled grammar shipped as package data; provenance in\n"
             f"  `sysml2py.provenance`\n\n"
             f"Compatibility: this is the **1.x** line. Moving from 0.5.x? see\n"
-            f"the migration note in the source repo (`docs/migration-0.5-to-1.0.md`).\n"
+            f"the migration note:\n"
+            f"https://github.com/Westfall-io/sysml2py-lab/blob/main/docs/migration-0.5-to-1.0.md\n"
         ),
         encoding="utf-8",
     )

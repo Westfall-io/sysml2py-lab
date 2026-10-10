@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-verify:
@@ -44,10 +44,18 @@ jobs:
       - name: Run unit + corpus + cast regression suite
         run: pytest tests/ -q
 
-      - name: Generate the release package (deterministic)
+      - name: Generate the release package (deterministic, version from tag)
+        # W2-1: derive the version from the git ref so a `v1.0.1`/`v1.1.0`
+        # tag builds 1.0.1/1.1.0 — not a re-publish of the baked-in 1.0.0
+        # default (PyPI rejects duplicate files).
         run: |
           rm -rf /tmp/rel-gen
-          sysml2py-lab generate --out /tmp/rel-gen
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -n "$VERSION" ]; then
+            sysml2py-lab generate --out /tmp/rel-gen --version "$VERSION"
+          else
+            sysml2py-lab generate --out /tmp/rel-gen
+          fi
 
       - name: Regress replay + roundtrip + goldens + coverage
         run: |
@@ -59,25 +67,33 @@ jobs:
       - name: Corpus verify (sha + parse)
         run: sysml2py-lab corpus verify
 
-      - name: Windtrader gate (hermetic, committed fixtures — no JVM)
-        run: sysml2py-lab validate corpus --offline corpus/validate-fixtures.json --generated /tmp/rel-gen
+      - name: Windtrader gate — LIVE oracle (real validator + JVM)
+        # W2-4: a PyPI publish is irreversible, so use the strongest gate
+        # (live windtrader-java round-trip) rather than only the hermetic
+        # fixture replay.  AC#2: generated text must validate end-to-end.
+        run: sysml2py-lab validate corpus --generated /tmp/rel-gen
 
       - name: Build the wheel + sdist
         run: |
           python -m build --outdir /tmp/dist /tmp/rel-gen/sysml2py
 
       - name: Assert wheel contents (grammar resource + provenance + version)
+        env:
+          EXPECTED_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
         run: |
           python - <<'EOF'
-          import glob, zipfile
+          import glob, os, zipfile
           wheels = glob.glob("/tmp/dist/*.whl")
           assert wheels, "no wheel built"
           w = wheels[0]
           names = set(zipfile.ZipFile(w).namelist())
           assert any(n.endswith(".tx") for n in names), "grammar .tx missing"
           assert any(n.endswith("provenance.py") for n in names), "provenance missing"
-          assert "sysml2py-1.0.0" in w.split("/")[-1] or "sysml2py-1." in w.split("/")[-1], w
-          print("wheel ok:", w.split("/")[-1])
+          # W2-1: wheel filename MUST carry the exact tag version
+          expected = "sysml2py-" + os.environ["EXPECTED_VERSION"].lstrip("v")
+          fname = w.split("/")[-1]
+          assert fname.startswith(expected), f"{fname} != expected {expected}"
+          print("wheel ok:", fname)
           EOF
 
       - name: Import-graph smoke (clean venv, no lab/heavy deps)

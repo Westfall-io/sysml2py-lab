@@ -39,7 +39,12 @@ note explains how a 0.5.x consumer moves to 1.0.0 and what to expect.
    project deps and `import astropy.units as u` where needed — 1.0.0 no
    longer bundles it.
 3. If you constructed models with the 0.5.x API, the generated builder API
-   covers the same operations; consult the README examples.
+   covers the same operations (`_set_name`, `_set_child`, `_get_child`,
+   `dump`, `get_definition`) — see the examples/ directory in the source repo
+   and the README for the current idioms. The AST classes are generated per
+   grammar rule, so anything expressible in SysML v2 textual notation maps to
+   a generated class (with `Unsupported` nodes as the honest fallback for
+   constructs not yet structurally represented).
 4. To verify provenance of a given install:
    ```python
    from sysml2py import provenance

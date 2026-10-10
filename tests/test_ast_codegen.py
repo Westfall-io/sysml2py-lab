@@ -1161,16 +1161,35 @@ def test_emitted_files_carry_do_not_edit_header(tmp_path):
 
 
 def test_wheel_ships_grammar_resource(tmp_path):
-    """Issue #13 AC2: the built wheel contains the compiled grammar .tx as
-    package data (provenance anchor + 0.5.x compatibility)."""
+    """Issue #13 AC2: the built wheel carries the compiled grammar .tx.
+
+    Locks the W2-3 lesson: with `packages = ["src/sysml2py"]` hatchling
+    selects EVERYTHING under the dir, `.tx` included, ONLY if no restrictive
+    `include` blocks it.  A bare `include = ["src/sysml2py/**/*.py"]` makes
+    `python -m build` emit a wheel with just dist-info (no grammar, no AST
+    modules) — so the mutation-lock here asserts the *absence* of a
+    restrictive include, not its presence.
+    """
     pkg = _gen(tmp_path)
-    # grammar must exist in the emitted tree
     grammar_dir = _src(pkg) / "grammar"
     tx = sorted(grammar_dir.glob("*.tx"))
     assert len(tx) >= 3, f"expected grammar .tx files, found {tx}"
-    # confirm the pyproject explicitly includes them as package data
     pyproj = (pkg / "pyproject.toml").read_text(encoding="utf-8")
-    assert "grammar/*.tx" in pyproj, "grammar not declared as package data"
+    # wheel-target selection must stay implicit (no restrictive include);
+    # the sdist target legitimately lists include patterns to keep src/
+    wheel_block = pyproj.split("[tool.hatch.build.targets.wheel]", 1)[1]
+    wheel_block = wheel_block.split("\n\n", 1)[0]
+    assert "packages = [\"src/sysml2py\"]" in wheel_block
+    import re as _re
+    assert not _re.search(r"^\s*include\s*=", wheel_block, _re.MULTILINE), (
+        f"restrictive hatch include empties the wheel: {wheel_block}"
+    )
+    # sdist target must preserve the src/ prefix (hatchling flattens it)
+    sdist_block = pyproj.split("[tool.hatch.build.targets.sdist]", 1)[1]
+    sdist_block = sdist_block.split("\n\n", 1)[0]
+    assert "src/sysml2py/**" in sdist_block, (
+        f"sdist must keep src/ prefix or wheel-from-sdist is empty: {sdist_block}"
+    )
 
 
 def test_import_graph_no_lab_or_heavy_deps(tmp_path, monkeypatch):

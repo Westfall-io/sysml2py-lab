@@ -7,17 +7,21 @@ existing name **`sysml2py`** at version **1.0.0** — the next major line that
 supersedes the hand-maintained 0.5.x textX/astropy parser (rather than a
 distinct `-gen`/`-core` name, and rather than a 0.0.0 stub).
 
-## What changed (PR #__)
+## What changed (PR #24)
 
 Generated package (`templates/` + `codegen/emit.py`):
-- `EmitOptions.version` and CLI `generate --version` default **0.0.0 → 1.0.0`.
+- `EmitOptions.version` and CLI `generate --version` default **0.0.0 → 1.0.0**.
   Flows into `pyproject.toml` (name/version), `__init__.__version__`, and
   `provenance.generator_version` (single source of truth).
 - `__init__.py` now exposes `__version__` and carries the do-not-edit header
   (all other emitted `.py` already did).
 - Compiled grammar (`spec/tx/*.tx`) now ships as package data under
   `src/sysml2py/grammar/` (issue #13 AC2 "the wheel contains the grammar
-  resource"); pyproject declares `grammar/*.tx` in `[tool.hatch.build].include`.
+  resource"); the pyproject uses the canonical hatchling src-layout pattern —
+  `[tool.hatch.build.targets.sdist]` keeps the `src/` prefix in the sdist,
+  `[tool.hatch.build.targets.wheel] packages = ["src/sysml2py"]` selects all
+  package files (W2-3: a bare top-level `include` on `[tool.hatch.build]`
+  silently empties the wheel from `python -m build`).
 - README states version + migration pointer; runtime stays pure-stdlib.
 
 Acceptance tests (tests/test_ast_codegen.py, issue #13 section):
@@ -29,11 +33,14 @@ Acceptance tests (tests/test_ast_codegen.py, issue #13 section):
 
 Release machinery:
 - `.github/workflows/release.yml` — on `v*` tag (or manual dispatch):
-  regenerate deterministically → unit+corpus+cast suite → regress
-  replay/roundtrip/goldens/coverage → corpus verify → windtrader hermetic
-  gate → build wheel+sdist → assert wheel contents (grammar/provenance/
-  version) → clean-venv import-graph smoke → upload artifacts; `publish`
-  job (trusted publishing, `environment: pypi`) publishes on tagged runs.
+  regenerate deterministically with the tag-derived version (W2-1: a
+  `v1.0.1` builds 1.0.1, not a re-publish) → unit+corpus+cast suite →
+  regress replay/roundtrip/goldens/coverage → corpus verify → **live**
+  windtrader round-trip gate (W2-4: publish is irreversible, use the
+  strongest oracle) → build wheel+sdist → assert wheel contents
+  (grammar/provenance/exact version) → clean-venv import-graph smoke →
+  upload artifacts; `publish` job (trusted publishing, `environment: pypi`)
+  publishes on tagged runs.
 - `docs/migration-0.5-to-1.0.md` — migration note for 0.5.x consumers.
 
 ## Reproducibility
