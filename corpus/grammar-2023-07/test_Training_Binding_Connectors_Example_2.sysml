@@ -1,5 +1,5 @@
 package 'Binding Connectors Example-2' {
-    	import 'Port Example'::*;
+    	public import 'Port Example'::*;
 
     	part def Vehicle;
     	part def FuelPump;

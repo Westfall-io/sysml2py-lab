@@ -1,6 +1,6 @@
 package 'Requirement Groups' {
-    	import 'Requirement Definitions'::*;
-    	import 'Requirement Usages'::*;
+    	public import 'Requirement Definitions'::*;
+    	public import 'Requirement Usages'::*;
     	
     	part def Engine {
     		port clutchPort: ClutchPort;

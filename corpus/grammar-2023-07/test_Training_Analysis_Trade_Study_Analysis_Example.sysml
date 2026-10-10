@@ -1,6 +1,6 @@
 package 'Trade Study Analysis Example' {
-    	import ScalarValues::Real;
-    	import TradeStudies::*;
+    	public import ScalarValues::Real;
+    	public import TradeStudies::*;
     	
     	part def Engine;
     	part engine4cyl : Engine;

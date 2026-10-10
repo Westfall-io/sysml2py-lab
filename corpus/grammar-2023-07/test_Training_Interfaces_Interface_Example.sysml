@@ -1,5 +1,5 @@
 package 'Interface Example' {
-    	import 'Port Example'::*;
+    	public import 'Port Example'::*;
 
     	part def Vehicle;
 

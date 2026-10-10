@@ -1,5 +1,5 @@
 package MassRollup1 {
-    	import NumericalFunctions::*;
+    	public import NumericalFunctions::*;
     	
     	part def MassedThing {
     		attribute simpleMass :> ISQ::mass; 

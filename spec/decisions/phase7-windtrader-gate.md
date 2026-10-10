@@ -50,11 +50,19 @@ Because 33 invalid files are a tracked baseline, the GATE is a **ratchet**
 (same philosophy as issue #11), not a strict all-invalid-fails barrier:
 it fails on **adapter errors** (tooling broke), **valid→invalid regressions**,
 and **unverified/new files** (AC#3), while the tracked baseline invalids are
-WIP that Tock's validator fix will retire.
+WIP. The baseline was originally 33 invalids; a post-#12 follow-up traced
+the bulk to **windtrader-java issue #10**: bare `import X::*` is *spec-invalid*
+SysML v2 (KerML FTF KERML-74 — explicit visibility required on textual
+import declarations), not a validator bug. We added `public`/`private`
+visibility to the 32 affected corpus files (matching upstream), shrinking
+the baseline to a single genuine invalid (a connections/`near=[` file with
+no import involvement). Remaining 1 tracked WIP; validator/corpus work that
+would retire it is separate.
 
 ## Acceptance criteria — status
 - ✔ Every corpus file has a recorded Windtrader verdict (manifest
-  `windtrader` = valid/invalid + version, all 62).
+  `windtrader` = valid/invalid + version, all 62: 61 valid / 1 invalid
+  after KERML-74 visibility fix).
 - ✔ Generator-emitted text (round-trip output) validated for every file
   (roundtrip_valid computed; equals input_valid = honest cast).
 - ✔ A new example cannot enter the corpus without a passing verdict

@@ -1,4 +1,4 @@
 package Package1 {
-        import Package2::*;
+        public import Package2::*;
         private import Package3::*;
     }

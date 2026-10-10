@@ -1,5 +1,5 @@
 package 'Calculation Usages-2' {
-	import 'Calculation Definitions'::*;
+	public import 'Calculation Definitions'::*;
 	
 	attribute def DynamicState {
 		attribute v: SpeedValue;
