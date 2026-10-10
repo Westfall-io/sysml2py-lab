@@ -6,15 +6,17 @@ Composes the per-text windtrader adapter with the corpus manifest:
   (the generator-emitted sysml2py text — AC: round-trip output is validated,
   not just the input),
 * record per-file verdicts into the manifest ``windtrader`` field
-  (``{"status": ..., "version": ..., "exit_code": ...}``),
+  (input + round-trip status),
 * expose a hermetic recorded-fixture mode for CI-without-Java.
 
-The manifest contract for ``windtrader`` is JSON-lite:
+The manifest contract for ``windtrader`` is a dict:
 
-    "windtrader": {"status": "valid", "version": "0.2.0", "exit_code": 0}
+    "windtrader": {"status": "valid", "version": "0.2.0", "exit_code": 0,
+                   "roundtrip_status": "valid", "roundtrip_exit": 0}
 
-A ``windtrader`` value of ``"unverified"`` (or missing) means no verdict
-recorded yet — never treated as valid.
+A legacy ``windtrader`` value of ``"unverified"`` (a bare string) means no
+verdict recorded yet — never treated as valid, and downgraded to
+``"unknown"`` by the ratchet with a warning (see ``ratchet_regressions``).
 """
 
 from __future__ import annotations
@@ -33,6 +35,11 @@ def _load_manifest(corpus_dir: Path) -> dict[str, Any]:
     return json.loads(manifest_path.read_text(encoding="utf-8"))
 
 
+def load_manifest(corpus_dir: Path) -> dict[str, Any]:
+    """Public alias: load the corpus manifest (files + metadata)."""
+    return _load_manifest(corpus_dir)
+
+
 def save_manifest(corpus_dir: Path, manifest: dict[str, Any]) -> None:
     manifest_path = corpus_dir / "manifest.json"
     manifest_path.write_text(
@@ -40,39 +47,46 @@ def save_manifest(corpus_dir: Path, manifest: dict[str, Any]) -> None:
     )
 
 
-def _roundtrip_outputs(corpus_dir: Path, generated_pkg: Path | None) -> dict[str, str]:
-    """Return {manifest_rel: round-trip emitted text} when a pkg is present.
+def _roundtrip_outputs(corpus_dir: Path, generated_pkg: Path | None):
+    """Compute the generator-emitted (round-trip) text for every corpus file.
 
-    Reuses the exact composition proven in regress.roundtrip: text -> IR ->
-    generated classes -> get_definition() -> dump().  Returns {} when no
-    pkg is supplied (inputs-only validation).
+    Reuses the proven regress composition: text -> IR -> generated classes ->
+    get_definition() -> dump().  Returns ``(texts, errs)`` where ``texts`` is
+    {rel: emitted text} (a file whose round-trip succeeded) and ``errs`` is
+    {rel: reason} for files whose round-trip FAILED to produce text at all
+    (a *generator* crash, NOT a windtrader verdict — surfaced as the
+    ``emit_error`` bucket, issue-#12 r1 B5).  When ``generated_pkg`` is None,
+    both are empty (inputs-only validation).
     """
     if generated_pkg is None:
-        return {}
+        return {}, {}
+    from sysml2py_lab.regress import _ensure_pkg, _ir_to_json, dump_from_definition
+    _ensure_pkg(generated_pkg)  # puts <pkg>/src (or <pkg>/sysml2py/src) on sys.path
     import sysml2py  # type: ignore[import-not-found]
     from sysml2py_lab.ir import parse_ir
-    from sysml2py_lab.regress import _ir_to_json, dump_from_definition
 
-    out: dict[str, str] = {}
+    texts: dict[str, str] = {}
+    errs: dict[str, str] = {}
     manifest = _load_manifest(corpus_dir)
     for rel in sorted(manifest.get("files", {})):
         p = corpus_dir / rel
         if not p.exists():
+            errs[rel] = "file missing on disk"
             continue
         try:
             src = p.read_text(encoding="utf-8")
             root = parse_ir(src)
             tree = sysml2py.Node.from_ir(_ir_to_json(root))
-            out[rel] = dump_from_definition(tree.get_definition())
-        except Exception:  # noqa: BLE001
-            # A round-trip failure is not a windtrader verdict: leave the
-            # entry absent so the caller reports adapter_error distinctly.
-            out[rel] = ""
-    return out
+            texts[rel] = dump_from_definition(tree.get_definition())
+        except Exception as exc:  # noqa: BLE001
+            # A generator crash is NOT a windtrader verdict.  Record the
+            # reason so the operator can see WHY round-trip failed.
+            errs[rel] = f"{type(exc).__name__}: {exc}"
+    return texts, errs
 
 
 def _manifest_names(corpus_dir: Path) -> list[str]:
-    return sorted(_load_manifest(corpus_dir).get("files", {}).keys())
+    return sorted(load_manifest(corpus_dir).get("files", {}).keys())
 
 
 def compute_verdicts(
@@ -89,11 +103,22 @@ def compute_verdicts(
       2. (if pkg supplied) the round-trip emitted text.
 
     Verdict keys: ``input_status``, ``input_exit``, ``roundtrip_status``
-    (absent when no pkg), ``version``, ``diagnostics`` (input-side only).
+    (absent when no pkg), ``version``, ``diagnostics`` (input-side only),
+    and ``emit_error`` (the round-trip failure reason, when a generator
+    crash prevented emission).
+
+    Statuses: ``valid`` / ``invalid`` / ``adapter_error`` (windtrader could
+    not run) and, separately, ``emit_error`` (our generator crashed while
+    producing the text — a DIFFERENT failure axis from windtrader).
     """
     files = _manifest_names(corpus_dir)
     if not files:
         raise ValueError(f"corpus manifest declares no files: {corpus_dir}")
+
+    # Hoist the full-corpus round-trip pass ABOVE the per-file loop (r1 W1-1:
+    # calling it inside the loop was O(n²) — n full-corpus passes).
+    rt_texts, rt_errs = _roundtrip_outputs(corpus_dir, generated_pkg)
+
     out: dict[str, dict[str, Any]] = {}
     for rel in files:
         p = corpus_dir / rel
@@ -117,9 +142,13 @@ def compute_verdicts(
             "diagnostics": iv.diagnostics,
         }
         if generated_pkg is not None:
-            rts = _roundtrip_outputs(corpus_dir, generated_pkg)
-            rt_text = rts.get(rel, "")
-            if rt_text:
+            if rel in rt_errs:
+                # Our generator crashed — distinct from windtrader failing.
+                entry["roundtrip_status"] = "emit_error"
+                entry["roundtrip_exit"] = None
+                entry["emit_error"] = rt_errs[rel]
+            elif rel in rt_texts:
+                rt_text = rt_texts[rel]
                 try:
                     rv = wt.validate_text(rt_text, version=version, recorded=recorded)
                 except wt.AdapterError as exc:
@@ -139,36 +168,23 @@ def compute_verdicts(
 
 
 def summarize(verdicts: dict[str, dict[str, Any]]) -> dict[str, int]:
-    """Aggregate per-file verdicts into gate-able counters.
+    """Aggregate per-file verdicts into non-overlapping gate-able counters.
 
-    ``pass`` counts files whose INPUT validated (status valid) — plus, when
-    round-trip is present, files whose ROUND-TRIP ALSO validated.
+    Each of the four failure axes is counted SEPARATELY so they partition
+    the files (r1 W1-4): a file can be input-invalid AND round-trip emit_error
+    simultaneously, but appears in each bucket only for its own axis.
     """
     n = len(verdicts)
-    input_ok = sum(1 for e in verdicts.values() if e.get("input_status") == "valid")
-    roundtrip_ok = sum(
-        1 for e in verdicts.values() if e.get("roundtrip_status") == "valid"
-    )
-    roundtrip_present = sum(
-        1 for e in verdicts.values() if "roundtrip_status" in e
-    )
-    adapter_err = sum(
-        1 for e in verdicts.values()
-        if e.get("input_status") == "adapter_error"
-        or e.get("roundtrip_status") == "adapter_error"
-    )
-    invalid = sum(
-        1 for e in verdicts.values()
-        if e.get("input_status") == "invalid"
-        or e.get("roundtrip_status") == "invalid"
-    )
     return {
         "files": n,
-        "input_valid": input_ok,
-        "roundtrip_valid": roundtrip_ok,
-        "roundtrip_present": roundtrip_present,
-        "invalid": invalid,
-        "adapter_errors": adapter_err,
+        "input_valid": sum(1 for e in verdicts.values() if e.get("input_status") == "valid"),
+        "input_invalid": sum(1 for e in verdicts.values() if e.get("input_status") == "invalid"),
+        "input_adapter_errors": sum(1 for e in verdicts.values() if e.get("input_status") == "adapter_error"),
+        "roundtrip_valid": sum(1 for e in verdicts.values() if e.get("roundtrip_status") == "valid"),
+        "roundtrip_invalid": sum(1 for e in verdicts.values() if e.get("roundtrip_status") == "invalid"),
+        "roundtrip_adapter_errors": sum(1 for e in verdicts.values() if e.get("roundtrip_status") == "adapter_error"),
+        "roundtrip_emit_errors": sum(1 for e in verdicts.values() if e.get("roundtrip_status") == "emit_error"),
+        "roundtrip_present": sum(1 for e in verdicts.values() if "roundtrip_status" in e),
     }
 
 
@@ -194,26 +210,90 @@ def ratchet_regressions(
     corpus_dir: Path,
     verdicts: dict[str, dict[str, Any]],
 ) -> list[str]:
-    """Return files that REGRESSED valid → invalid/adapter vs the committed
-    manifest baseline (ratchet semantics).
+    """Return files that REGRESSED valid → non-valid vs the committed
+    manifest baseline (ratchet semantics), across BOTH input and round-trip.
 
-    The committed manifest ``windtrader.status`` is the baseline.  A file
-    that was ``valid`` but is no longer valid (now ``invalid`` or
-    ``adapter_error``) is a regression the gate must block.  Files already
-    recorded ``invalid`` in the baseline are tracked WIP and are NOT
-    regressions (an improvement flipping them to valid is welcome).
+    The committed manifest ``windtrader.status`` / ``roundtrip_status`` is
+    the baseline.  A file that was ``valid`` on either axis but is no longer
+    valid is a regression the gate must block.  Files already recorded
+    ``invalid`` in the baseline are tracked WIP and are NOT regressions (an
+    improvement flipping them to valid is welcome).
+
+    A legacy bare-string baseline (``"unverified"``) is downgraded to
+    ``"unknown"`` with a warning — it is NOT a valid baseline, and the file
+    is not treated as having-regressed (it has none), though AC#3's
+    "unverified" check (in the CLI) still blocks it.
     """
-    manifest = _load_manifest(corpus_dir)
+    manifest = load_manifest(corpus_dir)
     regressions: list[str] = []
     for rel, entry in verdicts.items():
         baseline = manifest.get("files", {}).get(rel, {}).get("windtrader", {})
-        base_status = baseline.get("status", "unknown") if isinstance(baseline, dict) else "unknown"
-        cur = entry.get("input_status", "adapter_error")
-        if base_status == "valid" and cur != "valid":
-            regressions.append(
-                f"{rel}: valid -> {cur} (baseline had a passing verdict)"
-            )
+        if not isinstance(baseline, dict):
+            print(f"WARNING: file {rel} has a non-dict windtrader baseline "
+                  f"{baseline!r}; treating as unknown (not a regression, but "
+                  f"not a valid baseline either)", file=__import__("sys").stderr)
+        for axis, cur_attr, base_attr in (
+            ("input", "input_status", "status"),
+            ("roundtrip", "roundtrip_status", "roundtrip_status"),
+        ):
+            base = baseline.get(base_attr) if isinstance(baseline, dict) else "unknown"
+            cur = entry.get(cur_attr)
+            if cur is None or axis == "roundtrip" and cur == "emit_error":
+                # No round-trip axis on this entry, or our generator crashed
+                # (handled as emit_error, gated separately) — skip.
+                continue
+            if base == "valid" and cur != "valid":
+                regressions.append(
+                    f"{rel}: {axis} valid -> {cur} (baseline had a passing verdict)"
+                )
     return regressions
+
+
+def roundtrip_regressions(verdicts: dict[str, dict[str, Any]]) -> list[str]:
+    """Return generator-defect regressions: input valid but round-trip not.
+
+    A file whose INPUT the oracle accepts but whose generator OUTPUT it
+    rejects is unambiguously a lab defect TODAY (issue-#12 r1 B1).  This is
+    the invariant that needs no baseline.
+    """
+    return [
+        f"{rel}: input=valid but roundtrip={e.get('roundtrip_status')}"
+        for rel, e in verdicts.items()
+        if e.get("input_status") == "valid"
+        and "roundtrip_status" in e
+        and e.get("roundtrip_status") != "valid"
+    ]
+
+
+def emit_error_files(verdicts: dict[str, dict[str, Any]]) -> list[str]:
+    """Return files whose generator round-trip crashed (emit_error)."""
+    return [
+        f"{rel}: {e.get('emit_error')}"
+        for rel, e in verdicts.items()
+        if e.get("roundtrip_status") == "emit_error"
+    ]
+
+
+def unbaselined_files(
+    corpus_dir: Path,
+    verdicts: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Return files with NO recorded baseline that are not valid (AC#3).
+
+    A new/never-recorded file must have a PASSING verdict to enter the
+    corpus (issue #12 AC#3).  Derived from the manifest baseline — not from
+    the verdict (which never emits ``"unverified"``; r1 B2).  A file with no
+    dict baseline (new or legacy "unverified") whose current input is not
+    valid is flagged.
+    """
+    manifest = load_manifest(corpus_dir)
+    out: list[str] = []
+    for rel, e in verdicts.items():
+        baseline = manifest.get("files", {}).get(rel, {}).get("windtrader")
+        has_baseline = isinstance(baseline, dict) and baseline.get("status") in ("valid", "invalid")
+        if not has_baseline and e.get("input_status") != "valid":
+            out.append(f"{rel}: no recorded baseline and input={e.get('input_status')}")
+    return out
 
 
 def update_manifest_verdicts(
@@ -225,7 +305,7 @@ def update_manifest_verdicts(
     Returns (valid_count, invalid_count) over the INPUT verdicts, so the
     gate can require valid_count == files.
     """
-    manifest = _load_manifest(corpus_dir)
+    manifest = load_manifest(corpus_dir)
     valid = invalid = 0
     for rel, entry in verdicts.items():
         if rel not in manifest.get("files", {}):

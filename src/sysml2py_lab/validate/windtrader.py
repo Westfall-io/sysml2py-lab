@@ -193,24 +193,50 @@ def record_verdicts(
     text_by_name: dict[str, str],
     *,
     version: str = DEFAULT_VERSION,
+    extra_texts: dict[str, str] | None = None,
+    provenance: dict[str, str] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Verdict]]:
     """Validate many texts and build a reusable recorded-fixture dict.
 
     Returns ``(fixtures, verdicts)`` where ``fixtures[digest]`` is the
     replayable dict and ``verdicts[name]`` is the live Verdict.  Any
-    adapter error raises (recording must be real, never fudged).
+    adapter error raises (recording must be real, never fudged — issue-#12
+    r1 B3/W1-3).
+
+    ``extra_texts`` maps an additional text (e.g. the round-trip emitted
+    text) whose digest is ALSO recorded — keyed the same ``name`` so both
+    sides of one file land under one provenance name.  ``provenance`` maps
+    ``name -> manifest-relative path`` recorded as ``"file"`` on each
+    fixture for auditability (W1-11).
     """
     fixtures: dict[str, dict[str, Any]] = {}
     verdicts: dict[str, Verdict] = {}
-    for name, text in text_by_name.items():
-        v = validate_text(text, version=version)
-        verdicts[name] = v
-        if v.status == STATUS_ADAPTER_ERROR:
-            raise AdapterError(
-                f"record failed for {name}: windtrader-java exited "
-                f"{v.exit_code}: {' '.join(v.diagnostics)[:200]}"
-            )
-        fixtures[digest_text(text, version)] = v.to_dict()
+    names = sorted(set(text_by_name) | set(extra_texts or {}))
+    for name in names:
+        if name in text_by_name:
+            v = validate_text(text_by_name[name], version=version)
+            verdicts[name] = v
+            if v.status == STATUS_ADAPTER_ERROR:
+                raise AdapterError(
+                    f"record failed for {name}: windtrader-java exited "
+                    f"{v.exit_code}: {' '.join(v.diagnostics)[:200]}"
+                )
+            entry = v.to_dict()
+            if provenance:
+                entry["file"] = provenance[name]
+            fixtures[digest_text(text_by_name[name], version)] = entry
+        if extra_texts and name in extra_texts:
+            rt = extra_texts[name]
+            rv = validate_text(rt, version=version)
+            if rv.status == STATUS_ADAPTER_ERROR:
+                raise AdapterError(
+                    f"record failed for {name} (round-trip): windtrader-java "
+                    f"exited {rv.exit_code}"
+                )
+            entry = rv.to_dict()
+            if provenance:
+                entry["file"] = provenance[name]
+            fixtures[digest_text(rt, version)] = entry
     return fixtures, verdicts
 
 

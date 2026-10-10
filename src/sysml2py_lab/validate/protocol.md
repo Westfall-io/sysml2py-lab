@@ -73,9 +73,18 @@ be `invalid` — see §5). `"unverified"` is never treated as valid.
 - `--record` writes a fresh `validate-fixtures.json` (live run).
 - `--offline` replays committed fixtures (no JVM needed).
 
-Exit: `0` when no `adapter_error` and no `invalid` in the scope; `1`
-otherwise (non-zero on any `adapter_error` regardless, so tool failures
-are never masked).
+Exit:
+- **single-file scope** (strict): `0` when valid; `1` on any `invalid` or
+  `adapter_error`.
+- **corpus scope** (ratchet, §6): `0` carries the tracked baseline (incl.
+  its `invalid`s) forward with no regressions; `1` on any `adapter_error`,
+  ratchet regression, round-trip regression, generator `emit_error`, or
+  unbaselined/new file. Tool failures are never masked.
+
+Each failure axis is reported as its own counter in the summary so the
+operator can distinguish "tooling broke" from "model invalid" from "my
+generator emitted bad text" (§1 design question: adapter vs invalid is
+never conflated).
 
 ## 5. Current corpus verdicts (recorded vs windtrader-java 0.2.0)
 
@@ -107,9 +116,15 @@ CI gate on corpus + spec changes — a **ratchet** (same philosophy as issue
 
 1. any `adapter_error` (tooling broken / missing fixture) — never masked,
 2. any file **regressed** valid → invalid/adapter since the committed
-   manifest baseline (the ratchet),
-3. any corpus file is `"unverified"` (new file not yet recorded with a
-   passing verdict — enforced separately by the `corpus add` gate, AC#3).
+   manifest baseline (the ratchet), on **either** the input **or** the
+   round-trip axis,
+3. any **round-trip regression**: a file whose *input* the oracle accepts
+   but whose *generator output* it rejects (AC#2's invariant — this is a
+   lab defect today, no baseline needed),
+4. any generator **`emit_error`** (round-trip output could not even be
+   produced — a generator crash, distinct from a windtrader verdict),
+5. any corpus file that is **unbaselined / new** without a passing verdict
+   (AC#3 — enforced separately by the `corpus add` gate).
 
 The 33 **baseline** invalid verdicts are tracked, deliberate WIP (see §5),
 NOT gate failures: the gate reports them as a note and passes.  When Tock's
@@ -117,8 +132,15 @@ windtrader-java gains the `import ::*` grammar (or the lab's corpus files are
 corrected), those files flip to valid and the ratchet records the
 improvement.  A separate **live** CI job (`validate corpus --generated`)
 runs the real validator against round-trip output and fails on any
-adapter_error, so the recorded baseline can never drift silently from what
-the actual jar says.
+adapter_error/regression, so the recorded baseline can never drift silently
+from what the actual jar says.
+
+The committed `validate-fixtures.json` records **both** the input and the
+round-trip digest per file, so `--offline --generated` (used in CI without
+a JVM) replays the round-trip verdicts too.  A **fixture-drift** step in CI
+re-records on `--generated` and diffs against the committed file: any drift
+fails the check, so a recorded verdict can't silently diverge from the real
+oracle.
 
 The ratchet means every recorded `invalid` is a tracked, deliberate item,
 not a silent hole — the validator-gap fix in windtrader-java flows through

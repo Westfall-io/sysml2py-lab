@@ -165,8 +165,8 @@ def test_compute_verdicts_inputs_only(monkeypatch, tmp_path):
     assert verdicts["b.sysml"]["input_status"] == "invalid"
     s = vcor.summarize(verdicts)
     assert s["input_valid"] == 1
-    assert s["invalid"] == 1
-    assert s["adapter_errors"] == 0
+    assert s["input_invalid"] == 1
+    assert s["input_adapter_errors"] == 0
     assert s["roundtrip_present"] == 0  # no pkg supplied
     assert s["files"] == 2
 
@@ -183,8 +183,8 @@ def test_active_adapter_error_distinct_in_summary(monkeypatch, tmp_path):
     verdicts = vcor.compute_verdicts(cd)  # no recorded -> live path -> AdapterError
     assert verdicts["a.sysml"]["input_status"] == "adapter_error"
     s = vcor.summarize(verdicts)
-    assert s["adapter_errors"] == 1
-    assert s["invalid"] == 0
+    assert s["input_adapter_errors"] == 1
+    assert s["input_invalid"] == 0
 
 
 def test_update_manifest_records_verdict(tmp_path):
@@ -217,7 +217,8 @@ def test_roundtrip_verdict_recorded_in_manifest(monkeypatch, tmp_path):
                                    "version": "0.2.0", "diagnostics": []},
     }
     import sysml2py_lab.validate.corpus as vc
-    monkeypatch.setattr(vc, "_roundtrip_outputs", lambda cd_, pkg: {"a.sysml": emitted})
+    monkeypatch.setattr(vc, "_roundtrip_outputs",
+                        lambda cd_, pkg: ({"a.sysml": emitted}, {}))
     verdicts = vcor.compute_verdicts(cd, generated_pkg=tmp_path / "pkg", recorded=fx)
     assert verdicts["a.sysml"]["roundtrip_status"] == "valid"
     assert verdicts["a.sysml"]["roundtrip_exit"] == 0
@@ -241,11 +242,12 @@ def test_roundtrip_invalid_propagates_to_manifest(monkeypatch, tmp_path):
                                    "diagnostics": ["error: line=1 near=;;"]},
     }
     import sysml2py_lab.validate.corpus as vc
-    monkeypatch.setattr(vc, "_roundtrip_outputs", lambda cd_, pkg: {"a.sysml": emitted})
+    monkeypatch.setattr(vc, "_roundtrip_outputs",
+                        lambda cd_, pkg: ({"a.sysml": emitted}, {}))
     verdicts = vcor.compute_verdicts(cd, generated_pkg=tmp_path / "pkg", recorded=fx)
     assert verdicts["a.sysml"]["roundtrip_status"] == "invalid"
     s = vcor.summarize(verdicts)
-    assert s["invalid"] == 1  # the emitted-output invalidity gates
+    assert s["roundtrip_invalid"] == 1  # emitted-output invalidity (B1 axis)
     assert s["roundtrip_present"] == 1
 
 
@@ -317,14 +319,198 @@ def test_ratchet_blanks_adapter_error_regression(monkeypatch, tmp_path):
     assert any("valid -> adapter_error" in r for r in regressions)
 
 
-def test_ratchet_ignores_unverified_nonunion(tmp_path):
-    """A file never in the corpus (no baseline) is handled: if it appears in
-    verdicts (new), the AC#3 intent is that it must be valid. Here with a
-    missing manifest baseline it's not a valid->invalid regression, so no
-    ratchet regression is reported."""
+def test_new_invalid_file_flagged_unbaselined(tmp_path):
+    """AC#3 (B2): a NEW file with no baseline that is invalid must be
+    flagged by unbaselined_files (the ratchet itself is not the AC#3
+    mechanism — unbaselined_files is, and the CLI gate consumes it)."""
     cd = _corpus_with_baseline(tmp_path,
                                baseline={},
-                               current={"new.sysml": "part { attribute n; }"})
-    fx = _fixtures_for({"new.sysml": "part { attribute n; }"})
+                               current={"new.sysml": "part { bad new }"})
+    fx = {wt.digest_text("part { bad new }"): {"status": "invalid", "exit_code": 2,
+                                               "version": "0.2.0",
+                                               "diagnostics": ["error: near=bad"]}}
     verdicts = vcor.compute_verdicts(cd, recorded=fx)
+    # no valid->invalid regression (there was no baseline), but unbaselined_files
+    # must flag it as AC#3 gate material.
     assert vcor.ratchet_regressions(cd, verdicts) == []
+    flagged = vcor.unbaselined_files(cd, verdicts)
+    assert any("new.sysml" in f for f in flagged)
+
+
+# ---- CLI gate exit codes (r1 B4: the merge gate itself must be tested) ---
+
+
+def test_record_verdicts_hard_fails_on_adapter_error(monkeypatch, tmp_path):
+    """W1-8: record_verdicts must raise on adapter_error (recording never
+    bakes in a failure)."""
+    import sysml2py_lab.validate.windtrader as wtmod
+
+    class _CmdResult:
+        exit_code = 3  # adapter failure
+        stdout = ""
+        stderr = "java: not found"
+    monkeypatch.setattr(wtmod, "_import_validate", lambda: (lambda t, version="0.2.0": _CmdResult()))
+    try:
+        wt.record_verdicts({"x.sysml": "part {}"}, version="0.2.0")
+        assert False, "record_verdicts should raise on adapter_error"
+    except wt.AdapterError:
+        pass
+
+
+def test_record_verdicts_records_roundtrip_extra(monkeypatch, tmp_path):
+    """W1-8: record_verdicts records the round-trip digest via extra_texts
+    with provenance 'file', keyed under the same name."""
+    import sysml2py_lab.validate.windtrader as wtmod
+
+    calls = []
+    def _fake_validate(text, version="0.2.0"):
+        calls.append(text)
+        return wt.Verdict(status="valid", exit_code=0, version=version,
+                           diagnostics=[])
+    monkeypatch.setattr(wtmod, "_import_validate", lambda: _fake_validate)
+    fx, verdicts = wt.record_verdicts(
+        {"a.sysml": "part { attribute x; }"}, version="0.2.0",
+        extra_texts={"a.sysml": "part { emitted }"},
+        provenance={"a.sysml": "sub/a.sysml"},
+    )
+    assert len(fx) == 2  # input + roundtrip digests
+    for entry in fx.values():
+        assert entry["file"] == "sub/a.sysml"
+    assert len(calls) == 2
+
+
+def test_gate_passes_on_baseline_invalids(monkeypatch, tmp_path):
+    """A corpus with tracked baseline invalids passes the ratchet gate."""
+    _corpus_with_baseline(tmp_path,
+                               baseline={"a.sysml": "valid", "b.sysml": "invalid"},
+                               current={"a.sysml": "part { attribute x; }",
+                                        "b.sysml": "part { still bad }"})
+    fx = {
+        wt.digest_text("part { attribute x; }"): {"status": "valid", "exit_code": 0,
+                                                  "version": "0.2.0", "diagnostics": []},
+        wt.digest_text("part { still bad }"): {"status": "invalid", "exit_code": 2,
+                                               "version": "0.2.0",
+                                               "diagnostics": ["error: near=bad"]},
+    }
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(tmp_path), "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 0
+
+
+def test_gate_fails_on_valid_to_invalid_regression(monkeypatch, tmp_path):
+    """A valid-baseline file going invalid FAILS the gate (exit 1)."""
+    _corpus_with_baseline(tmp_path,
+                               baseline={"a.sysml": "valid"},
+                               current={"a.sysml": "part { now bad }"})
+    fx = {wt.digest_text("part { now bad }"): {"status": "invalid", "exit_code": 2,
+                                               "version": "0.2.0",
+                                               "diagnostics": ["error: near=bad"]}}
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(tmp_path), "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 1
+
+
+def test_gate_fails_on_adapter_error(monkeypatch, tmp_path):
+    """Adapter errors FAIL the gate (exit 1), even with baseline invalids."""
+    _corpus_with_baseline(tmp_path,
+                               baseline={"a.sysml": "valid"},
+                               current={"a.sysml": "part { attribute x; }"})
+    fx = {}  # empty fixtures -> missing fixture -> AdapterError on every file
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(tmp_path), "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 1
+
+
+def test_gate_fails_on_new_unbaselined_invalid_file(monkeypatch, tmp_path):
+    """A NEW file (no baseline) that is invalid FAILS (AC#3, B2)."""
+    # manifest has NO entry for the on-disk file
+    _corpus_with_baseline(tmp_path,
+                               baseline={"other.sysml": "valid"},
+                               current={"other.sysml": "part { attribute o; }",
+                                        "new.sysml": "part { bad new }"})
+    fx = {
+        wt.digest_text("part { attribute o; }"): {"status": "valid", "exit_code": 0,
+                                                  "version": "0.2.0", "diagnostics": []},
+        wt.digest_text("part { bad new }"): {"status": "invalid", "exit_code": 2,
+                                             "version": "0.2.0",
+                                             "diagnostics": ["error: near=bad"]},
+    }
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(tmp_path), "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 1
+
+
+def test_gate_fails_when_roundtrip_invalid(monkeypatch, tmp_path):
+    """B1: input valid but generator round-trip output invalid FAILS."""
+    _corpus_with_baseline(tmp_path,
+                               baseline={"a.sysml": "valid"},
+                               current={"a.sysml": "part { attribute x; }"})
+    emitted = "part { bad emitted ; }"  # generator emits invalid SysML
+    fx = {
+        wt.digest_text("part { attribute x; }"): {"status": "valid", "exit_code": 0,
+                                                  "version": "0.2.0", "diagnostics": []},
+        wt.digest_text(emitted): {"status": "invalid", "exit_code": 2,
+                                  "version": "0.2.0",
+                                  "diagnostics": ["error: near=bad"]},
+    }
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    import sysml2py_lab.validate.corpus as vc
+    monkeypatch.setattr(vc, "_roundtrip_outputs",
+                        lambda cd_, pkg: ({"a.sysml": emitted}, {}))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(tmp_path),
+                           "--generated", str(tmp_path / "pkg"),
+                           "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 1
+
+
+def test_gate_fails_on_emit_error(monkeypatch, tmp_path):
+    """B5: a generator crash (emit_error) FAILS, distinct from windtrader."""
+    _corpus_with_baseline(tmp_path,
+                               baseline={"a.sysml": "valid"},
+                               current={"a.sysml": "part { attribute x; }"})
+    fx = {wt.digest_text("part { attribute x; }"): {"status": "valid", "exit_code": 0,
+                                                    "version": "0.2.0", "diagnostics": []}}
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    import sysml2py_lab.validate.corpus as vc
+    monkeypatch.setattr(vc, "_roundtrip_outputs",
+                        lambda cd_, pkg: ({}, {"a.sysml": "ValueError: boom"}))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(tmp_path),
+                           "--generated", str(tmp_path / "pkg"),
+                           "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 1

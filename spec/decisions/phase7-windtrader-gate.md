@@ -23,7 +23,7 @@ for the full interface spec.
   replay (no JVM).
 - `.github/workflows/ci.yml` — hermetic offline gate job + live round-trip
   validation job (Java job).
-- `tests/test_windtrader_validate.py` — 23 tests.
+- `tests/test_windtrader_validate.py` — 31 tests.
 
 ## The five blocking design questions → answers
 1. **Invocation mode**: library (`windtrader.validate(text, version=...)`),
@@ -65,8 +65,26 @@ WIP that Tock's validator fix will retire.
 ## Ratchet semantics (protocol §6)
 `sysml2py-lab validate corpus --offline corpus/validate-fixtures.json` as a
 CI gate on corpus + spec changes. Fails if: any adapter_error, any
-valid→invalid regression (ratchet vs committed manifest baseline), or any
-unverified file. Baseline invalids are reported as tracked WIP and pass.
+valid→invalid regression (ratchet vs committed manifest baseline), any
+**round-trip regression** (input valid but generator output invalid — AC#2),
+any generator **emit_error** (round-trip crash), or any **unbaselined**
+new file without a passing verdict. Baseline invalids are reported as
+tracked WIP and pass. `--offline --generated` replays round-trip verdicts
+(committed fixtures carry input + round-trip digests).
 
-## Review cycle
-Pending review (r1) on feature branch `feat/issue12-windtrader-gate`.
+## Review cycle (r1 → r2)
+- **r1: REQUEST CHANGES** — 6 genuine blockers (B1 round-trip gate can never
+  fail; B2 `unverified` was dead/AC#3 unenforced; B3 fixture trust anchor
+  unverified; B4 zero CLI gate tests; B5 generator crash misclassified as
+  adapter_error; B6 `--offline + --generated` structurally broken) + 12 W1
+  (hoist quadratic round-trip pass; split summarize buckets by input/roundtrip
+  axis; thread verdict+fixture in `corpus add`; fixture provenance; emit_error
+  bucket; `record_verdicts` dead) + W2.
+- **Fixes (committed, mutation-locked)**: B1 roundtrip_regressions + ratchet
+  round-trip axis; B2 unbaselined_files from manifest baseline; B3 fixture
+  re-record w/ BOTH input+roundtrip digests + CI fixture-drift job; B4 six
+  CLI exit-code gate tests (red-before-fix); B5 emit_error bucket (generator
+  crash ≠ windtrader verdict); B6 `--offline --generated` works via
+  `_ensure_pkg`; hoisted quadratic; split summary buckets; `corpus add`
+  stamps verdict+fixture; record_verdicts wired+tested. 31 tests, full suite
+  208 pass, ruff clean.
