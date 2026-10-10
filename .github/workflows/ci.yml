@@ -26,7 +26,7 @@ jobs:
         # and exclusions are auditable from config.  Gate covers the PR's
         # changed files + the generated package (which ships its own config).
         run: |
-          ruff check src/sysml2py_lab/regress.py src/sysml2py_lab/cli.py src/sysml2py_lab/ir.py tests/test_regress.py tests/test_mvp_roundtrip.py
+          ruff check src/sysml2py_lab/regress.py src/sysml2py_lab/cli.py src/sysml2py_lab/ir.py src/sysml2py_lab/validate/ tests/test_regress.py tests/test_mvp_roundtrip.py tests/test_windtrader_validate.py
           rm -rf /tmp/ci-lint
           sysml2py-lab generate --out /tmp/ci-lint
           ruff check /tmp/ci-lint/sysml2py/src
@@ -60,3 +60,39 @@ jobs:
 
       - name: Corpus verify (sha + parse)
         run: sysml2py-lab corpus verify
+
+      - name: Windtrader gate (hermetic, committed fixtures — no JVM)
+        # Issue #12: replay recorded verdicts.  Any adapter_error fails; new
+        # unverified files fail.  Invalid verdicts are a tracked, recorded
+        # baseline (see validate/protocol.md §5) — the LIVE job below guards
+        # the round-trip emission against the real validator.
+        run: |
+          sysml2py-lab validate corpus --offline corpus/validate-fixtures.json || {
+            echo "WINDTrader offline gate failed" >&2; exit 1; }
+
+  validate-roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+      - name: Install lab + windtrader
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Generate package
+        run: |
+          rm -rf /tmp/ci-gen
+          sysml2py-lab generate --out /tmp/ci-gen
+      - name: Live windtrader round-trip validation (real validator + JVM)
+        # AC#2: generator-emitted text for every corpus file is validated
+        # against the live windtrader-java oracle, not just the recorded
+        # fixtures.  Fails on any adapter_error (tooling broken).  Invalid
+        # verdicts are reported and tracked (baseline in protocol.md).
+        run: sysml2py-lab validate corpus --generated /tmp/ci-gen
+

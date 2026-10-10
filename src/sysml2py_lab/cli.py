@@ -151,6 +151,13 @@ def main(argv: list[str] | None = None) -> int:
     cp_add.add_argument("--dest", default="local", help="Destination subdir under the corpus root")
     cp_add.add_argument("--function", default=None, help="Source test function name (provenance)")
     cp_add.add_argument("--model", type=Path, default=None, help="children.json path")
+    cp_add.add_argument("--allow-invalid", action="store_true",
+                        help="Issue #12: allow adding a file that windtrader rejects (WIP escape). "
+                             "Default: REFUSE to add a file lacking a passing windtrader verdict (AC#3).")
+    cp_add.add_argument("--offline", type=Path, default=None,
+                        help="Issue #12: replay committed windtrader fixtures (no JVM needed).")
+    cp_add.add_argument("--windtrader-version", default="0.2.0",
+                        help="windtrader-java version to validate against (default: 0.2.0).")
     cp_verify = cp_sub.add_parser("verify", help="Verify sha256 + parseability of every corpus file.")
     cp_verify.add_argument("--corpus", type=Path, default=Path("corpus"), help="Corpus root (default: ./corpus)")
     cp_verify.add_argument("--model", type=Path, default=None, help="children.json path")
@@ -180,6 +187,18 @@ def main(argv: list[str] | None = None) -> int:
     rg_cov.add_argument("--baseline", type=Path, default=None, help="Coverage baseline JSON (default: ./goldens/coverage-baseline.json)")
     for flag, h in _rg_common:
         rg_cov.add_argument(flag, type=Path, default=None, help=h)
+
+    vl = sub.add_parser("validate", help="Issue #12 windtrader gate: validate SysML text/corpus + round-trip output.")
+    vl.add_argument("target", type=Path, help="A .sysml file, or a corpus dir (has manifest.json).")
+    vl.add_argument("--generated", type=Path, default=None,
+                    help="Generated package root (enables round-trip-output validation; default: inputs only).")
+    vl.add_argument("--version", default="0.2.0", help="windtrader-java version (default: 0.2.0).")
+    vl.add_argument("--record", type=Path, default=None,
+                    help="Record live verdicts and write a fixtures JSON here (e.g. corpus/validate-fixtures.json).")
+    vl.add_argument("--offline", type=Path, default=None,
+                    help="Replay committed fixtures from this JSON path (no JVM needed).")
+    vl.add_argument("--manifest", action="store_true",
+                    help="Write input verdicts into corpus/manifest.json windtrader field.")
 
     args = p.parse_args(argv)
 
@@ -327,6 +346,30 @@ def main(argv: list[str] | None = None) -> int:
         from .corpus import add_file, corpus_stats, verify_corpus
         try:
             if args.corpus_cmd == "add":
+                # Issue #12 AC#3: a new example cannot enter the corpus
+                # without a passing windtrader verdict — unless the caller
+                # explicitly opts in (--allow-invalid, WIP escape).
+                from .validate import windtrader as vwt
+                recorded = None
+                if args.offline is not None:
+                    recorded = vwt.load_fixtures(args.offline)
+                text = args.file.read_text(encoding="utf-8")
+                try:
+                    verb = vwt.validate_text(text, version=args.windtrader_version,
+                                             recorded=recorded)
+                except vwt.AdapterError as exc:
+                    print(f"corpus add REFUSED: windtrader could not validate "
+                          f"({exc}) — add --allow-invalid to bypass AC#3", file=sys.stderr)
+                    return 1
+                if verb.status != "valid":
+                    if args.allow_invalid:
+                        print(f"corpus add WARNING: {args.file} is invalid per windtrader "
+                              f"({verb.exit_code}) but --allow-invalid given", file=sys.stderr)
+                    else:
+                        diag = (verb.diagnostics or [""])[0]
+                        print(f"corpus add REFUSED: {args.file} does not pass windtrader "
+                              f"validation (AC#3): {verb.status} {diag}", file=sys.stderr)
+                        return 1
                 rel = add_file(
                     args.corpus, args.file,
                     source=args.source, source_url=args.source_url,
@@ -424,6 +467,114 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         except Exception as e:
             print(f"regress {cmd} FAILED: {e}", file=sys.stderr)
+            return 1
+
+    if args.cmd == "validate":
+        from .validate import corpus as vcor
+        from .validate import windtrader as vwt
+
+        try:
+            # offline / fixture replay mode
+            recorded = None
+            if args.offline is not None:
+                recorded = vwt.load_fixtures(args.offline)
+
+            target = args.target.resolve()
+            is_dir = target.is_dir()
+
+            if is_dir:
+                verdicts = vcor.compute_verdicts(
+                    target, version=args.version,
+                    generated_pkg=args.generated,
+                    recorded=recorded,
+                )
+                summary = vcor.summarize(verdicts)
+
+                # record fixtures (live) if requested
+                if args.record is not None and not args.offline:
+                    fixtures: dict[str, dict] = {}
+                    for rel in sorted(verdicts):
+                        p = target / rel
+                        src = p.read_text(encoding="utf-8") if p.exists() else ""
+                        fixtures[vwt.digest_text(src, args.version)] = {
+                            "status": verdicts[rel].get("input_status", "adapter_error"),
+                            "exit_code": verdicts[rel].get("input_exit"),
+                            "version": args.version,
+                            "diagnostics": verdicts[rel].get("diagnostics", []),
+                        }
+                    vwt.save_fixtures(args.record, fixtures)
+
+                if args.manifest:
+                    vcor.update_manifest_verdicts(target, verdicts)
+
+                print(f"validate: {summary['files']} files")
+                print(f"  input_valid: {summary['input_valid']}")
+                if summary["roundtrip_present"]:
+                    print(f"  roundtrip_valid: {summary['roundtrip_valid']} / {summary['roundtrip_present']}")
+                print(f"  invalid: {summary['invalid']}")
+                print(f"  adapter_errors: {summary['adapter_errors']}")
+                for rel, e in sorted(verdicts.items()):
+                    st = e.get("input_status")
+                    rt_bad = e.get("roundtrip_status") not in (None, "valid")
+                    if st != "valid" or rt_bad:
+                        tag = f"input={st}"
+                        if "roundtrip_status" in e:
+                            tag += f" rt={e.get('roundtrip_status')}"
+                        diag = (e.get("diagnostics") or [""])[0]
+                        print(f"  FAIL {rel}: {tag} {diag}")
+            else:
+                text = target.read_text(encoding="utf-8")
+                v = vwt.validate_text(text, version=args.version, recorded=recorded)
+                verdicts = {}
+                summary = {
+                    "files": 1,
+                    "input_valid": 1 if v.status == "valid" else 0,
+                    "roundtrip_valid": 0, "roundtrip_present": 0,
+                    "invalid": 1 if v.status == "invalid" else 0,
+                    "adapter_errors": 1 if v.status == "adapter_error" else 0,
+                }
+                print(f"validate: status={v.status} exit={v.exit_code}")
+                diag = (v.diagnostics or [""])[0]
+                if diag:
+                    print("  " + diag)
+
+            # Gate (ratchet, issue-#12 protocol §6):
+            #  * directory scope — fail on: adapter_errors (tooling broke),
+            #    ratchet regressions (valid → invalid/adapter), or
+            #    unverified/new corpus files.  Baseline invalids are tracked
+            #    WIP, NOT gate failures.
+            #  * single-file scope — strict: any invalid/adapter fails.
+            failed = False
+            if is_dir:
+                if summary["adapter_errors"] > 0:
+                    print("GATE: adapter_errors present — tooling failure, not a verdict", file=sys.stderr)
+                    failed = True
+                regressions = vcor.ratchet_regressions(target, verdicts)
+                for r in regressions:
+                    print(f"GATE REGRESSION: {r}", file=sys.stderr)
+                if regressions:
+                    failed = True
+                # unverified / new files must not sneak in (AC#3)
+                unverified = [
+                    rel for rel, e in verdicts.items()
+                    if e.get("input_status") == "unverified"
+                ]
+                for u in unverified:
+                    print(f"GATE UNVERIFIED: {u} has no windtrader verdict", file=sys.stderr)
+                if unverified:
+                    failed = True
+                if summary["invalid"] > 0:
+                    print(f"  (note: {summary['invalid']} baseline invalid verdicts are tracked WIP — see validate/protocol.md §5)")
+            else:
+                if summary["adapter_errors"] > 0:
+                    print("GATE: adapter_errors present — tooling failure, not a verdict", file=sys.stderr)
+                    failed = True
+                if summary["invalid"] > 0:
+                    print("GATE: invalid verdicts present", file=sys.stderr)
+                    failed = True
+            return 1 if failed else 0
+        except Exception as e:
+            print(f"validate FAILED: {e}", file=sys.stderr)
             return 1
 
     return 2
