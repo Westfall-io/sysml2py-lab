@@ -63,8 +63,9 @@ WIP that Tock's validator fix will retire.
   (`adapter_error` vs `invalid`; gate fails loudly on adapter_error).
 
 ## Ratchet semantics (protocol §6)
-`sysml2py-lab validate corpus --offline corpus/validate-fixtures.json` as a
-CI gate on corpus + spec changes. Fails if: any adapter_error, any
+CI runs `sysml2py-lab validate corpus --offline corpus/validate-fixtures.json
+--generated /tmp/ci-gen` (hermetic job; `/tmp/ci-gen` built in the same job)
+as the gate on corpus + spec changes. Fails if: any adapter_error, any
 valid→invalid regression (ratchet vs committed manifest baseline), any
 **round-trip regression** (input valid but generator output invalid — AC#2),
 any generator **emit_error** (round-trip crash), or any **unbaselined**
@@ -142,5 +143,15 @@ tracked WIP and pass. `--offline --generated` replays round-trip verdicts
   - **W2-5**: `--force` documented in protocol §4.
   - **W2-6**: untracked `.sysml` on disk raises `UntrackedFilesError`
     (AC#3 hard gate, not a warning).
-- **r5: PENDING** — gate after fixes: 221 tests, ruff clean,
-  offline+generated exit 0, all 62 corpus files tracked.
+- **r5: APPROVE — 0 blockers, 1 W1 (doc) + 4 W2 (carried to #13)**. All r4
+  follow-ups confirmed landed in code. W1 doc lines fixed in this PR
+  (protocol §6 + decision §Ratchet now state the hermetic job runs
+  `--offline --generated /tmp/ci-gen`; `validate-roundtrip` is live).
+  W2s carried to #13: (1) round-trip `adapter_error` detail text is
+  swallowed — print `details`/select as `diag` when axis is adapter_error
+  (now the most likely hermetic failure mode); (2) `UntrackedFilesError`
+  surfaces as a traceback — convert to a clean `GATE:` line;
+  (3) `test_corpus_add_refuses_invalid_without_allow` dead setup (`fx`/`fp`
+  never passed) + Verdict-shape vs CommandResult discrepancy;
+  (4) dead `"emit_error"` in `update_manifest_verdicts` input_status check.
+- **MERGED**: PR #21 squash → main; issue #12 closed.

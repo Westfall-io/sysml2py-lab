@@ -119,10 +119,13 @@ lands. Until then the gate enforces:
 CI gate on corpus + spec changes — a **ratchet** (same philosophy as issue
 #11's coverage/goldens ratchet). The hermetic CI job replays the committed
 fixtures from the dedicated `test` job (no JVM): it covers the INPUT digests
-and the gate failures below. When a generated package is present
-(`--generated /tmp/ci-gen` — the `validate-roundtrip` job), the same
-command additionally replays the ROUND-TRIP digests, so AC#2 is exercised
-offline as well as live against the real jar. It FAILS if:
+**and** the ROUND-TRIP digests — the same job builds `/tmp/ci-gen`, so the
+command is `validate corpus --offline corpus/validate-fixtures.json
+--generated /tmp/ci-gen` (r5; the round-trip axis must not be inert in the
+no-JVM run). The separate `validate-roundtrip` job runs **live** against the
+real jar (no `--offline`) and also performs the B3 fixture-drift check.
+AC#2 is therefore exercised offline (hermetic replay of committed round-trip
+digests) AND live (real oracle). It FAILS if:
 
 1. any `adapter_error` (tooling broken / missing fixture) — never masked,
 2. any file **regressed** valid → invalid/adapter since the committed
