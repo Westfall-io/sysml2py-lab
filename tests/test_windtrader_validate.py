@@ -350,11 +350,8 @@ def test_record_verdicts_hard_fails_on_adapter_error(monkeypatch, tmp_path):
         stdout = ""
         stderr = "java: not found"
     monkeypatch.setattr(wtmod, "_import_validate", lambda: (lambda t, version="0.2.0": _CmdResult()))
-    try:
+    with pytest.raises(wt.AdapterError):
         wt.record_verdicts({"x.sysml": "part {}"}, version="0.2.0")
-        assert False, "record_verdicts should raise on adapter_error"
-    except wt.AdapterError:
-        pass
 
 
 def test_record_verdicts_records_roundtrip_extra(monkeypatch, tmp_path):
@@ -377,6 +374,36 @@ def test_record_verdicts_records_roundtrip_extra(monkeypatch, tmp_path):
     for entry in fx.values():
         assert entry["file"] == "sub/a.sysml"
     assert len(calls) == 2
+
+
+def test_gate_offline_generated_replays_roundtrip(monkeypatch, tmp_path):
+    """B6 coverage (r2 W1-4): `--generated --offline` replays the round-trip
+    digests — this is the exact scenario the CLI now supports, and it was
+    never exercised before."""
+    _corpus_with_baseline(tmp_path,
+                          baseline={"a.sysml": "valid"},
+                          current={"a.sysml": "part { attribute x; }"})
+    emitted = "part { also fine }"  # generator emits valid SysML
+    fx = {
+        wt.digest_text("part { attribute x; }"): {"status": "valid", "exit_code": 0,
+                                                  "version": "0.2.0", "diagnostics": []},
+        wt.digest_text(emitted): {"status": "valid", "exit_code": 0,
+                                  "version": "0.2.0", "diagnostics": []},
+    }
+    fp = tmp_path / "fx.json"
+    json.dump(fx, open(fp, "w"))
+    import sysml2py_lab.validate.corpus as vc
+    monkeypatch.setattr(vc, "_roundtrip_outputs",
+                        lambda cd_, pkg: ({"a.sysml": emitted}, {}))
+    from sysml2py_lab import cli as cli_mod
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = cli_mod.main(["validate", str(tmp_path),
+                           "--generated", str(tmp_path / "pkg"),
+                           "--offline", str(fp)])
+    finally:
+        monkeypatch.chdir("/")
+    assert rc == 0  # input AND round-trip both replay from fixtures, exit 0
 
 
 def test_gate_passes_on_baseline_invalids(monkeypatch, tmp_path):
@@ -440,8 +467,10 @@ def test_gate_fails_on_adapter_error(monkeypatch, tmp_path):
 
 
 def test_gate_fails_on_new_unbaselined_invalid_file(monkeypatch, tmp_path):
-    """A NEW file (no baseline) that is invalid FAILS (AC#3, B2)."""
-    # manifest has NO entry for the on-disk file
+    """A NEW file that is invalid FAILS (AC#3, B2)."""
+    # manifest has NO baseline status entry for the on-disk file: the helper
+    # stamps every present file as "unverified", which unbaselined_files
+    # treats as no-valid-baseline — the AC#3 branch.
     _corpus_with_baseline(tmp_path,
                                baseline={"other.sysml": "valid"},
                                current={"other.sysml": "part { attribute o; }",

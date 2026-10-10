@@ -72,7 +72,7 @@ new file without a passing verdict. Baseline invalids are reported as
 tracked WIP and pass. `--offline --generated` replays round-trip verdicts
 (committed fixtures carry input + round-trip digests).
 
-## Review cycle (r1 → r2)
+## Review cycle (r1 → r2 → r3)
 - **r1: REQUEST CHANGES** — 6 genuine blockers (B1 round-trip gate can never
   fail; B2 `unverified` was dead/AC#3 unenforced; B3 fixture trust anchor
   unverified; B4 zero CLI gate tests; B5 generator crash misclassified as
@@ -80,11 +80,24 @@ tracked WIP and pass. `--offline --generated` replays round-trip verdicts
   (hoist quadratic round-trip pass; split summarize buckets by input/roundtrip
   axis; thread verdict+fixture in `corpus add`; fixture provenance; emit_error
   bucket; `record_verdicts` dead) + W2.
-- **Fixes (committed, mutation-locked)**: B1 roundtrip_regressions + ratchet
-  round-trip axis; B2 unbaselined_files from manifest baseline; B3 fixture
-  re-record w/ BOTH input+roundtrip digests + CI fixture-drift job; B4 six
-  CLI exit-code gate tests (red-before-fix); B5 emit_error bucket (generator
-  crash ≠ windtrader verdict); B6 `--offline --generated` works via
-  `_ensure_pkg`; hoisted quadratic; split summary buckets; `corpus add`
-  stamps verdict+fixture; record_verdicts wired+tested. 31 tests, full suite
-  208 pass, ruff clean.
+- **r2: REQUEST CHANGES — 1 blocker + 5 W1 + 7 W2**.
+  - **Blocker (real)**: single-file `validate` summary lacked
+    `roundtrip_adapter_errors` → shared gate KeyError'd → a VALID single file
+    exited 1. My earlier smoke tests predated the r1 summary restructure, and
+    B4's CLI tests only covered directory scope — caught by the reviewer.
+  - **W1-1/2/3/4/5**: single shared fixture builder (`build_fixture_dict` /
+    `write_fixture_file` in corpus.py — CLI `--record` + CI drift now use it,
+    no more three divergent builders); gate BEFORE on-disk writes (a failing
+    run no longer clobbers the baseline/trust anchor); round-trip diagnostics
+    preserved and shown on round-trip failures; B6 (`--generated --offline`)
+    now has a CLI gate test; `corpus add` no longer writes a half fixture
+    (stamps manifest with actual verdict values; fixture re-record is a
+    deliberate `validate --record` step).
+  - **W2**: `import sys` (no `__import__("sys")` hack); `_drop_pkg` in
+    finally + `_RT_CACHE` to avoid the double full-corpus generator pass;
+    `pytest.raises` instead of assert-False; single-file `--generated` now
+    warns it's ignored; on-disk-but-not-in-manifest files warned (invisible
+    to the gate otherwise).
+- **r3: PENDING** — gate after fixes: 211 tests, ruff clean, single-file
+  valid→0 / invalid→1 (blocker smoke), offline corpus ratchet exit 0,
+  shared builder reproduces committed fixtures 62/62.

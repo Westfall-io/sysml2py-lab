@@ -351,12 +351,13 @@ def main(argv: list[str] | None = None) -> int:
                 # without a passing windtrader verdict — unless the caller
                 # explicitly opts in (--allow-invalid, WIP escape).
                 from .validate import windtrader as vwt
+                version = args.windtrader_version or vwt.DEFAULT_VERSION
                 recorded = None
                 if args.offline is not None:
                     recorded = vwt.load_fixtures(args.offline)
                 text = args.file.read_text(encoding="utf-8")
                 try:
-                    verb = vwt.validate_text(text, version=args.windtrader_version,
+                    verb = vwt.validate_text(text, version=version,
                                              recorded=recorded)
                 except vwt.AdapterError as exc:
                     print(f"corpus add REFUSED: windtrader could not validate "
@@ -378,35 +379,27 @@ def main(argv: list[str] | None = None) -> int:
                     model_path=str(args.model) if args.model else None,
                     function=args.function,
                 )
-                # Thread the verdict + fixture so the file is immediately
-                # baselined (r1 W1-6): stamp the manifest windtrader field and
-                # append the digest to validate-fixtures.json if it exists.
+                # Thread the verdict so the file is immediately baselined in
+                # the manifest (r1 W1-6; r2 W1-5): stamp the windtrader field
+                # with the ACTUAL verdict values.  The fixture file is NOT
+                # touched here — corpus add has no round-trip output, so a
+                # half fixture would guarantee drift on the next
+                # `validate --record` commit (r2 W1-5); re-record fixtures
+                # deliberately with `sysml2py-lab validate --record`.
                 if verb.status == "valid":
                     try:
                         mpath = args.corpus / "manifest.json"
                         m = _json.loads(mpath.read_text(encoding="utf-8"))
                         m["files"][rel]["windtrader"] = {
-                            "status": "valid", "version": args.windtrader_version or "0.2.0",
-                            "exit_code": 0,
+                            "status": verb.status,
+                            "version": version,
+                            "exit_code": verb.exit_code,
                         }
                         mpath.write_text(_json.dumps(m, indent=2, sort_keys=True) + "\n",
                                          encoding="utf-8")
                     except Exception as exc:  # noqa: BLE001
                         print(f"corpus add WARNING: file added but could not stamp "
                               f"manifest windtrader field: {exc}", file=sys.stderr)
-                    fxpath = args.corpus / "validate-fixtures.json"
-                    if fxpath.exists():
-                        try:
-                            fx = vwt.load_fixtures(fxpath)
-                            fx[vwt.digest_text(text, args.windtrader_version or "0.2.0")] = {
-                                "status": "valid", "exit_code": 0,
-                                "version": args.windtrader_version or "0.2.0",
-                                "diagnostics": [], "file": rel,
-                            }
-                            vwt.save_fixtures(fxpath, fx)
-                        except Exception as exc:  # noqa: BLE001
-                            print(f"corpus add WARNING: fixture not appended: {exc}",
-                                  file=sys.stderr)
                 print(f"corpus add OK: {rel}")
                 return 0
             if args.corpus_cmd == "verify":
@@ -523,48 +516,6 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 summary = vcor.summarize(verdicts)
 
-                # record fixtures (live only) — after the gate, routed through
-                # record_verdicts (which hard-fails on adapter_error, B3/W1-3),
-                # recording BOTH input and round-trip digests (B6).
-                if args.record is not None and args.offline is None:
-                    # Refuse to record a fixture with an adapter/emit error:
-                    # baking a failure in would corrupt the trust anchor.
-                    bad = [
-                        (rel, e.get("input_status"), e.get("roundtrip_status"))
-                        for rel, e in verdicts.items()
-                        if e.get("input_status") in ("adapter_error", "emit_error")
-                        or e.get("roundtrip_status") in ("adapter_error", "emit_error")
-                    ]
-                    if bad:
-                        raise vwt.AdapterError(
-                            "refusing to record fixtures: adapter/emit errors present "
-                            f"{bad[:5]}"
-                        )
-                    rt_texts, _ = _roundtrip_texts_for_recording(target, args.generated)
-                    fx = {}
-                    for rel, e in verdicts.items():
-                        p = target / rel
-                        src = p.read_text(encoding="utf-8") if p.exists() else ""
-                        fx[vwt.digest_text(src, version)] = {
-                            "status": e.get("input_status", "adapter_error"),
-                            "exit_code": e.get("input_exit"),
-                            "version": version,
-                            "diagnostics": e.get("diagnostics", []),
-                            "file": rel,
-                        }
-                        if rel in rt_texts:
-                            fx[vwt.digest_text(rt_texts[rel], version)] = {
-                                "status": e.get("roundtrip_status", "adapter_error"),
-                                "exit_code": e.get("roundtrip_exit"),
-                                "version": version,
-                                "diagnostics": [],
-                                "file": rel,
-                            }
-                    vwt.save_fixtures(args.record, fx)
-
-                if args.manifest:
-                    vcor.update_manifest_verdicts(target, verdicts)
-
                 print(f"validate: {summary['files']} files")
                 print(f"  input_valid: {summary['input_valid']}")
                 if summary["roundtrip_present"]:
@@ -585,9 +536,18 @@ def main(argv: list[str] | None = None) -> int:
                         tag = f"input={st}"
                         if "roundtrip_status" in e:
                             tag += f" rt={e.get('roundtrip_status')}"
-                        diag = (e.get("diagnostics") or [""])[0]
+                        # r2 W1-3: on a round-trip failure show the ROUND-TRIP
+                        # diagnostics (what the generator emitted wrong), not
+                        # the input's.
+                        if e.get("roundtrip_status") not in (None, "valid", "emit_error", "adapter_error"):
+                            diag = (e.get("roundtrip_diagnostics") or [""])[0]
+                        else:
+                            diag = (e.get("diagnostics") or [""])[0]
                         print(f"  FAIL {rel}: {tag} {diag}")
             else:
+                if args.generated is not None:
+                    print("validate: --generated applies only to corpus scope; "
+                          "ignored for a single file", file=sys.stderr)
                 text = target.read_text(encoding="utf-8")
                 v = vwt.validate_text(text, version=version, recorded=recorded)
                 summary = {
@@ -596,6 +556,8 @@ def main(argv: list[str] | None = None) -> int:
                     "input_invalid": 1 if v.status == "invalid" else 0,
                     "input_adapter_errors": 1 if v.status == "adapter_error" else 0,
                     "roundtrip_valid": 0, "roundtrip_present": 0,
+                    "roundtrip_invalid": 0, "roundtrip_adapter_errors": 0,
+                    "roundtrip_emit_errors": 0,
                 }
                 print(f"validate: status={v.status} exit={v.exit_code}")
                 diag = (v.diagnostics or [""])[0]
@@ -645,6 +607,20 @@ def main(argv: list[str] | None = None) -> int:
                 if v is not None and v.status == "invalid":
                     print("GATE: invalid verdicts present", file=sys.stderr)
                     failed = True
+
+            # On-disk writes only AFTER the gate passes (r2 W1-2): a failing
+            # run must never clobber the committed baseline or trust anchor.
+            if not failed and args.cmd == "validate":
+                if is_dir:
+                    if args.manifest:
+                        vcor.update_manifest_verdicts(target, verdicts)
+                    if args.record is not None and args.offline is None:
+                        vcor.write_fixture_file(
+                            target, verdicts,
+                            dest=args.record,
+                            generated_pkg=args.generated,
+                            version=version,
+                        )
             return 1 if failed else 0
         except Exception as e:
             import traceback

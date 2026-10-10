@@ -22,10 +22,17 @@ verdict recorded yet — never treated as valid, and downgraded to
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 from sysml2py_lab.validate import windtrader as wt
+
+# Cache of the last full-corpus round-trip pass, keyed by (corpus_dir, pkg).
+# `--generated --record` would otherwise run the O(corpus) generator pass
+# TWICE in one CLI invocation (once in compute_verdicts, once in
+# write_fixture_file) — r2 W2.
+_RT_CACHE: dict[tuple[str, str | None], tuple[dict[str, str], dict[str, str]]] = {}
 
 
 def _load_manifest(corpus_dir: Path) -> dict[str, Any]:
@@ -60,29 +67,39 @@ def _roundtrip_outputs(corpus_dir: Path, generated_pkg: Path | None):
     """
     if generated_pkg is None:
         return {}, {}
-    from sysml2py_lab.regress import _ensure_pkg, _ir_to_json, dump_from_definition
+    key = (str(corpus_dir.resolve()), str(generated_pkg))
+    if key in _RT_CACHE:
+        return _RT_CACHE[key]
+    from sysml2py_lab.regress import _ensure_pkg, _drop_pkg, _ir_to_json, dump_from_definition
     _ensure_pkg(generated_pkg)  # puts <pkg>/src (or <pkg>/sysml2py/src) on sys.path
-    import sysml2py  # type: ignore[import-not-found]
-    from sysml2py_lab.ir import parse_ir
+    try:
+        import sysml2py  # type: ignore[import-not-found]
+        from sysml2py_lab.ir import parse_ir
 
-    texts: dict[str, str] = {}
-    errs: dict[str, str] = {}
-    manifest = _load_manifest(corpus_dir)
-    for rel in sorted(manifest.get("files", {})):
-        p = corpus_dir / rel
-        if not p.exists():
-            errs[rel] = "file missing on disk"
-            continue
-        try:
-            src = p.read_text(encoding="utf-8")
-            root = parse_ir(src)
-            tree = sysml2py.Node.from_ir(_ir_to_json(root))
-            texts[rel] = dump_from_definition(tree.get_definition())
-        except Exception as exc:  # noqa: BLE001
-            # A generator crash is NOT a windtrader verdict.  Record the
-            # reason so the operator can see WHY round-trip failed.
-            errs[rel] = f"{type(exc).__name__}: {exc}"
-    return texts, errs
+        texts: dict[str, str] = {}
+        errs: dict[str, str] = {}
+        manifest = _load_manifest(corpus_dir)
+        for rel in sorted(manifest.get("files", {})):
+            p = corpus_dir / rel
+            if not p.exists():
+                errs[rel] = "file missing on disk"
+                continue
+            try:
+                src = p.read_text(encoding="utf-8")
+                root = parse_ir(src)
+                tree = sysml2py.Node.from_ir(_ir_to_json(root))
+                texts[rel] = dump_from_definition(tree.get_definition())
+            except Exception as exc:  # noqa: BLE001
+                # A generator crash is NOT a windtrader verdict.  Record the
+                # reason so the operator can see WHY round-trip failed.
+                errs[rel] = f"{type(exc).__name__}: {exc}"
+        _RT_CACHE[key] = (texts, errs)
+        return texts, errs
+    finally:
+        # Leave the process clean (r2 W2): drop the generated pkg from
+        # sys.path and purge cached sysml2py modules so a later run in the
+        # same process (or a test) can't accidentally reuse a stale tree.
+        _drop_pkg(generated_pkg)
 
 
 def _manifest_names(corpus_dir: Path) -> list[str]:
@@ -114,6 +131,20 @@ def compute_verdicts(
     files = _manifest_names(corpus_dir)
     if not files:
         raise ValueError(f"corpus manifest declares no files: {corpus_dir}")
+
+    # Warn if on-disk .sysml files exist but aren't in the manifest — they
+    # are invisible to the gate entirely (r2 W2).
+    manifest = load_manifest(corpus_dir)
+    on_disk = sorted(
+        p.relative_to(corpus_dir).as_posix()
+        for p in corpus_dir.rglob("*.sysml")
+        if "validate-fixtures" not in p.name
+    )
+    missing_from_manifest = [rel for rel in on_disk if rel not in manifest.get("files", {})]
+    if missing_from_manifest:
+        print(f"WARNING: {len(missing_from_manifest)} .sysml file(s) on disk not in "
+              f"manifest (invisible to the gate): {missing_from_manifest[:3]}",
+              file=sys.stderr)
 
     # Hoist the full-corpus round-trip pass ABOVE the per-file loop (r1 W1-1:
     # calling it inside the loop was O(n²) — n full-corpus passes).
@@ -158,6 +189,7 @@ def compute_verdicts(
                 else:
                     entry["roundtrip_status"] = rv.status
                     entry["roundtrip_exit"] = rv.exit_code
+                    entry["roundtrip_diagnostics"] = rv.diagnostics
             else:
                 entry["roundtrip_status"] = "adapter_error"
                 entry["roundtrip_exit"] = None
@@ -231,7 +263,7 @@ def ratchet_regressions(
         if not isinstance(baseline, dict):
             print(f"WARNING: file {rel} has a non-dict windtrader baseline "
                   f"{baseline!r}; treating as unknown (not a regression, but "
-                  f"not a valid baseline either)", file=__import__("sys").stderr)
+                  f"not a valid baseline either)", file=sys.stderr)
         for axis, cur_attr, base_attr in (
             ("input", "input_status", "status"),
             ("roundtrip", "roundtrip_status", "roundtrip_status"),
@@ -317,3 +349,70 @@ def update_manifest_verdicts(
             invalid += 1
     save_manifest(corpus_dir, manifest)
     return valid, invalid
+
+
+def build_fixture_dict(
+    corpus_dir: Path,
+    verdicts: dict[str, dict[str, Any]],
+    *,
+    version: str = wt.DEFAULT_VERSION,
+    rt_texts: dict[str, str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Single shared builder for ``validate-fixtures.json`` (r2 W1-1).
+
+    Records one entry per input digest and (when ``rt_texts`` supplied, i.e.
+    a generated package was used) one per round-trip digest — so offline
+    ``--offline --generated`` replay covers AC#2.  Round-trip diagnostics
+    are preserved (r2 W1-3): a fixture for the emitted text carries the
+    oracle's diagnostics for that text, never the input's.
+
+    Refuses (adapter_error / emit_error present): baking a broken verdict
+    into the trust anchor would corrupt it.
+    """
+    for rel, e in verdicts.items():
+        bad = (e.get("input_status"), e.get("roundtrip_status"))
+        if any(s in ("adapter_error", "emit_error") for s in bad if s is not None):
+            raise wt.AdapterError(
+                f"refusing to build fixtures: adapter/emit errors present "
+                f"({rel}: {bad})"
+            )
+    fx: dict[str, dict[str, Any]] = {}
+    for rel, e in verdicts.items():
+        p = corpus_dir / rel
+        src = p.read_text(encoding="utf-8") if p.exists() else ""
+        fx[wt.digest_text(src, version)] = {
+            "status": e.get("input_status", "adapter_error"),
+            "exit_code": e.get("input_exit"),
+            "version": version,
+            "diagnostics": e.get("diagnostics", []),
+            "file": rel,
+        }
+        if rt_texts is not None and rel in rt_texts:
+            rt = rt_texts[rel]
+            fx[wt.digest_text(rt, version)] = {
+                "status": e.get("roundtrip_status", "adapter_error"),
+                "exit_code": e.get("roundtrip_exit"),
+                "version": version,
+                "diagnostics": e.get("roundtrip_diagnostics", []),
+                "file": rel,
+            }
+    return fx
+
+
+def write_fixture_file(
+    corpus_dir: Path,
+    verdicts: dict[str, dict[str, Any]],
+    *,
+    dest: Path,
+    generated_pkg: Path | None,
+    version: str = wt.DEFAULT_VERSION,
+) -> dict[str, dict[str, Any]]:
+    """Record verified fixtures to ``dest`` after the gate has passed.
+
+    Uses the single shared builder; with a generated package the round-trip
+    texts are recovered (so the fixture set includes round-trip digests).
+    """
+    rt_texts, _ = _roundtrip_outputs(corpus_dir, generated_pkg)
+    fx = build_fixture_dict(corpus_dir, verdicts, version=version, rt_texts=rt_texts)
+    wt.save_fixtures(dest, fx)
+    return fx

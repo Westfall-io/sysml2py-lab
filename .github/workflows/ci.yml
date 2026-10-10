@@ -97,32 +97,22 @@ jobs:
 
       - name: Windtrader fixture-drift check (B3)
         # Re-record the committed fixtures from the LIVE oracle and diff
-        # against what's committed.  Any drift means a recorded verdict
-        # silently diverged from the real jar — fail the build.
+        # against what's committed, using the SAME single builder the CLI
+        # uses (r2 W1-1) — any drift means a recorded verdict silently
+        # diverged from the real jar — fail the build.
         run: |
           python - <<'EOF'
           import sys, json, subprocess, hashlib
           from pathlib import Path
           sys.path.insert(0, "/tmp/ci-gen/sysml2py/src")
           sys.path.insert(0, "src")
-          from sysml2py_lab.validate import corpus, windtrader as wt
+          from sysml2py_lab.validate import corpus
           sd = Path("corpus")
           verdicts = corpus.compute_verdicts(sd, generated_pkg=Path("/tmp/ci-gen/sysml2py"))
-          rt_texts, _ = corpus._roundtrip_outputs(sd, Path("/tmp/ci-gen/sysml2py"))
-          fresh = {}
-          for rel in sorted(verdicts):
-              p = sd / rel
-              src = p.read_text(encoding="utf-8")
-              e = verdicts[rel]
-              fresh[wt.digest_text(src, "0.2.0")] = {
-                  "status": e.get("input_status"), "exit_code": e.get("input_exit"),
-                  "version": "0.2.0", "diagnostics": e.get("diagnostics", []), "file": rel,
-              }
-              if rel in rt_texts:
-                  fresh[wt.digest_text(rt_texts[rel], "0.2.0")] = {
-                      "status": e.get("roundtrip_status"), "exit_code": e.get("roundtrip_exit"),
-                      "version": "0.2.0", "diagnostics": [], "file": rel,
-                  }
+          fresh = corpus.build_fixture_dict(
+              sd, verdicts, version="0.2.0",
+              rt_texts=corpus._roundtrip_outputs(sd, Path("/tmp/ci-gen/sysml2py"))[0],
+          )
           committed = json.loads((sd / "validate-fixtures.json").read_text())
           if fresh != committed:
               print("FIXTURE DRIFT: committed fixtures differ from the live oracle")
