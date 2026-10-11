@@ -47,6 +47,9 @@ from .builders import (
 {% for name in builder_class_names %}
     {{ name }},
 {% endfor %}
+{% for name in friendly_class_names %}
+    {{ name }},
+{% endfor %}
 )
 from .traversal import (
     walk,
@@ -89,6 +92,9 @@ __all__ = [
     "Builder",
     "LEGAL_CHILDREN",
 {% for name in builder_class_names %}
+    "{{ name }}",
+{% endfor %}
+{% for name in friendly_class_names %}
     "{{ name }}",
 {% endfor %}
     "walk",

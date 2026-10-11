@@ -81,6 +81,7 @@ def _emit_builders(model: CodegenModel) -> str:
         builder_classes=bm["builder_classes"],
         legal_children=bm["legal_children"],
         usage_modifier_slots=bm["usage_modifier_slots"],
+        friendly_class_names=bm["friendly_class_names"],
     )
 
 
@@ -162,6 +163,7 @@ def emit_sysml2py(
             builder_class_names=[
                 b["name"] for b in model.builder_metadata()["builder_classes"]
             ],
+            friendly_class_names=model.builder_metadata()["friendly_class_names"],
         ),
         encoding="utf-8",
     )
@@ -179,16 +181,18 @@ def emit_sysml2py(
             f"- `Unsupported` nodes carry raw text (zero NotImplementedError)\n"
             f"- Compiled grammar shipped as package data; provenance in\n"
             f"  `sysml2py.provenance`\n\n"
-            f"## Building a model (current builder API)\n\n"
-            f"The generated API composes **builder classes** (one per grammar\n"
-            f"rule, `*Builder`) into a model, then `dump()`s it:\n\n"
+            f"## Building a model (friendly builder API)\n\n"
+            f"Friendly names drop the `Builder`/`Usage`/`Definition` suffixes —\n"
+            f"`Part`, `Attribute`, `Item`, ... are builders; usage vs definition is\n"
+            f"chosen at creation via `kind=`; `add()` appends children so a full\n"
+            f"package dumps from nested composition:\n\n"
             f"```python\n"
-            f"from sysml2py import PackageBuilder, PartUsageBuilder, AttributeUsageBuilder\n\n"
+            f"from sysml2py import PackageBuilder, Part, Attribute\n\n"
             f"pkg = PackageBuilder('MyModel')\n"
-            f"stage = PartUsageBuilder('Stage_1')\n"
-            f"stage._set_child(AttributeUsageBuilder('mass'))\n"
-            f"stage._set_child(AttributeUsageBuilder('thrust'))\n"
-            f"pkg._set_child(stage)\n"
+            f"stage = Part('Stage_1')\n"
+            f"stage.add(Attribute('mass'))\n"
+            f"stage.add(Attribute('thrust'))\n"
+            f"pkg.add(stage)\n"
             f"print(pkg.dump())\n"
             f"```\n\n"
             f"```\n"
@@ -199,11 +203,14 @@ def emit_sysml2py(
             f"  }}\n"
             f"}}\n"
             f"```\n\n"
-            f"Value-bearing attributes (`attribute mass = 100.0 [kg];`) and the\n"
-            f"0.5.x `Part`/`Attribute` names are **not yet expressible** — the\n"
-            f"example's full requirements are tracked as issue #26 in the\n"
-            f"generation repo (https://github.com/Westfall-io/sysml2py-lab/issues/26)\n"
-            f"and the migration note below.\n\n"
+            f"Definitions are the same class with `kind=` at creation:\n"
+            f"`Part('Stage_1', kind='definition')` -> `part def Stage_1;` \n\n"
+            f"`Package`/`Comment`/`Import`/`Message` keep the `*Builder` suffix\n"
+            f"(their friendly names are the AST node classes). The classic `*Builder`\n"
+            f"names (`PartUsageBuilder`, ...) remain available.\n\n"
+            f"Value-bearing attributes (`attribute mass = 100.0 [kg];`) are **not yet\n"
+            f"expressible** — tracked as issue #26 in the generation repo\n"
+            f"(https://github.com/Westfall-io/sysml2py-lab/issues/26).\n\n"
             f"Compatibility: this is the **1.x** line. Moving from 0.5.x? see\n"
             f"the migration note:\n"
             f"https://github.com/Westfall-io/sysml2py-lab/blob/main/docs/migration-0.5-to-1.0.md\n"

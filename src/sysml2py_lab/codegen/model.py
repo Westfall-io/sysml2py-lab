@@ -30,6 +30,19 @@ from pathlib import Path
 
 from ..grammar.spec import load_spec
 
+
+def _friendly_name(class_name: str) -> str:
+    """Friendly public builder name (issue #27): strip a trailing
+    ``Usage``/``Definition`` classifier from the AST class name so the
+    developer-facing API reads ``Part`` not ``PartUsageBuilder``.  Names with
+    neither classifier (Package, Comment, Import, AliasMember, ...) pass
+    through unchanged."""
+    for suffix in ("Usage", "Definition"):
+        if class_name.endswith(suffix) and len(class_name) > len(suffix):
+            return class_name[: -len(suffix)]
+    return class_name
+
+
 # Extra class names generated alongside plain grammar rules.  RootNamespace /
 # DefinitionElement are also real top-level grammar rules, so they are already
 # generated and their EXTRA_KINDS entry is a belt-and-braces no-op (skipped by
@@ -86,6 +99,23 @@ IR_KIND_ALIASES: dict[str, str] = {
     "transition": "TransitionUsage",
     "unknown": "Unsupported",
     "use_case": "UseCaseUsage",
+    # Issue #27: definition-variant coarse kinds (emitted by the friendly
+    # builder API when `kind='definition'`) map to the Definition AST classes
+    # so a definition model casts back to a structured node, not Unsupported
+    # (the cast previously dropped `part def Stage_1` wrappers).
+    "part def": "PartDefinition",
+    "item def": "ItemDefinition",
+    "attribute def": "AttributeDefinition",
+    "port def": "PortDefinition",
+    "constraint def": "ConstraintDefinition",
+    "connection def": "ConnectionDefinition",
+    "occurrence def": "OccurrenceDefinition",
+    "action def": "ActionDefinition",
+    "state def": "StateDefinition",
+    "subject def": "SubjectDefinition",
+    "use case def": "UseCaseDefinition",
+    "requirement def": "RequirementDefinition",
+    "interface def": "InterfaceDefinition",
 }
 
 
@@ -360,8 +390,18 @@ class CodegenModel:
     # alias table, not a hand-maintained parallel list, so drift is caught
     # by the coverage test).  Each maps to a generated class via
     # IR_KIND_ALIASES; every aliased kind not denied gets a builder.
+    # Issue #27: the definition-variant kinds ("part def", ...) are cast-back
+    # aliases ONLY — they never get their own builder class (the friendly
+    # `Part(kind='definition')` produces them); deny them here so no
+    # `PartDefinitionBuilder` is generated and friendly names stay unique.
     BUILDER_DENY: frozenset[str] = frozenset(
-        {"brace_open", "brace_close", "root", "unknown"}
+        {
+            "brace_open", "brace_close", "root", "unknown",
+            "part def", "item def", "attribute def", "port def",
+            "constraint def", "connection def", "occurrence def",
+            "action def", "state def", "subject def", "use case def",
+            "requirement def", "interface def",
+        }
     )
 
     def builder_ir_kinds(self) -> list[str]:
@@ -415,10 +455,24 @@ class CodegenModel:
             legal[body] = sorted(
                 {k for slot in self.body_slots(body) for k in slot.kinds}
             )
+        # Issue #27: friendly public names without the Builder/Usage/
+        # Definition classifiers — `Part` for `PartUsageBuilder`.  Derived
+        # by stripping a trailing `Usage`/`Definition` from the AST class
+        # name; EXCLUDING names that collide with an existing AST node
+        # class (e.g. `Package` is both the friendly builder candidate and
+        # the generated AST `Package` node — the node must keep the
+        # top-level name, so those builders stay `*Builder`).
+        _node_names = {nk.name for nk in self.node_kinds()}
         return {
             "builder_classes": kinds_out,
             "legal_children": legal,
             "usage_modifier_slots": self.modifier_slots("BasicUsagePrefix"),
+            "friendly_class_names": [
+                _friendly_name(b["class_name"])
+                for b in kinds_out
+                if _friendly_name(b["class_name"]) != b["class_name"]
+                and _friendly_name(b["class_name"]) not in _node_names
+            ],
         }
 
     # -- provenance -------------------------------------------------------

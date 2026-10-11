@@ -39,15 +39,19 @@ note explains how a 0.5.x consumer moves to 1.0.0 and what to expect.
    project deps and `import astropy.units as u` where needed — 1.0.0 no
    longer bundles it.
 3. If you constructed models with the 0.5.x API, the generated builder API
-   covers the same *composition* operations with different names: one
-   `*Builder` class per grammar rule, `_set_name`, `_set_child`, `dump`.
-   The classic 0.5.x example imports `Attribute`/`Part` directly and uses
-   `set_value` with `astropy.units` — **those exact names / that value path
-   are not in 1.0.0 yet** (see the generated README for the current
-   equivalent). Value-bearing attributes (`attribute mass = 100.0 [kg];`)
-   are tracked as an API gap in the generation repo; until then, prefer the
-   builder API in the README. `Unsupported` nodes remain the honest
-   fallback for constructs not yet structurally represented.
+   preserves the friendly *names* you remember (`Part`, `Attribute`, `Item`,
+   ...) — the `Builder`/`Usage`/`Definition` suffixes are dropped (issue
+   #27). Usage vs definition is chosen at creation via `kind=`:
+   `Part('Stage_1')` -> `part Stage_1;`, `Part('Stage_1', kind='definition')`
+   -> `part def Stage_1;`. `add()` appends children (`pkg.add(part)`).
+   Container names that collide with AST node classes (`Package`, `Comment`,
+   `Import`, `Message`) keep the `*Builder` suffix — use `PackageBuilder`,
+   etc. The classic 0.5.x example also used `set_value` with `astropy.units`
+   — **that value path is not in 1.0.0 yet** (see the generated README).
+   Value-bearing attributes (`attribute mass = 100.0 [kg];`) are tracked as
+   issue #26; until then, prefer the builder API in the README.
+   `Unsupported` nodes remain the honest fallback for constructs not yet
+   structurally represented.
 4. To verify provenance of a given install:
    ```python
    from sysml2py import provenance

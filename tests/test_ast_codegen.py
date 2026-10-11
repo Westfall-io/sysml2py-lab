@@ -1222,3 +1222,106 @@ def test_import_graph_no_lab_or_heavy_deps(tmp_path, monkeypatch):
     )
     assert r.returncode == 0, f"import-graph polluted:\n{r.stderr}\n{r.stdout}"
     assert "1.0.0" in r.stdout
+
+
+def test_friendly_api_names_clean_and_no_collision(tmp_path):
+    """Issue #27: friendly names drop Builder/Usage/Definition.
+
+    - `Part`, `Attribute`, ... exist (no suffix).
+    - Names that collide with AST node classes (`Package`, `Comment`, ...)
+      are NOT aliased — the AST class keeps the top-level name.
+    - The friendly classes are Builders (have `.add`, `.dump`).
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        for name in ("Part", "Attribute", "Item", "Port", "Requirement", "Reference"):
+            assert hasattr(sysml2py, name), f"missing friendly name {name}"
+            cls = getattr(sysml2py, name)
+            assert issubclass(cls, sysml2py.Builder), f"{name} not a Builder"
+        # AST-colliding names keep the node class, not a builder alias:
+        # Package must still be the generated AST node (module ast_classes),
+        # not a friendly builder subclass shadowing it.
+        assert sysml2py.Package.__module__.endswith("ast_classes"), (
+            "Package must stay the AST node class (builder alias would shadow): "
+            + sysml2py.Package.__module__
+        )
+        assert "Builder" not in sysml2py.Package.__mro__[1].__name__
+        assert not hasattr(sysml2py, "PackageBuilderAlias")
+        # the *Builder names still work too
+        assert hasattr(sysml2py, "PartUsageBuilder")
+        assert hasattr(sysml2py, "PackageBuilder")
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_friendly_api_kind_selection_and_add(tmp_path):
+    """Issue #27: kind= at creation selects usage vs definition; add() appends.
+
+    `Part('S')` -> `part S;`, `Part('S', kind='definition')` -> `part def S;`.
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        # usage (default)
+        assert sysml2py.Part("S").dump().strip() == "part S;"
+        # kind variants all normalize to correct SysML
+        assert sysml2py.Part("S", kind="definition").dump().strip() == "part def S;"
+        assert sysml2py.Part("S", kind="def").dump().strip() == "part def S;"
+        assert sysml2py.Part("S", kind="part").dump().strip() == "part S;"
+        # rejection of the class-name form that used to emit invalid SysML
+        for bad in ("PartDefinition", "PartUsage", "bogus"):
+            try:
+                sysml2py.Part("S", kind=bad)
+                raise AssertionError(f"kind={bad!r} should have raised")
+            except ValueError:
+                pass
+        # add() appends children and dumps a nested package
+        pkgb = sysml2py.PackageBuilder("MyModel")
+        stage = sysml2py.Part("Stage_1")
+        stage.add(sysml2py.Attribute("mass"))
+        stage.add(sysml2py.Attribute("thrust"))
+        pkgb.add(stage)
+        out = pkgb.dump()
+        assert "part Stage_1" in out and "attribute mass" in out and "attribute thrust" in out
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_friendly_api_definition_casts_to_definition_node(tmp_path):
+    """Issue #27: `Part(kind='definition')` casts back to PartDefinition.
+
+    The definition-variant IR alias must lift to the Definition AST class,
+    NOT Unsupported (the pre-fix cast dropped `part def Stage_1` wrappers).
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        from sysml2py.ast_classes import Unsupported
+
+        pd = sysml2py.Part("S", kind="definition").build_node()
+        assert not isinstance(pd, Unsupported), "definition must not fall to Unsupported"
+        assert type(pd).__name__ == "PartDefinition", type(pd).__name__
+        assert pd.kind == "PartDefinition"
+        assert pd.name == "S"
+
+        # nested definition inside a package survives the round-trip
+        pkgb = sysml2py.PackageBuilder("M")
+        pkgb.add(sysml2py.Part("S", kind="definition"))
+        node = pkgb.build_node()
+        child = node.children[0]
+        assert not isinstance(child, Unsupported), type(child).__name__
+        assert type(child).__name__ == "PartDefinition", type(child).__name__
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
