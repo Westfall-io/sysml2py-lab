@@ -32,15 +32,21 @@ Acceptance tests (tests/test_ast_codegen.py, issue #13 section):
   (AC3, subprocess with clean `sys.modules`).
 
 Release machinery:
-- `.github/workflows/release.yml` — on `v*` tag (or manual dispatch):
-  regenerate deterministically with the tag-derived version (W2-1: a
-  `v1.0.1` builds 1.0.1, not a re-publish) → unit+corpus+cast suite →
-  regress replay/roundtrip/goldens/coverage → corpus verify → **live**
-  windtrader round-trip gate (W2-4: publish is irreversible, use the
-  strongest oracle) → build wheel+sdist → assert wheel contents
-  (grammar/provenance/exact version) → clean-venv import-graph smoke →
-  upload artifacts; `publish` job (trusted publishing, `environment: pypi`)
-  publishes on tagged runs.
+- `.github/workflows/release.yml` — **two ways to release**:
+  1. **Tag push** `v1.0.0`/`v1.1.0` → regenerate deterministically with the
+     tag-derived version (W2-1: a `v1.0.1` builds 1.0.1, not a re-publish)
+     → unit+corpus+cast suite → regress replay/roundtrip/goldens/coverage →
+     corpus verify → **live** windtrader round-trip gate (W2-4: publish is
+     irreversible, use the strongest oracle) → build wheel+sdist → assert
+     wheel contents (grammar/provenance/exact version) → clean-venv
+     import-graph smoke → upload artifacts → **publish** (trusted
+     publishing, `environment: pypi`).
+  2. **Manual `workflow_dispatch`** (owner-driven release from the Actions
+     UI): same build + verify, and optionally publishes when
+     `publish_to_pypi: true` (default `false` → artifact-only dry-run).
+     The `version` input overrides the built version for a manual run
+     (default 1.0.0); tag push always derives from the tag. The publish
+     gate is `tag || (workflow_dispatch && publish_to_pypi)`.
 - `docs/migration-0.5-to-1.0.md` — migration note for 0.5.x consumers.
 
 ## Reproducibility
