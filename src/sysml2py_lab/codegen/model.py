@@ -101,8 +101,10 @@ IR_KIND_ALIASES: dict[str, str] = {
     "use_case": "UseCaseUsage",
     # Issue #27: definition-variant coarse kinds (emitted by the friendly
     # builder API when `kind='definition'`) map to the Definition AST classes
-    # so a definition model casts back to a structured node, not Unsupported
-    # (the cast previously dropped `part def Stage_1` wrappers).
+    # so a definition model casts back to a structured node, not Unsupported.
+    # NOTE (W2-4): this only covers BUILDER-produced IR (`build_node()`).
+    # Parsing `part def Stage_1` from TEXT still yields `part` -> PartUsage
+    # (`ir.py` discards the `def` token); text -> `*Definition` is an open gap.
     "part def": "PartDefinition",
     "item def": "ItemDefinition",
     "attribute def": "AttributeDefinition",
@@ -112,8 +114,9 @@ IR_KIND_ALIASES: dict[str, str] = {
     "occurrence def": "OccurrenceDefinition",
     "action def": "ActionDefinition",
     "state def": "StateDefinition",
-    "subject def": "SubjectDefinition",
-    "use case def": "UseCaseDefinition",
+    # NOTE: no "subject def" — `subject` is usage-only in SysML v2; the
+    # definition target would dangle (SubjectDefinition doesn't exist).
+    "use_case def": "UseCaseDefinition",
     "requirement def": "RequirementDefinition",
     "interface def": "InterfaceDefinition",
 }
@@ -390,19 +393,14 @@ class CodegenModel:
     # alias table, not a hand-maintained parallel list, so drift is caught
     # by the coverage test).  Each maps to a generated class via
     # IR_KIND_ALIASES; every aliased kind not denied gets a builder.
-    # Issue #27: the definition-variant kinds ("part def", ...) are cast-back
-    # aliases ONLY — they never get their own builder class (the friendly
-    # `Part(kind='definition')` produces them); deny them here so no
-    # `PartDefinitionBuilder` is generated and friendly names stay unique.
+    # Issue #27 (W2-6): the definition-variant kinds (keys ending " def")
+    # are cast-back aliases ONLY — they never get their own builder class
+    # (the friendly `Part(kind='definition')` produces them).  Derived from
+    # IR_KIND_ALIASES so adding a future "enum def" alias can't silently
+    # generate an `EnumDefinitionBuilder` / collide a friendly name.
     BUILDER_DENY: frozenset[str] = frozenset(
-        {
-            "brace_open", "brace_close", "root", "unknown",
-            "part def", "item def", "attribute def", "port def",
-            "constraint def", "connection def", "occurrence def",
-            "action def", "state def", "subject def", "use case def",
-            "requirement def", "interface def",
-        }
-    )
+        {"brace_open", "brace_close", "root", "unknown"}
+    ) | {k for k in IR_KIND_ALIASES if k.endswith(" def")}
 
     def builder_ir_kinds(self) -> list[str]:
         """All IR kinds that should produce a builder class, in alias order."""
@@ -441,6 +439,7 @@ class CodegenModel:
                 {
                     "name": cls_name + "Builder",
                     "class_name": cls_name,
+                    "friendly_name": _friendly_name(cls_name),  # W2-9: single source
                     "kind": cls_name,
                     "ir_kind": ir_kind,
                     "is_definition": ir_kind == "package",
@@ -463,6 +462,12 @@ class CodegenModel:
         # the generated AST `Package` node — the node must keep the
         # top-level name, so those builders stay `*Builder`).
         _node_names = {nk.name for nk in self.node_kinds()}
+        # def-capable ir kinds: every "X def" IR alias key has stem X (the
+        # printable def form exists for exactly those).  Drives the friendly
+        # docstring (no definition line for usage-only kinds).
+        _def_ir_kinds = {
+            k[: -len(" def")] for k in IR_KIND_ALIASES if k.endswith(" def")
+        }
         return {
             "builder_classes": kinds_out,
             "legal_children": legal,
@@ -473,6 +478,7 @@ class CodegenModel:
                 if _friendly_name(b["class_name"]) != b["class_name"]
                 and _friendly_name(b["class_name"]) not in _node_names
             ],
+            "def_ir_kinds": _def_ir_kinds,
         }
 
     # -- provenance -------------------------------------------------------

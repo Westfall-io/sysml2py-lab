@@ -1325,3 +1325,168 @@ def test_friendly_api_definition_casts_to_definition_node(tmp_path):
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_all_definition_variant_aliases_cast(tmp_path):
+    """Issue #27 W1-1 guard: EVERY definition-variant IR alias (the `* def`
+    keys) must lift to a real KIND_REGISTRY node — a dangling alias would
+    silently produce Unsupported.  Also: every IR_KIND_ALIASES value must be
+    a registry key, so a future alias can't dangle."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        from sysml2py.ast_classes import IR_KIND_ALIASES, KIND_REGISTRY, Unsupported
+
+        # every DEF-variant alias target must exist in the registry (W1-1
+        # loop guard).  Skipped: sentinel aliases (brace_open/brace_close/
+        # unknown -> Unsupported) are intentional loss-preservation targets.
+        dangling = sorted(
+            v
+            for k, v in IR_KIND_ALIASES.items()
+            if k.endswith(" def") and v not in KIND_REGISTRY
+        )
+        assert not dangling, f"dangling definition IR aliases: {dangling}"
+
+        # every def-variant kind actually builds + casts (not Unsupported)
+        for ir_kind, cls_name in sorted(IR_KIND_ALIASES.items()):
+            if not ir_kind.endswith(" def"):
+                continue
+            stem = ir_kind[: -4]  # "part def" -> "part"
+            builder = _friendly_builder_for_stem(sysml2py, stem)
+            node = builder("S", kind="definition").build_node()
+            assert not isinstance(node, Unsupported), (
+                f"{ir_kind} cast to Unsupported (dangling alias)"
+            )
+            assert type(node).__name__ == cls_name, (
+                f"{ir_kind} -> {type(node).__name__}, expected {cls_name}"
+            )
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def _friendly_builder_for_stem(sysml2py, stem):
+    """Map an ir_kind stem ('part') to its builder class ('PartUsageBuilder'
+    or a friendly 'Part'), handling the underscore forms ('use_case' ->
+    'UseCase')."""
+    # friendly first
+    for n in ("Part", "Item", "Attribute", "Port", "Constraint", "Connection",
+              "Occurrence", "Action", "State", "UseCase", "Requirement",
+              "Interface"):
+        if n.lower() == stem.replace("_", ""):
+            return getattr(sysml2py, n)
+    # underscore forms / builder-only
+    overrides = {"use_case": "UseCase"}
+    name = overrides.get(stem, stem.title().replace("_", ""))
+    return getattr(sysml2py, name + "UsageBuilder", getattr(sysml2py, name + "Builder"))
+
+
+def test_friendly_api_rejects_definition_where_no_def_form(tmp_path):
+    """Issue #27 W1-2 guard: kind='definition' raises (does NOT silently
+    return a usage) for kinds with no definition form."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        for name in ("Actor", "Reference", "Transition", "ObjectiveRequirement", "Subject"):
+            cls = getattr(sysml2py, name)
+            try:
+                cls("x", kind="definition")
+                raise AssertionError(f"{name} accepted kind='definition' (should raise)")
+            except ValueError:
+                pass
+        # and the def-capable kinds still accept it
+        assert sysml2py.Part("S", kind="definition").dump().strip() == "part def S;"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_readme_example_executes_against_generated_package(tmp_path):
+    """Issue #27 W2-7: the README's friendly-builder snippet must actually
+    run against the generated package and produce the shown output.  This
+    makes \"executes against the generated wheel\" a gate, not a claim."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        # The exact README example (emit.py template, friendly builder API)
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            pkgb = sysml2py.PackageBuilder("MyModel")
+            stage = sysml2py.Part("Stage_1")
+            stage.add(sysml2py.Attribute("mass"))
+            stage.add(sysml2py.Attribute("thrust"))
+            pkgb.add(stage)
+            print(pkgb.dump())
+        rendered = buf.getvalue().strip()
+        expected = (
+            "package MyModel {\n"
+            "  part Stage_1 {\n"
+            "    attribute mass;\n"
+            "    attribute thrust;\n"
+            "  }\n"
+            "}"
+        )
+        # whitespace-insensitive structural compare (the printer's exact
+        # indentation is a separate normalization concern)
+        import re
+
+        def _norm(s):
+            return re.sub(r"\s+", " ", s).strip()
+
+        assert _norm(rendered) == _norm(expected), (
+            f"README example output mismatch:\n{rendered!r}\nvs\n{expected!r}"
+        )
+
+        # and the definition form really prints `part def Stage_1;`
+        assert sysml2py.Part("Stage_1", kind="definition").dump().strip() == (
+            "part def Stage_1;"
+        )
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_friendly_names_pinned(tmp_path):
+    """Issue #27 W2-7: pin the exact friendly-name set.  The repo convention
+    is a pinned literal (tools/_cast_pins) — any name added/lost silently
+    fails here."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+
+        pinned = {
+            "Part", "Item", "Attribute", "Port", "Constraint", "Connection",
+            "Occurrence", "Actor", "Action", "State", "Subject", "UseCase",
+            "Requirement", "Interface", "ObjectiveRequirement", "Transition",
+            "Reference",
+        }
+        # all pinned friendly names exist
+        missing = sorted(n for n in pinned if not hasattr(sysml2py, n))
+        assert not missing, f"missing friendly names: {missing}"
+        # builder-only names stay Builder-suffixed (collision with AST nodes)
+        for n in ("Package", "Comment", "Import", "Message", "Succession", "AliasMember"):
+            assert hasattr(sysml2py, n + "Builder"), f"expected {n}Builder"
+        # no friendly name collides with an AST node class at top level:
+        # Package/Comment/Import/Message must BE the AST node class (their
+        # __module__ is ast_classes, proving no builder shadowed them)
+        for n in ("Package", "Comment", "Import", "Message", "Succession", "AliasMember"):
+            node_cls = getattr(sysml2py, n)
+            assert "ast_classes" in node_cls.__module__, (
+                f"{n} top-level should be the AST node, got {node_cls.__module__}"
+            )
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))

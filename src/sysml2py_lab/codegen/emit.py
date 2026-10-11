@@ -82,6 +82,7 @@ def _emit_builders(model: CodegenModel) -> str:
         legal_children=bm["legal_children"],
         usage_modifier_slots=bm["usage_modifier_slots"],
         friendly_class_names=bm["friendly_class_names"],
+        def_ir_kinds=bm["def_ir_kinds"],
     )
 
 
@@ -100,6 +101,7 @@ def emit_sysml2py(
     # emit.py is at <root>/src/sysml2py_lab/codegen/emit.py → parents[3] = root
     repo_root = opts.repo_root or Path(__file__).resolve().parents[3]
     model = model or CodegenModel.load(repo_root)
+    bm = model.builder_metadata()  # hoisted: used by __init__ + README renders
     # Deterministic provenance by default: a fixed generated-at stamp so two
     # runs are byte-identical.  Callers may inject an explicit timestamp.
     generated_at = opts.generated_at if opts.generated_at is not None else "1970-01-01T00:00:00Z"
@@ -161,9 +163,9 @@ def emit_sysml2py(
             version=opts.version,
             node_kinds=model.node_kinds(),
             builder_class_names=[
-                b["name"] for b in model.builder_metadata()["builder_classes"]
+                b["name"] for b in bm["builder_classes"]
             ],
-            friendly_class_names=model.builder_metadata()["friendly_class_names"],
+            friendly_class_names=bm["friendly_class_names"],
         ),
         encoding="utf-8",
     )
@@ -204,8 +206,15 @@ def emit_sysml2py(
             f"}}\n"
             f"```\n\n"
             f"Definitions are the same class with `kind=` at creation:\n"
-            f"`Part('Stage_1', kind='definition')` -> `part def Stage_1;` \n\n"
-            f"`Package`/`Comment`/`Import`/`Message` keep the `*Builder` suffix\n"
+            f"`Part('Stage_1', kind='definition')` -> `part def Stage_1;`\n\n"
+            f"Kinds without a definition form (`Package`, `Comment`, `Actor`,\n"
+            f"`Reference`, `Transition`, `Import`, `Message`, `Succession`,\n"
+            f"`AliasMember`, `Subject`) reject `kind='definition'` with a\n"
+            f"`ValueError` — the generator never emits a definition it cannot\n"
+            f"cast back (and a class-name kind like `'PartDefinition'` raises\n"
+            f"too, since that would print invalid SysML).\n\n"
+            f"`Package`/`Comment`/`Import`/`Message`/`Succession`/`AliasMember`\n"
+            f"keep the `*Builder` suffix\n"
             f"(their friendly names are the AST node classes). The classic `*Builder`\n"
             f"names (`PartUsageBuilder`, ...) remain available.\n\n"
             f"Value-bearing attributes (`attribute mass = 100.0 [kg];`) are **not yet\n"
