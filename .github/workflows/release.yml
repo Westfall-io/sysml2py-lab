@@ -3,8 +3,12 @@ name: Release
 # Issue #13 (phase-8): release the generated sysml2py library.
 #
 # Triggers:
-#   - a version tag `v1.0.0`, `v1.1.0`, … (normal release)
-#   - manual `workflow_dispatch` (dry-run / artifact-only, no publish)
+#   - a version tag `v1.0.0`, `v1.1.0`, … (normal release — always publishes)
+#   - manual `workflow_dispatch` (build/verify + optionally publish):
+#       * publish_to_pypi: false  -> artifact-only dry-run (default)
+#       * publish_to_pypi: true   -> build, verify, AND publish (owner action,
+#         gated by the `pypi` environment with PyPI trusted publishing)
+#       * version: optional manual version override (defaults to 1.0.0)
 #
 # The release is REPRODUCIBLE from (lab commit, spec, corpus manifest)
 # alone: `sysml2py-lab generate` is deterministic, provenance hashes the
@@ -15,6 +19,17 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      publish_to_pypi:
+        description: "Publish the built wheel/sdist to PyPI (trusted publishing, environment: pypi)"
+        required: false
+        default: false
+        type: boolean
+      version:
+        description: "Version to build for a manual run (default 1.0.0; ignored on tag push)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -45,16 +60,20 @@ jobs:
         run: pytest tests/ -q
 
       - name: Generate the release package (deterministic, version from tag)
-        # W2-1 + r2-fix: derive the version from the git ref ONLY for a
-        # tagged release.  On `workflow_dispatch` GITHUB_REF_NAME is the
-        # BRANCH name (e.g. "main"), not a tag — passing it to --version
-        # would emit an invalid PEP 440 version and fail the build.  Manual
-        # dispatch is the only pre-tag exerciser of the wheel (ci.yml never
-        # builds), so this must stay a valid build.
+        # Version resolution:
+        #   tag push        -> `${GITHUB_REF_NAME#v}` (e.g. v1.0.1 -> 1.0.1)
+        #   manual + input  -> the `version` input (owner override)
+        #   manual, no input -> bake-in default (1.0.0) — a valid build.
+        # On `workflow_dispatch` GITHUB_REF_NAME is the BRANCH name, not a
+        # tag, so a manual run must never pass it to --version (invalid PEP
+        # 440).  Manual dispatch is the only pre-tag exerciser of the wheel
+        # (ci.yml never builds), so this must stay a valid build.
         run: |
           rm -rf /tmp/rel-gen
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             sysml2py-lab generate --out /tmp/rel-gen --version "${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            sysml2py-lab generate --out /tmp/rel-gen --version "${{ inputs.version }}"
           else
             sysml2py-lab generate --out /tmp/rel-gen
           fi
@@ -81,7 +100,7 @@ jobs:
 
       - name: Assert wheel contents (grammar resource + provenance + version)
         env:
-          EXPECTED_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+          EXPECTED_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.version || '1.0.0' }}
         run: |
           python - <<'EOF'
           import glob, os, zipfile
@@ -91,8 +110,9 @@ jobs:
           names = set(zipfile.ZipFile(w).namelist())
           assert any(n.endswith(".tx") for n in names), "grammar .tx missing"
           assert any(n.endswith("provenance.py") for n in names), "provenance missing"
-          # W2-1: wheel filename MUST carry the exact tag version (compare
-          # PEP 440-normalized: `v1.0.0-rc1` → wheel `1.0.0rc1`)
+          # W2-1: wheel filename MUST carry the exact version (tag, manual
+          # input, or default).  Compare PEP 440-normalized: `v1.0.0-rc1` →
+          # wheel `1.0.0rc1`.)
           expected = "sysml2py-" + os.environ["EXPECTED_VERSION"].lstrip("v")
           fname = w.split("/")[-1]
           assert fname.replace("-", "").startswith(expected.replace("-", "")), (
@@ -103,7 +123,7 @@ jobs:
 
       - name: Import-graph smoke (clean venv, no lab/heavy deps)
         env:
-          EXPECTED_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+          EXPECTED_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.version || '1.0.0' }}
         run: |
           python -m venv /tmp/rel-venv
           /tmp/rel-venv/bin/pip install --quiet /tmp/dist/*.whl
@@ -130,9 +150,12 @@ jobs:
           path: /tmp/dist/*
 
   publish:
-    name: Publish to PyPI (tagged release only)
+    name: Publish to PyPI
     needs: build-and-verify
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Publish when triggered by a version tag (normal release) OR by a
+    # manual dispatch with `publish_to_pypi: true` (owner-driven release from
+    # the Actions UI).  Manual runs default to build/verify-only dry-run.
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_pypi)
     runs-on: ubuntu-latest
     permissions:
       id-token: write
