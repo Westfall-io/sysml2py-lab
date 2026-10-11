@@ -60,20 +60,26 @@ jobs:
         run: pytest tests/ -q
 
       - name: Generate the release package (deterministic, version from tag)
+        env:
+          REL_VERSION: ${{ inputs.version }}
         # Version resolution:
         #   tag push        -> `${GITHUB_REF_NAME#v}` (e.g. v1.0.1 -> 1.0.1)
-        #   manual + input  -> the `version` input (owner override)
+        #   manual + input  -> the `version` input (owner override, v-stripped)
         #   manual, no input -> bake-in default (1.0.0) — a valid build.
         # On `workflow_dispatch` GITHUB_REF_NAME is the BRANCH name, not a
         # tag, so a manual run must never pass it to --version (invalid PEP
         # 440).  Manual dispatch is the only pre-tag exerciser of the wheel
         # (ci.yml never builds), so this must stay a valid build.
+        # W2-2: strip a leading `v` from the manual version so `v1.2.3`
+        # doesn't fail the import-smoke comparison late (PEP 440 allows it).
+        # W2-3: version travels via env, never interpolated into the script
+        # body (command-substitution surface).
         run: |
           rm -rf /tmp/rel-gen
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             sysml2py-lab generate --out /tmp/rel-gen --version "${GITHUB_REF_NAME#v}"
-          elif [ -n "${{ inputs.version }}" ]; then
-            sysml2py-lab generate --out /tmp/rel-gen --version "${{ inputs.version }}"
+          elif [ -n "$REL_VERSION" ]; then
+            sysml2py-lab generate --out /tmp/rel-gen --version "${REL_VERSION#v}"
           else
             sysml2py-lab generate --out /tmp/rel-gen
           fi
@@ -152,10 +158,17 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: build-and-verify
-    # Publish when triggered by a version tag (normal release) OR by a
-    # manual dispatch with `publish_to_pypi: true` (owner-driven release from
-    # the Actions UI).  Manual runs default to build/verify-only dry-run.
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_pypi)
+    # Publish when a version tag is pushed (normal release) OR when a manual
+    # dispatch on main (or a tag ref) explicitly checks `publish_to_pypi`.
+    # W2-1: key off `event_name` so a dispatch SELECTED ON A TAG can't
+    # publish with default inputs (that would bypass the checkbox).
+    # W2-4: a manual publish must not ship a wheel built from an arbitrary
+    # feature branch — restrict to main + v* tags.
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.publish_to_pypi &&
+       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     permissions:
       id-token: write
