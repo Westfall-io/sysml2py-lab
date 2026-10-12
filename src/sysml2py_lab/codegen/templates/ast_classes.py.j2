@@ -35,6 +35,19 @@ IR_KIND_ALIASES: dict[str, str] = {
 {% endfor %}
 }
 
+# IR coarse-kind -> printable SysML keyword (W1-A).  Generated from the same
+# source as the builder `_IR_KEYWORD`; the Node printer must emit valid SysML
+# (`use case S`, NOT `use_case S`) when reconstructing builder-built nodes.
+# Keys cover usage kinds plus the `* def` variants produced by build_node().
+_PRINT_KEYWORD: dict[str, str] = {
+{% for ir, usage_kw, def_kw in print_keywords %}
+    "{{ ir }}": "{{ usage_kw }}",
+{% if def_kw %}
+    "{{ ir }} def": "{{ def_kw }}",
+{% endif %}
+{% endfor %}
+}
+
 # The canonical IR dict field set (r11 W2).  Both from_ir constructors and
 # the IR-dict ctor reject any IR key outside this set, so a future IR field
 # can never be silently dropped via d.get(...).  ("children" is handled
@@ -270,17 +283,27 @@ class Node:
         else:
             parts: list[str] = []
             parts.extend(self.modifiers)
+            # W1-A: map the IR kind to its printable SysML keyword so
+            # builder-built nodes dump valid text (`use case S`, not
+            # `use_case S`).  Fall back to the stored kinds for anything the
+            # map doesn't cover (raw parser kinds), matching prior behavior.
+            def _print_kind() -> str:
+                key = self.ir_kind or self.kind
+                if not key:
+                    return ""
+                return _PRINT_KEYWORD.get(key, key)
+
             if self.short_name:
                 # W1-4 r2 / r3 W1-6: reconstruct the short name as the angle
                 # form "<s>" (parse_ir's short-name vocabulary), so build_node()
                 # -> dump() does not drop it and does not emit non-SysML "~s".
-                head0 = (self.ir_kind or self.kind)
+                head0 = _print_kind()
                 if self.name:
                     parts.append(f"{head0} <{self.short_name}> {self.name}")
                 else:
                     parts.append(f"{head0} <{self.short_name}>")
             elif self.ir_kind or self.kind:
-                head = self.ir_kind or self.kind
+                head = _print_kind()
                 if self.name:
                     parts.append(f"{head} {self.name}")
                 elif "{" in head or head in ("brace_open", "brace_close"):

@@ -26,6 +26,9 @@ __all__ = [
 {% for name in builder_class_names %}
     "{{ name }}",
 {% endfor %}
+{% for name in friendly_class_names %}
+    "{{ name }}",
+{% endfor %}
 ]
 
 # Which child kinds MAY live under each owning body, derived from children.json.
@@ -54,6 +57,22 @@ _MODIFIER_SLOTS: list[tuple[str, tuple[str, ...], str]] = [
 {% endfor %}
 ]
 
+# IR kind -> printable SysML keyword forms (issue #27, W1-A/W2-C single
+# source).  Generated from the model's IR_KIND_ALIASES so the builder's
+# accepted kinds and the node's printed keywords can never drift.  For each
+# builder ir_kind: (usage keyword, def keyword-or-None).  Module-level so
+# generated subclasses stay immutable (ruff RUF012) and the friendly `kind=`
+# normalizer has ONE source of truth for what it accepts + prints.
+_IR_KEYWORD: dict[str, tuple[str, ...]] = {
+{% for ir, usage_kw, def_kw in ir_keywords %}
+{% if def_kw %}
+    "{{ ir }}": ("{{ usage_kw }}", "{{ def_kw }}"),
+{% else %}
+    "{{ ir }}": ("{{ usage_kw }}",),
+{% endif %}
+{% endfor %}
+}
+
 
 class Builder:
     """Base builder: accumulates a canonical-IR dict sub-tree.
@@ -75,7 +94,48 @@ class Builder:
         self._multiplicity = None
         self._modifiers: dict[str, object] = {}
         self._typed_by = None
-        self._kind = kind or self.ir_kind  # coarse canonical-IR kind (W1-3)
+        # Issue #27: separate TWO roles the old code conflated (review W1-3):
+        #   - `self._kind`    : the IR ALIAS key (used by `_to_ir()` for the
+        #                       round-trip cast; MUST be an IR_KIND_ALIASES
+        #                       key, e.g. "part", "part def", "use_case").
+        #   - `self._keyword` : the printable SysML keyword (used by
+        #                       `_render_sysml()`, e.g. "part", "part def",
+        #                       "use case").  Conflating them made
+        #                       `UseCase('S')` print `use_case S;` (invalid).
+        # kind= accepts friendly values (usage/definition), the SysML keyword
+        # form ("part def"), or the IR kind ("part").  Class-name forms
+        # ("PartDefinition") are REJECTED.
+        ir = self.ir_kind
+        # W2-D: base `Builder` is abstract; reject bare construction.
+        if not ir:
+            raise TypeError(
+                f"{self.__class__.__name__} is abstract; use a generated "
+                f"subclass (e.g. Part, Attribute)"
+            )
+        kw = _IR_KEYWORD[ir]  # strict: a kind the generator forgot -> KeyError
+        usage_kw = kw[0]
+        def_kw = kw[1] if len(kw) > 1 else None
+        # Accept BOTH the IR (underscore) and printable (space) keyword forms
+        # for `kind=` (W2-E): 'part'/'use_case' == usage; 'part def'/
+        # 'use_case def'/'use case def' == definition.
+        _ir_def = f"{ir} def"
+        if kind is None or kind == "usage" or kind in (ir, usage_kw):
+            self._kind = ir
+            self._keyword = usage_kw
+        elif kind in ("definition", "def") or kind in (_ir_def, def_kw):
+            if def_kw is None:
+                raise ValueError(
+                    f"{self.__class__.__name__} has no definition form "
+                    f"(kind={kind!r})"
+                )
+            self._kind = _ir_def
+            self._keyword = def_kw
+            self._is_definition = True  # W2-5: honest introspection + typing guard
+        else:
+            raise ValueError(
+                f"kind={kind!r} not valid for {self.__class__.__name__}; "
+                f"use 'usage'|'definition'"
+            )
         self._children: list[Builder] = []
 
     # -- identity -------------------------------------------------------
@@ -160,6 +220,11 @@ class Builder:
             raise TypeError("_set_child expects a Builder")
         self._children.append(child)
         return self
+
+    def add(self, child):
+        """Ergonomic alias for ``_set_child`` (issue #27) — append a child so
+        nested composition dumps a full package: ``pkg.add(part)``."""
+        return self._set_child(child)
 
     def is_legal_child(self, child):
         """Advisory child-kind legality (W1-5/r3 W1-4/r4 #1/r5 W1-1).
@@ -259,8 +324,16 @@ class Builder:
             elif v is not None and v is not False:
                 mods.append(f"{k}={v}")
         mod_txt = (" ".join(mods) + " ") if mods else ""
-        kind = self._kind or self.__class__.__name__.replace("Builder", "")
-        head = f"{mod_txt}{kind}"
+        # Issue #27: `self._kind` is the coarse canonical-IR kind (part /
+        # attribute / ...) OR the definition-variant keyword ("part def").
+        # NEVER fall back to the class name (old `__class__.__name__
+        # .replace("Builder","")` emitted `PartDefinition S;` for
+        # kind='PartDefinition' — invalid SysML v2).  W1-3: print the
+        # printable SysML keyword (`use case`, not the IR alias key
+        # `use_case`).  Fall back to `self._kind` only so the base/default
+        # path (which may not have set `_keyword` via __init__) still prints.
+        keyword = getattr(self, "_keyword", None) or self._kind or self.ir_kind
+        head = f"{mod_txt}{keyword}"
         if self._short_name is not None:
             head += f" <{self._short_name}>"  # r3 W1-5: angle (parse_ir vocab)
         if self._name is not None:
@@ -271,6 +344,7 @@ class Builder:
             head += f" : {self._typed_by._name}"
         lines = [head]
         kids = [c for c in self._children if c is not None]
+        # (rest unchanged) — indentation/termination follows
         if kids:
             lines.append("{")
             for c in kids:
@@ -377,6 +451,39 @@ class {{ cls.name }}(Builder):
 
 {% endfor %}
 
+# Friendly-name aliases (issue #27): drop the `Builder` suffix and the
+# `Usage`/`Definition` classifier from the public name.  Each friendly class
+# is a thin subclass of the corresponding `XxxUsageBuilder`, so `Part` is a
+# `PartUsageBuilder` with a clean name; the usage-vs-definition distinction
+# is made at creation via `kind=` (default usage).  Generated deterministically
+# from the same builder set, so the cast is unchanged.  Friendly names that
+# already equal a generated class (Package, Comment, Import, Message,
+# Succession, AliasMember) are skipped — the class keeps its plain name
+# (the AST collision check below is a backstop; today no grammar rule is
+# named any of the 17 friendly names).
+{% for cls in builder_classes %}
+{% set alias = cls.friendly_name %}
+{% if alias in friendly_class_names %}
+{% if cls.ir_kind in def_ir_kinds %}
+class {{ alias }}({{ cls.name }}):
+    """Friendly builder for a {{ cls.ir_kind }} (issue #27): ``{{ alias }}('S')``.
+
+    ``kind='usage'`` (default) or ``kind='definition'`` selects the SysML
+    form at creation: ``{{ alias }}('S')`` -> ``{{ cls.ir_kind }} S;``,
+    ``{{ alias }}('S', kind='definition')`` -> ``{{ cls.ir_kind }} def S;``.
+    """
+
+{% else %}
+class {{ alias }}({{ cls.name }}):
+    """Friendly builder for a {{ cls.ir_kind }} (issue #27): ``{{ alias }}('S')``.
+
+    ``kind='usage'`` only — ``{{ cls.ir_kind }}`` has no definition form;
+    ``kind='definition'`` raises ValueError.
+    """
+
+{% endif %}
+{% endif %}
+{% endfor %}
 # node-kind name -> builder class (for add_directed_feature's kind_name lookup).
 # Keyed by the *node-kind* name (e.g. "PartUsage") so kind_name works.
 _BUILDER_BY_NAME: dict[str, type[Builder]] = {

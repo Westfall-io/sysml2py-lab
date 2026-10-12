@@ -42,13 +42,14 @@ def _template_env() -> Environment:
     return env
 
 
-def _emit_ast_classes(model: CodegenModel) -> str:
+def _emit_ast_classes(model: CodegenModel, bm: dict) -> str:
     env = _template_env()
     kinds = model.node_kinds()
     return env.get_template("ast_classes.py.j2").render(
         header=_HEADER,
         node_kinds=kinds,
         ir_kind_aliases=IR_KIND_ALIASES,
+        print_keywords=bm["ir_keywords"],  # W1-A: node printer keyword map
     )
 
 
@@ -72,15 +73,17 @@ def _emit_provenance(model: CodegenModel, opts: EmitOptions, repo_root: Path, ge
     )
 
 
-def _emit_builders(model: CodegenModel) -> str:
+def _emit_builders(model: CodegenModel, bm: dict) -> str:
     env = _template_env()
-    bm = model.builder_metadata()
     return env.get_template("builders.py.j2").render(
         header=_HEADER,
         builder_class_names=[b["name"] for b in bm["builder_classes"]],
         builder_classes=bm["builder_classes"],
         legal_children=bm["legal_children"],
         usage_modifier_slots=bm["usage_modifier_slots"],
+        friendly_class_names=bm["friendly_class_names"],
+        def_ir_kinds=bm["def_ir_kinds"],
+        ir_keywords=bm["ir_keywords"],
     )
 
 
@@ -99,6 +102,7 @@ def emit_sysml2py(
     # emit.py is at <root>/src/sysml2py_lab/codegen/emit.py → parents[3] = root
     repo_root = opts.repo_root or Path(__file__).resolve().parents[3]
     model = model or CodegenModel.load(repo_root)
+    bm = model.builder_metadata()  # hoisted: used by __init__ + README renders
     # Deterministic provenance by default: a fixed generated-at stamp so two
     # runs are byte-identical.  Callers may inject an explicit timestamp.
     generated_at = opts.generated_at if opts.generated_at is not None else "1970-01-01T00:00:00Z"
@@ -117,7 +121,7 @@ def emit_sysml2py(
     src_pkg.mkdir(parents=True, exist_ok=True)
 
     # AST classes + dispatch + provenance
-    (src_pkg / "ast_classes.py").write_text(_emit_ast_classes(model), encoding="utf-8")
+    (src_pkg / "ast_classes.py").write_text(_emit_ast_classes(model, bm), encoding="utf-8")
     (src_pkg / "ast_dispatch.py").write_text(_emit_ast_dispatch(model), encoding="utf-8")
     (src_pkg / "provenance.py").write_text(
         _emit_provenance(model, opts, repo_root, generated_at), encoding="utf-8"
@@ -136,7 +140,7 @@ def emit_sysml2py(
             (gdir / tx.name).write_text(tx.read_text(encoding="utf-8"), encoding="utf-8")
 
     # Builder API + traversal + printer (issue #10, phase-5)
-    (src_pkg / "builders.py").write_text(_emit_builders(model), encoding="utf-8")
+    (src_pkg / "builders.py").write_text(_emit_builders(model, bm), encoding="utf-8")
     (src_pkg / "traversal.py").write_text(
         env.get_template("traversal.py.j2").render(header=_HEADER), encoding="utf-8"
     )
@@ -160,8 +164,9 @@ def emit_sysml2py(
             version=opts.version,
             node_kinds=model.node_kinds(),
             builder_class_names=[
-                b["name"] for b in model.builder_metadata()["builder_classes"]
+                b["name"] for b in bm["builder_classes"]
             ],
+            friendly_class_names=bm["friendly_class_names"],
         ),
         encoding="utf-8",
     )
@@ -179,16 +184,18 @@ def emit_sysml2py(
             f"- `Unsupported` nodes carry raw text (zero NotImplementedError)\n"
             f"- Compiled grammar shipped as package data; provenance in\n"
             f"  `sysml2py.provenance`\n\n"
-            f"## Building a model (current builder API)\n\n"
-            f"The generated API composes **builder classes** (one per grammar\n"
-            f"rule, `*Builder`) into a model, then `dump()`s it:\n\n"
+            f"## Building a model (friendly builder API)\n\n"
+            f"Friendly names drop the `Builder`/`Usage`/`Definition` suffixes —\n"
+            f"`Part`, `Attribute`, `Item`, ... are builders; usage vs definition is\n"
+            f"chosen at creation via `kind=`; `add()` appends children so a full\n"
+            f"package dumps from nested composition:\n\n"
             f"```python\n"
-            f"from sysml2py import PackageBuilder, PartUsageBuilder, AttributeUsageBuilder\n\n"
+            f"from sysml2py import PackageBuilder, Part, Attribute\n\n"
             f"pkg = PackageBuilder('MyModel')\n"
-            f"stage = PartUsageBuilder('Stage_1')\n"
-            f"stage._set_child(AttributeUsageBuilder('mass'))\n"
-            f"stage._set_child(AttributeUsageBuilder('thrust'))\n"
-            f"pkg._set_child(stage)\n"
+            f"stage = Part('Stage_1')\n"
+            f"stage.add(Attribute('mass'))\n"
+            f"stage.add(Attribute('thrust'))\n"
+            f"pkg.add(stage)\n"
             f"print(pkg.dump())\n"
             f"```\n\n"
             f"```\n"
@@ -199,11 +206,22 @@ def emit_sysml2py(
             f"  }}\n"
             f"}}\n"
             f"```\n\n"
-            f"Value-bearing attributes (`attribute mass = 100.0 [kg];`) and the\n"
-            f"0.5.x `Part`/`Attribute` names are **not yet expressible** — the\n"
-            f"example's full requirements are tracked as issue #26 in the\n"
-            f"generation repo (https://github.com/Westfall-io/sysml2py-lab/issues/26)\n"
-            f"and the migration note below.\n\n"
+            f"Definitions are the same class with `kind=` at creation:\n"
+            f"`Part('Stage_1', kind='definition')` -> `part def Stage_1;`\n\n"
+            f"Kinds without a definition form (`Package`, `Comment`, `Actor`,\n"
+            f"`Reference`, `Transition`, `Import`, `Message`, `Succession`,\n"
+            f"`AliasMember`, `Subject`, `ObjectiveRequirement`) reject\n"
+            f"`kind='definition'` with a `ValueError` — the generator never\n"
+            f"emits a definition it cannot cast back (and a class-name kind\n"
+            f"like `'PartDefinition'` raises\n"
+            f"too, since that would print invalid SysML).\n\n"
+            f"`Package`/`Comment`/`Import`/`Message`/`Succession`/`AliasMember`\n"
+            f"keep the `*Builder` suffix\n"
+            f"(their friendly names are the AST node classes). The classic `*Builder`\n"
+            f"names (`PartUsageBuilder`, ...) remain available.\n\n"
+            f"Value-bearing attributes (`attribute mass = 100.0 [kg];`) are **not yet\n"
+            f"expressible** — tracked as issue #26 in the generation repo\n"
+            f"(https://github.com/Westfall-io/sysml2py-lab/issues/26).\n\n"
             f"Compatibility: this is the **1.x** line. Moving from 0.5.x? see\n"
             f"the migration note:\n"
             f"https://github.com/Westfall-io/sysml2py-lab/blob/main/docs/migration-0.5-to-1.0.md\n"
