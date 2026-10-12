@@ -224,9 +224,12 @@ class Node:
     modifiers: list[str] = field(default_factory=list)
     type_refs: list[str] = field(default_factory=list)
     multiplicity: str | None = None
+    children: list[Node] = field(default_factory=list)
+    # r3 N-5: value/unit appended AFTER `children` so the original positional
+    # order (…, multiplicity, children, …) is preserved for any downstream
+    # caller constructing Node positionally.
     value: str | None = None
     unit: str | None = None
-    children: list[Node] = field(default_factory=list)
     source_span: tuple[int, int] = (0, 0)
     raw_text: str = ""
     fidelity: str = "modelled"
@@ -252,6 +255,15 @@ class Node:
         _unknown = set(d) - _NODE_IR_FIELDS - {"children"}
         if _unknown:
             raise ValueError(f"Unhandled IR keys in d: {sorted(_unknown)}")
+        # r3 W2-6: a `unit` with no `value` is meaningless (the builder can
+        # never produce it) and would be silently dropped by get_definition /
+        # Node.dump, which emit unit only alongside a value.  Reject it here
+        # so a unit can't vanish in the strict round-trip.
+        if d.get("unit") is not None and d.get("value") is None:
+            raise ValueError(
+                "IR dict has a 'unit' but no 'value'; a unit requires a "
+                "value it scales"
+            )
         kind = d.get("kind", "")
         cls_name = IR_KIND_ALIASES.get(kind, kind)
         node_cls = KIND_REGISTRY.get(cls_name, Unsupported)

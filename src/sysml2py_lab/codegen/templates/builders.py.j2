@@ -78,10 +78,8 @@ _IR_KEYWORD: dict[str, tuple[str, ...]] = {
 # Fail-loud: a unit NOT in this map raises ValueError so a value= quantity
 # can never emit a silently-wrong model.  Keys are astropy's canonical base
 # names (``unit.bases`` strings — verified, not guessed), values are the
-# SysML namespace owning them.  Composite units (``m/s2``) decompose to their
-# bases; each distinct base contributes one import in its own namespace.
-# ``*``-aliases (``gal``) are accepted for the raw-string ``unit=`` path so a
-# corpus spelling like ``[mi / gal]`` re-authors cleanly.
+# SysML namespace owning them.  Composite units decompose to their bases;
+# each distinct base contributes one import in its own namespace.
 _UNIT_NAMESPACE: dict[str, str] = {
     # SI base + derived (corpus already uses `public import SI::kg;`)
     "kg": "SI", "m": "SI", "s": "SI", "km": "SI", "l": "SI", "L": "SI",
@@ -91,7 +89,7 @@ _UNIT_NAMESPACE: dict[str, str] = {
     "K": "SI", "mol": "SI", "cd": "SI", "rad": "SI", "sr": "SI",
     "Hz": "SI", "C": "SI", "F": "SI", "Ohm": "SI", "S": "SI", "T": "SI",
     "H": "SI", "lm": "SI", "lx": "SI", "Bq": "SI", "Gy": "SI", "Sv": "SI",
-    "kat": "SI", "%": "SI", "percent": "SI",
+    "kat": "SI", "%": "SI",
     # non-SI length/volume/common
     "mi": "USCustomaryUnits", "ft": "USCustomaryUnits",
     "yd": "USCustomaryUnits", "inch": "USCustomaryUnits", "in": "USCustomaryUnits",
@@ -99,38 +97,89 @@ _UNIT_NAMESPACE: dict[str, str] = {
     "lb": "USCustomaryUnits", "oz": "USCustomaryUnits",
 }
 
+# astropy base name -> the SysML MEMBER name (W2-5).  astropy's first aliases
+# differ from the SysML library spellings the corpus uses; map them so the
+# bracket and the import both use the SysML name.  Names absent here use the
+# base name unchanged.
+_UNIT_SYSML_NAME: dict[str, str] = {
+    "inch": "in",        # corpus: `33 ['in']` (in is a direction keyword -> quoted)
+    "gallon": "gal",     # astropy imperial.gallon base name -> `gal` (corpus `[mi / gal]`)
+}
+
+# SysML keywords that are NOT valid bare IDs and so must be 'quoted' when used
+# as a member name in a unit bracket / import (W2-4).
+_UNIT_KEYWORD_NAMES = frozenset({
+    "in", "out", "inout", "all", "optional", "unique", "variant", "ordered",
+    "nonunique", "redefines", "refines", "specializes", "import", "attribute",
+    "part", "package", "comment", "public", "private", "protected", "readonly",
+})
+
+
+def _quote_unit_name(name: str) -> str:
+    """Quote ``name`` if it is not a valid bare SysML ID (W2-4).
+
+    ``%``, or a keyword like ``in``/``out``, must be written ``'%'``/``'in'``
+    so it tokenizes as a name, not an operator/keyword."""
+    if not name:
+        return "''"
+    is_plain = (name[0].isalpha() or name[0] == "_") and (
+        name.isalnum() or all(c.isalnum() or c == "_" for c in name[1:])
+    )
+    if is_plain and name not in _UNIT_KEYWORD_NAMES:
+        return name
+    return f"'{name}'"
+
+
+def _unit_sysml_name(astropy_base: str) -> str:
+    """The SysML member name for an astropy base (W2-5)."""
+    return _UNIT_SYSML_NAME.get(astropy_base, astropy_base)
+
+
+def _unit_import_spec(astropy_base: str) -> tuple[str, str]:
+    """The ``(namespace, sysml_name)`` import for an astropy base (W2-4/5)."""
+    ns = _UNIT_NAMESPACE[astropy_base]
+    return ns, _quote_unit_name(_unit_sysml_name(astropy_base))
+
 
 def _build_unit_bracket(bases: list[str], powers: list[int]) -> str:
     """Build the SysML bracket spelling from structured astropy bases/powers.
 
-    A product of positive powers is joined with ``*`` (``(N, m)`` powers
-    ``(1, 1)`` -> ``'N*m'``); negative powers are divisors (``(m, s)`` powers
-    ``(1, -2)`` -> ``'m/s2'``).  So ``kg*m/s2`` — never a single mangled
-    identifier like ``kgm`` that the imports would contradict.  Powers of +-1
-    stay implicit; other magnitudes are appended (``s2``).  No spaces — matches
-    the corpus ``= 1000[kg]`` and ``[mi / gal]`` conventions.
+    Rules (all r3 fixes):
+    - Positive powers PRODUCT is joined with ``*`` (``(N, m)`` powers
+      ``(1, 1)`` -> ``'N*m'``).
+    - Non-±1 powers use the grammar's exponent operator ``**`` — ``(m, s)``
+      powers ``(1, -2)`` -> ``'m/s**2'``.  A digit-suffixed ``s2`` would be a
+      *member identifier reference*, not an exponent, and would disagree with
+      the emitted ``SI::s`` import (W1-1).
+    - With no positive power, a leading ``1`` numerator is supplied:
+      ``(s,)`` powers ``(-1,)`` -> ``'1/s'``, not ``'/s'`` (W1-2).
+    - A dimensionless unit (empty bases) -> an empty bracket ``''`` (W2-1).
+    - Names go through the astropy->SysML map and quoting (``'in'``, ``'%'``).
+    - Non-integer powers raise (W2-2).
+    No spaces — matches the corpus ``= 1000[kg]`` and ``[mi / gal]``.
     """
-    parts: list[str] = []
+    numer: list[str] = []
+    denom: list[str] = []
     for base, power in zip(bases, powers):
-        if power == 0:
+        p = int(power)
+        if power != p:  # non-integer (fractional) power -> fail loud
+            raise ValueError(
+                f"unit power {power!r} on base {base!r} is not an integer; "
+                f"fractional powers cannot be rendered faithfully in SysML"
+            )
+        if p == 0:
             continue
-        if power == 1:
-            parts.append(base)
-        elif power == -1:
-            parts.append("/" + base)
-        elif power < 0:
-            parts.append("/" + base + str(-power))
+        nm = _quote_unit_name(_unit_sysml_name(base))
+        if p > 0:
+            numer.append(nm if p == 1 else f"{nm}**{p}")
         else:
-            parts.append(base + str(power))
-    # join: a multiplicative (no-leading-slash) continuation gets a `*`
-    # separator so positive products read `N*m` not `Nm`
-    out = parts[0]
-    for part in parts[1:]:
-        if part.startswith("/"):
-            out += part
-        else:
-            out += "*" + part
-    return out
+            denom.append(nm if p == -1 else f"{nm}**{-p}")
+    if not numer and not denom:
+        return ""  # dimensionless
+    num = "*".join(numer) if numer else "1"
+    if denom:
+        return f"{num}/{'*'.join(denom)}"
+    return num
 
 
 def _split_unit_bases(unit_string: str) -> list[str]:
@@ -141,17 +190,54 @@ def _split_unit_bases(unit_string: str) -> list[str]:
     (no Quantity); a Quantity always supplies structured ``bases`` directly.
     """
     bases: list[str] = []
-    for tok in unit_string.replace("*", "/").split("/"):
+    for tok in unit_string.replace("**", "").replace("*", "/").split("/"):
         tok = tok.strip()
         if not tok:
             continue
         if tok.isdigit():
             continue
-        # strip a trailing power ('s2' -> 's'); keep the base
+        # strip a trailing power ('s2' -> 's', and '**2' handled above)
         base = tok.rstrip("0123456789")
         if base:
             bases.append(base)
     return bases
+
+
+def _normalize_unit_string(unit_string: str) -> str:
+    """Normalize a raw ``unit=`` string to its SysML bracket form.
+
+    ``'m / s2'`` -> ``'m/s**2'`` (whitespace-collapsed + exponent operator),
+    ``'N * m'`` -> ``'N*m'``.  This is the SAME normalization a Quantity
+    derives from its structured bases, so an explicit ``unit=`` and a
+    Quantity's own unit compare equal when they denote the same unit (W2-4).
+    Raises ValueError for a unit with no parseable base."""
+    bases = _split_unit_bases(unit_string)
+    if not bases:
+        raise ValueError(
+            f"unit={unit_string!r} has no parseable unit base; expected "
+            f"something like 'm', 'kg', 'm/s**2' (got no unit name)"
+        )
+    # reconstruct powers: tokens before '/' are positive (numerator), tokens
+    # after '/' are negative (denominator).  's**2'/'s2' -> |2|, bare 's' -> 1.
+    tokens = [t.strip() for t in unit_string.split("/")]
+    numer = [t for t in tokens[0].replace("*", " ").split() if t]
+    denom = [t for t in ("/".join(tokens[1:])).replace("*", " ").split() if t]
+    pos, neg = [], []
+    for tok in numer:
+        if tok.isdigit():
+            continue
+        base = tok.rstrip("0123456789")
+        p = int(tok[len(base):]) if tok[len(base):] else 1
+        pos.append((base, p))
+    for tok in denom:
+        if tok.isdigit():
+            continue
+        base = tok.rstrip("0123456789")
+        p = int(tok[len(base):]) if tok[len(base):] else 1
+        neg.append((base, p))
+    ordered_bases = [b for b, _ in pos] + [b for b, _ in neg]
+    ordered_powers = [p for _, p in pos] + [-p for _, p in neg]
+    return _build_unit_bracket(ordered_bases, ordered_powers)
 
 
 # IR kinds that carry a `value` field (W2-1) — Feature usages whose grammar
@@ -159,9 +245,14 @@ def _split_unit_bases(unit_string: str) -> list[str]:
 # carry a FeatureValue), Package/Comment/Import and Relationship kinds have
 # no value either; a value=/unit= there would be silently dropped from
 # build() while showing in dump(), so it must be rejected.
-# NOTE: only USAGE kinds are listed (no `... def`, no Package/Import/etc.).
-# Kept as a literal that mirrors IR_KIND_ALIASES usage entries; if the
-# grammar adds a value-bearing usage, add it here.
+# This set is deliberately CONSERVATIVE: it lists only the usage kinds the
+# corpus demonstrably gives a `= value` (r3 N-4).  The review suggested
+# widening it to actor/objective/connection/succession/transition; nothing in
+# the corpus shows those carrying `= value`, so adding them could instead EMIT
+# invalid output.  Over-restriction (fail-loud TypeError) is the safe
+# direction — it can never produce silently-wrong model text, only an explicit
+# error.  If a real model needs one, add the kind here alongside a corpus
+# proof, not speculatively.
 _VALUE_BEARING_KINDS = frozenset({
     "attribute", "part", "item", "reference", "port", "action",
     "state", "occurrence", "requirement", "constraint", "interface",
@@ -263,7 +354,10 @@ class Builder:
                 # unit with no conversion, and must compare against the
                 # NORMALIZED bracket, not a raw string (W2-3/W2-4).
                 if unit is not None and _qspec is not None:
-                    norm_unit = "".join(str(unit).split())
+                    try:
+                        norm_unit = _normalize_unit_string(str(unit))
+                    except ValueError:
+                        norm_unit = str(unit)
                     if norm_unit != _qspec[0]:
                         raise ValueError(
                             f"explicit unit={unit!r} conflicts with the "
@@ -363,9 +457,27 @@ class Builder:
             and hasattr(value.unit, "bases")
             and hasattr(value.unit, "powers")
         ):
+            # W2-3: a scaled unit (e.g. u.Unit(100*u.m)) has scale != 1 while
+            # decomposing to a single base — folding it would silently change
+            # the value, and emitting `[m]` would be 100x wrong.  Fail loud.
+            scale = getattr(value.unit, "scale", 1)
+            if scale != 1:
+                raise ValueError(
+                    f"value= Quantity has a multiplicative scaling factor "
+                    f"({scale!r}); scaled units cannot be rendered faithfully "
+                    f"in SysML — convert to a named unit first"
+                )
             bases = [str(b) for b in value.unit.bases]
-            powers = [int(p) for p in value.unit.powers]
-            bracket = _build_unit_bracket(bases, powers)
+            raw_powers = list(value.unit.powers)
+            # W2-2: non-integer (Fraction/float) powers — int() would silently
+            # drop them; fail loud instead
+            for bp in raw_powers:
+                if int(bp) != bp:
+                    raise ValueError(
+                        f"unit power {bp!r} is not an integer; fractional "
+                        f"powers cannot be rendered faithfully in SysML"
+                    )
+            powers = [int(p) for p in raw_powers]
             raw = value.value
             if hasattr(raw, "shape") and getattr(raw, "shape", None):
                 # a non-scalar Quantity (array) can't render as a single valued
@@ -374,6 +486,11 @@ class Builder:
                     f"value= Quantity is non-scalar (shape="
                     f"{raw.shape}); only scalar quantities are supported"
                 )
+            # W2-1: a dimensionless Quantity (empty bases) carries no unit at
+            # all — emit the bare value, no bracket, no import
+            bracket = _build_unit_bracket(bases, powers)
+            if not bases:
+                return str(raw).removesuffix(".0"), None
             return str(raw).removesuffix(".0"), (bracket, bases)
         raise TypeError(
             f"value= must be str/int/float or an astropy Quantity, got "
@@ -399,14 +516,16 @@ class Builder:
             bracket, bases = unit_string
         else:
             bases = _split_unit_bases(unit_string)
-            bracket = "".join(unit_string.split())
+            # normalize to the SysML bracket (whitespace + exponent operator
+            # + quoting), which also validates a parseable base exists
+            bracket = _normalize_unit_string(unit_string)
         # a unit with no parseable base is meaningless (W2-1): an empty string
         # or a bare magnitude like '123' yields no import and a bogus `[ ]`
         # bracket — fail loud rather than emit a dangling unit
         if not bases:
             raise ValueError(
                 f"unit={unit_string!r} has no parseable unit base; expected "
-                f"something like 'm', 'kg', 'm/s2' (got no unit name)"
+                f"something like 'm', 'kg', 'm/s**2' (got no unit name)"
             )
         if not bracket:
             raise ValueError(f"unit={unit_string!r} normalizes to an empty "
@@ -435,17 +554,18 @@ class Builder:
         return ns
 
     def _unit_imports(self) -> list[tuple[str, str]]:
-        """The ``(namespace, unit-base)`` imports this node requires (Option A).
+        """The ``(namespace, sysml-name)`` imports this node requires (Option A).
         Derived from the stored structured unit bases — never string-split at
-        render time."""
+        render time.  Names go through the SysML map + quoting so `in` -> `'in'`
+        and `gallon` -> `gal` are consistent with the bracket (W2-4/5)."""
         bases = getattr(self, "_unit_bases", None)
         if not bases:
             return []
         imports: list[tuple[str, str]] = []
         for base in bases:
-            ns = self._unit_to_namespace(base)
-            if (ns, base) not in imports:
-                imports.append((ns, base))
+            ns, sysml_name = _unit_import_spec(base)
+            if (ns, sysml_name) not in imports:
+                imports.append((ns, sysml_name))
         return imports
 
     def _collect_unit_imports(self) -> list[tuple[str, str]]:

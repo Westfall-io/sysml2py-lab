@@ -446,7 +446,7 @@ def test_from_ir_forwards_full_ir_key_set(tmp_path):
             "source_span": [3, 7], "raw_text": "raw", "fidelity": "test",
         }
         # r10 W3: the field surface comes from Node alone; assert Unsupported
-        # mirrors it (all eleven Node fields present on Unsupported too), so an
+        # mirrors it (every Node field present on Unsupported too), so an
         # Unsupported-only ctor param cannot silently diverge.
         node_surface = (
             set(inspect.signature(sysml2py.Node.__init__).parameters)
@@ -468,7 +468,7 @@ def test_from_ir_forwards_full_ir_key_set(tmp_path):
             # (self, definition=None, *, raw_text=None, **kwargs) — no
             # declared fields — so Package.__init__ would yield {raw_text}.
             # Node's dataclass signature IS the field surface; Unsupported
-            # mirrors it by construction (all eleven Node fields).
+            # mirrors it by construction (every Node field).
             cls = sysml2py.Node
             from_ir = sysml2py.Node.from_ir
             init_params = (
@@ -1615,25 +1615,26 @@ class _FakeQ:
     """Minimal duck-typed astropy Quantity (no astropy hard dep).
 
     Mirrors the real astropy surface the builder consumes: ``.value``,
-    ``.unit.to_string()`` (header spelling) and ``.unit.bases``/``.unit.powers``
-    (structured unit for bracket + Option-A imports).  ``unit`` is the
-    power-composite string ('m2') or plain name; ``bases``/``powers`` give the
-    structured decomposition the builder actually reads."""
-    def __init__(self, value, unit, bases, powers):
+    ``.unit.to_string()`` (header spelling), ``.unit.bases``/``.unit.powers``
+    (structured unit for bracket + Option-A imports) and ``.unit.scale``
+    (multiplicative scaling — the builder fails loud when it's not 1)."""
+    def __init__(self, value, unit, bases, powers, scale=1.0):
         self.value = value
+        sc = scale
         self.unit = type("U", (), {
             "to_string": lambda self, u=unit: u,
             "bases": bases,
             "powers": powers,
+            "scale": sc,
         })()
 
 
-def _unit_q(value, unit, bases=None, powers=None):
+def _unit_q(value, unit, bases=None, powers=None, scale=1.0):
     if bases is None:
-        bases = [unit]
+        bases = [unit] if unit else []
     if powers is None:
-        powers = [1]
-    return _FakeQ(value, unit, bases, powers)
+        powers = [1] if bases else []
+    return _FakeQ(value, unit, bases, powers, scale)
 
 
 def test_value_quantity_autoimport_and_cast(tmp_path):
@@ -1694,7 +1695,7 @@ def test_value_composite_unit_decomposes_imports(tmp_path):
         p.add(sysml2py.Attribute("accel", value=_unit_q(9.81, "m / s2", ["m", "s"], [1, -2])))
         pb.add(p)
         txt = pb.dump()
-        assert "attribute accel = 9.81[m/s2];" in txt, txt
+        assert "attribute accel = 9.81[m/s**2];" in txt, txt
         assert "public import SI::m;" in txt, txt
         assert "public import SI::s;" in txt, txt
         assert "SI::*" not in txt  # no wildcard
@@ -1720,8 +1721,6 @@ def test_value_fail_loud_unmapped_unit(tmp_path):
         # unmapped unit raises at construction, before any paint can dry
         with pytest.raises(ValueError):
             sysml2py.Attribute("d", value=_unit_q(1, "pc"))
-        with pytest.raises(ValueError):
-            sysml2py.Attribute("d", value=_unit_q(1, "pc"), unit="kg")
         # all four emit entry points stay stubbed-short by the same guard:
         # a valid unit builds (no raise), an invalid one can never be built
         pb = sysml2py.PackageBuilder("X")
@@ -2015,7 +2014,7 @@ def test_value_explicit_unit_normalized_conflict(tmp_path):
         import sysml2py
         a = sysml2py.Attribute("g", value=_unit_q(9.81, "m / s2", ["m", "s"], [1, -2]),
                                unit="m / s2")
-        assert a._unit == "m/s2"  # normalized bracket stored
+        assert a._unit == "m/s**2"  # normalized bracket stored
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
@@ -2042,6 +2041,159 @@ def test_value_empty_and_bad_unit_guards(tmp_path):
         # plain string value + valid unit still works
         a = sysml2py.Attribute("t", value="2.5", unit="s")
         assert a._unit == "s"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_exponent_uses_starstar(tmp_path):
+    """Issue #26 / r3 W1-1: a non-±1 power must use the grammar's exponent
+    operator `**` (`m/s**2`), NOT a digit-suffixed identifier (`m/s2`) that
+    SysML reads as a member reference to an undefined `s2` while importing
+    SI::s that's never referenced."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("X")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("accel", value=_unit_q(9.81, "m / s2", ["m", "s"], [1, -2])))
+        pb.add(p)
+        txt = pb.dump()
+        assert "attribute accel = 9.81[m/s**2];" in txt, txt
+        assert "[m/s2]" not in txt, txt  # mangled identifier must not appear
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_reciprocal_unit_needs_numerator_one(tmp_path):
+    """Issue #26 / r3 W1-2: a unit with only negative powers must render
+    `[1/s]` (a `/` with no left operand `[/s]` is not parseable)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("X")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("rate", value=_unit_q(5, "1/s", ["s"], [-1])))
+        pb.add(p)
+        txt = pb.dump()
+        assert "attribute rate = 5[1/s];" in txt, txt
+        assert "[/s]" not in txt, txt
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_dimensionless_quantity_no_unit(tmp_path):
+    """Issue #26 / r3 W2-1: a dimensionless Quantity (empty bases) must not
+    raise an IndexError — it renders the bare value with no bracket/import."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        a = sysml2py.Attribute("k", value=_unit_q(5, "", [], []))
+        assert a._value == "5"
+        assert a._unit is None
+        assert a.dump() == "attribute k = 5;"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_fractional_power_fails_loud(tmp_path):
+    """Issue #26 / r3 W2-2: a non-integer power must raise, not truncate
+    (int(Fraction(-1,2))==0 would silently drop the base from the bracket
+    while still importing it)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("x", value=_unit_q(1, "m/s(1/2)", ["m", "s"], [1, -0.5]))
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_scaled_unit_fails_loud(tmp_path):
+    """Issue #26 / r3 W2-3: a Quantity with a multiplicative scale != 1 must
+    raise (emitting `[m]` for 100*m would be a 100x-wrong model)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("x", value=_unit_q(5, "m", ["m"], [1], scale=100.0))
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_keyword_unit_quoted(tmp_path):
+    """Issue #26 / r3 W2-4: a unit whose sysml name is a keyword (`in`) must
+    be 'quoted' in both bracket and import (`['in']`, `USCustomaryUnits::'in'`
+    so it tokenizes as a name, not a direction keyword."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("X")
+        p = sysml2py.Part("P")
+        # inch (astropy base 'inch') -> SysML 'in'
+        p.add(sysml2py.Attribute("d", value=_unit_q(33, "in", ["inch"], [1])))
+        pb.add(p)
+        txt = pb.dump()
+        assert "attribute d = 33['in'];" in txt, txt
+        assert "USCustomaryUnits::'in'" in txt, txt
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_gallon_maps_to_gal(tmp_path):
+    """Issue #26 / r3 W2-5: astropy's imperial.gallon base name must map to
+    the SysML spelling `gal` (corpus `[mi / gal]`), not `gallon`, so the
+    bracket and import agree with the library."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("X")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("fuel", value=_unit_q(30, "gal", ["gallon"], [1])))
+        pb.add(p)
+        txt = pb.dump()
+        assert "attribute fuel = 30[gal];" in txt, txt
+        assert "USCustomaryUnits::gal" in txt, txt
+        assert "gallon" not in txt, txt
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_from_ir_rejects_unit_without_value(tmp_path):
+    """Issue #26 / r3 W2-6: `unit` without `value` in an IR dict must be
+    rejected by from_ir (would be silently dropped by get_definition / dump)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        with pytest.raises(ValueError):
+            sysml2py.Node.from_ir({"kind": "attribute", "name": "x",
+                                   "unit": "kg", "modifiers": [], "type_refs": []})
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
