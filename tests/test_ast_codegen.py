@@ -2197,3 +2197,93 @@ def test_from_ir_rejects_unit_without_value(tmp_path):
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_explicit_unit_starstar_not_dropped(tmp_path):
+    """Issue #26 / r4 W1-1: an explicit string `unit="m/s**2"` (the spelling
+    the builder itself emits) must re-author the SAME bracket — the exponent
+    must not be silently dropped to `[m/s]` (acceleration -> velocity)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        a = sysml2py.Attribute("a", value="9.8", unit="m/s**2")
+        assert a._unit == "m/s**2", a._unit
+        assert "attribute a = 9.8[m/s**2];" in a.dump(), a.dump()
+        assert "[m/s]" not in a.dump()
+        sq = sysml2py.Attribute("sq", value="4", unit="m**2")
+        assert "attribute sq = 4[m**2];" in sq.dump()
+        f = sysml2py.Attribute("f", value="1", unit="kg*m/s**2")
+        assert "attribute f = 1[kg*m/s**2];" in f.dump()
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_explicit_unit_starstar_matches_quantity(tmp_path):
+    """Issue #26 / r4 W1-1: explicit `unit="m/s**2"` must NOT spuriously
+    conflict with a Quantity of the same unit (normalization is now
+    idempotent on the emitted spelling)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        a = sysml2py.Attribute("g", value=_unit_q(9.81, "m/s**2", ["m", "s"], [1, -2]),
+                               unit="m/s**2")
+        assert a._unit == "m/s**2"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_unit_string_idempotent(tmp_path):
+    """Issue #26 / r4 W1-1: normalizing the builder's OWN emitted spelling
+    must be stable — norm(norm(x)) == norm(x) for every supported unit."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        for uu in ["m", "m/s", "m/s**2", "m**2", "kg*m**2/s**3", "1/s",
+                   "mi/gal", "in", "gal", "%", "N*m", "m/s/s"]:
+            n1 = sysml2py.Attribute("x", value="1", unit=uu)._unit
+            n2 = sysml2py.Attribute("x", value="1", unit=n1)._unit
+            assert n1 == n2, f"not idempotent: {uu!r} -> {n1!r} -> {n2!r}"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_unit_multislash_denominator(tmp_path):
+    """Issue #26 / r4 W2-high: `m/s/s` must parse as m/(s*s) -> `m/s*s` (an
+    iterated product of divisors), NOT a quoted garbage name `m/'s/s'`."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        a = sysml2py.Attribute("rate", value="1", unit="m/s/s")
+        assert "['s/s']" not in a.dump()
+        assert a._unit_bases == ["m", "s", "s"], a._unit_bases
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_unit_non_string_type_gets_clear_error(tmp_path):
+    """Issue #26 / r4 minor: `unit=` with a non-string non-tuple (e.g. an
+    astropy Unit object) must raise a clear TypeError, not a raw
+    AttributeError from string-splitting."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        with pytest.raises(TypeError):
+            sysml2py.Attribute("x", value="1", unit=object())
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
