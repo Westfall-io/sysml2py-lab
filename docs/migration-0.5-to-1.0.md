@@ -53,10 +53,14 @@ note explains how a 0.5.x consumer moves to 1.0.0 and what to expect.
    and a class-name kind like `kind='PartDefinition'` also raises, because
    it would print invalid SysML (a pre-release regression in the issue #27
    branch, caught by review and never shipped). The classic 0.5.x
-   example also used `set_value` with `astropy.units`
-   — **that value path is not in 1.0.0 yet** (see the generated README).
-   Value-bearing attributes (`attribute mass = 100.0 [kg];`) are tracked as
-   issue #26; until then, prefer the builder API in the README.
+   example also used `set_value` with `astropy.units` — `set_value`
+   is gone; in 1.0.0 you pass `value=`/`unit=` directly to the builder
+   constructor.  Value-bearing attributes are supported (issue #26):
+   `Attribute('mass', value=1000, unit='kg')` ->
+   `attribute mass = 1000[kg];`, with the unit imported automatically
+   (`public import SI::kg;`).  You may also pass an astropy `Quantity`
+   object and the unit is derived from it (`value=1000*u.kg`) — add
+   `import astropy.units as u` (astropy is not bundled; see step 2).
    `Unsupported` nodes remain the honest fallback for constructs not yet
    structurally represented.
 4. To verify provenance of a given install:
