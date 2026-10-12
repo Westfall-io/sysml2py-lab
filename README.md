@@ -34,8 +34,8 @@ produces
 ```
 package Satellite
 {
-   public import SI::kg;
    public import SI::N;
+   public import SI::kg;
    part Stage_1
    {
       attribute mass = 1000[kg];
@@ -52,10 +52,10 @@ member — only the units you actually use, nothing broader.
 
 ```python
 sysml2py.Attribute("mass", value=1000, unit="kg")
-# -> attribute mass = 1000[kg];   +   public import SI::kg;
+# -> attribute mass = 1000[kg];   (import appears on the owning container)
 
 sysml2py.Attribute("accel", value=9.81, unit="m/s**2")
-# -> attribute accel = 9.81[m/s**2];   +   public import SI::m; public import SI::s;
+# -> attribute accel = 9.81[m/s**2];   (imports SI::m, SI::s on the container)
 ```
 
 You can also pass an **astropy `Quantity`** and the unit is derived from it
@@ -69,10 +69,12 @@ sysml2py.Attribute("mass", value=1000 * u.kg)
 
 **Faithfulness contract.** The generator refuses to emit a unit it cannot
 render faithfully — it *fails loud* (`ValueError`) rather than write a
-silently-wrong model.  Unmapped units, scaled/prefixed magnitudes
+silently-wrong model.  Unmapped units, multiplicative **scale factors**
 (`"100 m"`, `u.Unit(100*u.m)`), fractional powers (`m/s**0.5`), a `unit=`
 that conflicts with a Quantity's own unit, and `unit=` without a `value=`
-all raise at construction.
+all raise at construction.  (Ordinary SI-prefixed units like `km`, `cm`,
+`ms` are mapped and supported — it's a bare magnitude with a *scale* that
+fails loud.)
 
 **The Casting.** Before any output ships, `sysml2py-lab` proves the round trip:
 Python model → emit `.sysml` → parse that text back → the re-parsed structure
@@ -81,11 +83,13 @@ the model it claims to represent is scrap, not a release.
 
 ## Layout
 
-- `grammar/` — the SysML v2 / KerML grammar inputs.
+- `grammar_inputs/` — the SysML v2 / KerML grammar inputs (`.xtext`,
+  `manifest.json`, `SOURCES.json`).
 - `corpus/` — the example model corpus that both drives and validates
   generation.
-- `src/sysml2py_lab/` — the generator: brace parser, AST, builders, codegen
-  templates, and the emitted-notation test suite.
+- `src/sysml2py_lab/` — the generator: brace parser, AST, builder and codegen
+  templates, and the emission machinery.
+- `tests/` — the emitted-notation test suite (including the casting gates).
 - `docs/migration-0.5-to-1.0.md` — moving from the hand-maintained 0.5.x
   parser to the 1.0.0 generated library.
 
