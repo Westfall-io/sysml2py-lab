@@ -2329,3 +2329,28 @@ def test_unit_non_string_type_gets_clear_error(tmp_path):
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_tuple_unit_conflict_against_quantity(tmp_path):
+    """Issue #26 / r6 note 1: the internal (bracket, bases) tuple form of
+    `unit=` must NOT silently override a Quantity's own unit — a conflicting
+    tuple must raise, matching the string-form conflict guard."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        # conflicting tuple ('m' bracket) vs Quantity km-based bracket
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("x",
+                               value=_unit_q(1, "km", ["km"], [1]),
+                               unit=("m", ["m"]))
+        # matching tuple is accepted
+        a = sysml2py.Attribute("x",
+                               value=_unit_q(1, "km", ["km"], [1]),
+                               unit=("km", ["km"]))
+        assert a._unit == "km"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))

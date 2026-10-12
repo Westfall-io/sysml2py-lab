@@ -197,7 +197,11 @@ def _parse_unit_terms(unit_string: str) -> list[tuple[str, int]]:
     ``m/s``, ``m/s/s`` (== ``m/(s*s)``), ``kg*m/s**2`` and ``mi/gal``.
 
     ``a/b/c`` is read as ``a/(b*c)`` (SysML / is non-associative, so a
-    multi-slash quantity means an iterated product of divisors)."""
+    multi-slash quantity means an iterated product of divisors).  NOTE: a
+    mixed-operator string like ``a/b*c`` is also read as ``a/(b*c)`` — the
+    builder never emits that shape (its divisor joins use ``/``), so
+    idempotence is unaffected; it only changes the informal interpretation
+    of a user-authored mixed-operator string (r6 note 2)."""
     head, sep, tail = unit_string.partition("/")
     groups = [(head, 1), (tail, -1)] if sep else [(head, 1)]
     terms: list[tuple[str, int]] = []
@@ -381,13 +385,21 @@ class Builder:
                 self._value = _v
                 # explicit `unit=` must not silently override a Quantity's own
                 # unit with no conversion, and must compare against the
-                # NORMALIZED bracket, not a raw string (W2-3/W2-4).
-                if unit is not None and _qspec is not None and isinstance(unit, str):
-                    try:
-                        norm_unit = _normalize_unit_string(unit)
-                    except ValueError:
-                        norm_unit = unit
-                    if norm_unit != _qspec[0]:
+                # NORMALIZED bracket, not a raw string (W2-3/W2-4).  Handles
+                # both a string and the internal (bracket, bases) pair form so
+                # a tuple unit can never silently drop the Quantity's unit
+                # (r6 note 1).
+                if unit is not None and _qspec is not None:
+                    if isinstance(unit, str):
+                        try:
+                            norm_unit = _normalize_unit_string(unit)
+                        except ValueError:
+                            norm_unit = unit
+                    elif isinstance(unit, tuple) and len(unit) == 2:
+                        norm_unit = unit[0]
+                    else:
+                        norm_unit = None  # non-string/tuple -> _set_unit raises
+                    if norm_unit is not None and norm_unit != _qspec[0]:
                         raise ValueError(
                             f"explicit unit={unit!r} conflicts with the "
                             f"Quantity's own unit ({_qspec[0]!r}); pass a "
