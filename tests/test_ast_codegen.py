@@ -2257,16 +2257,58 @@ def test_unit_string_idempotent(tmp_path):
 
 
 def test_unit_multislash_denominator(tmp_path):
-    """Issue #26 / r4 W2-high: `m/s/s` must parse as m/(s*s) -> `m/s*s` (an
-    iterated product of divisors), NOT a quoted garbage name `m/'s/s'`."""
+    """Issue #26 / r5 W1-1: `m/s/s` must parse as m/(s*s) and emit as
+    `m/s/s` (left-associative chained division = iterated divisors), NOT
+    `m/s*s` (which the grammar folds to (m/s)*s = m·s⁻¹·s — wrong) and NOT a
+    quoted garbage name `m/'s/s'` (r4's bug)."""
     pkg = _gen(tmp_path)
     sys.path.insert(0, str(pkg / "src"))
     sys.path.insert(0, str(REPO_ROOT / "src"))
     try:
         import sysml2py
         a = sysml2py.Attribute("rate", value="1", unit="m/s/s")
+        assert a._unit == "m/s/s", a._unit
         assert "['s/s']" not in a.dump()
         assert a._unit_bases == ["m", "s", "s"], a._unit_bases
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_unit_two_distinct_denominators(tmp_path):
+    """Issue #26 / r5 W1-1: a unit with two DIFFERENT denominator bases must
+    keep both in the denominator (divide-divided), so `J/kg/K` stays
+    `J/kg/K` — never `J/kg*K`, which the grammar folds to J·kg⁻¹·K."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        # string path
+        a = sysml2py.Attribute("c", value="1", unit="J/kg/K")
+        assert a._unit == "J/kg/K", a._unit
+        # Quantity path with two negative powers
+        q = sysml2py.Attribute("p", value=_unit_q(1, "kg/m/s2", ["kg", "m", "s"], [1, -1, -2]))
+        assert q._unit == "kg/m/s**2", q._unit
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_unit_bare_magnitude_fails_loud(tmp_path):
+    """Issue #26 / r5 W2-high: a raw unit carrying a multiplicative magnitude
+    (`100 m`, `m/100`) must fail loud, matching the Quantity-path scale
+    guard — never silently emit `[m]` (a 100x-wrong model)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("y", value="1", unit="100 m")
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("y", value="1", unit="m/100")
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))

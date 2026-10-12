@@ -178,7 +178,13 @@ def _build_unit_bracket(bases: list[str], powers: list[int]) -> str:
         return ""  # dimensionless
     num = "*".join(numer) if numer else "1"
     if denom:
-        return f"{num}/{'*'.join(denom)}"
+        # join denominators with `/`, NOT `*` (r5 W1-1): the grammar folds
+        # `*` and `/` into ONE left-associative precedence level, so `a/b*c`
+        # parses as `(a/b)*c` — multipliers would move divisor bases back into
+        # the numerator and silently change the dimension.  Left-associative
+        # chained division `a/b/c` reads as `a/(b*c)`, which is exactly the
+        # term(-1) reading, so this is correct AND idempotent.
+        return f"{num}/{'/'.join(denom)}"
     return num
 
 
@@ -196,10 +202,20 @@ def _parse_unit_terms(unit_string: str) -> list[tuple[str, int]]:
     groups = [(head, 1), (tail, -1)] if sep else [(head, 1)]
     terms: list[tuple[str, int]] = []
     for text, sign in groups:
-        for tok in text.replace("**", "^").replace("*", " ").replace("/", " ").split():
-            if tok.isdigit():
-                continue
-            base, sep2, exp = tok.partition("^")
+        for token in text.replace("**", "^").replace("*", " ").replace("/", " ").split():
+            if token == "1":
+                continue  # the bare `1` numerator of `1/s` carries no scale
+            if token.isdigit() or _is_float_literal(token):
+                # a bare magnitude like `100 m` or `m/100` is a multiplicative
+                # scale factor — same silent-magnitude class the Quantity path
+                # fails loud on (scale != 1), so the two paths must agree (r5)
+                raise ValueError(
+                    f"unit string {unit_string!r} has a multiplicative scale "
+                    f"factor ({token!r}); scaled units cannot be rendered "
+                    f"faithfully in SysML — use a plain unit without the "
+                    f"magnitude"
+                )
+            base, sep2, exp = token.partition("^")
             if not sep2:
                 # digit-suffix form: 's2' -> base 's', exp '2'
                 trimmed = base.rstrip("0123456789")
@@ -208,8 +224,25 @@ def _parse_unit_terms(unit_string: str) -> list[tuple[str, int]]:
             # normalization so `unit=` is idempotent over quoted units (r4)
             if len(base) >= 2 and base[0] == base[-1] == "'":
                 base = base[1:-1]
-            terms.append((base, sign * int(exp or 1)))
+            try:
+                power = int(exp or 1)
+            except ValueError:
+                raise ValueError(
+                    f"unit string {unit_string!r} has a malformed exponent "
+                    f"{exp!r} on base {base!r}; expected an integer"
+                ) from None
+            terms.append((base, sign * power))
     return terms
+
+
+def _is_float_literal(token: str) -> bool:
+    """True for a bare numeric token (``100``, ``2.5``) — a scale factor, not
+    a unit base."""
+    try:
+        float(token)
+        return True
+    except ValueError:
+        return False
 
 
 def _split_unit_bases(unit_string: str) -> list[str]:
@@ -349,11 +382,11 @@ class Builder:
                 # explicit `unit=` must not silently override a Quantity's own
                 # unit with no conversion, and must compare against the
                 # NORMALIZED bracket, not a raw string (W2-3/W2-4).
-                if unit is not None and _qspec is not None:
+                if unit is not None and _qspec is not None and isinstance(unit, str):
                     try:
-                        norm_unit = _normalize_unit_string(str(unit))
+                        norm_unit = _normalize_unit_string(unit)
                     except ValueError:
-                        norm_unit = str(unit)
+                        norm_unit = unit
                     if norm_unit != _qspec[0]:
                         raise ValueError(
                             f"explicit unit={unit!r} conflicts with the "
