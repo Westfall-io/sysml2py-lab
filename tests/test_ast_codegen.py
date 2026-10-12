@@ -1396,13 +1396,28 @@ def test_all_builders_construct_and_keyword_map_complete(tmp_path):
     sys.path.insert(0, str(pkg / "src"))
     sys.path.insert(0, str(REPO_ROOT / "src"))
     try:
-        from sysml2py.builders import _IR_KEYWORD
+        from sysml2py.builders import _IR_KEYWORD, _BUILDER_BY_NAME
 
-        # construct every registered builder (usage form)
-        from sysml2py.builders import _BUILDER_BY_NAME
+        # construct every registered builder (usage form) — also merges the
+        # two builder imports into one statement (review nit)
         for name, cls in _BUILDER_BY_NAME.items():
             b = cls("probe")
             assert b.dump(), f"{name} built but dumped empty"
+
+        # W2-D: base Builder() is abstract
+        import pytest
+        from sysml2py.builders import Builder
+        with pytest.raises(TypeError):
+            Builder("x")
+
+        # W2-E: printable space forms of kind= are accepted
+        import sysml2py as _s
+        assert _s.UseCase("S", kind="use case").dump().strip() == "use case S;"
+        assert _s.UseCase("S", kind="use case def").dump().strip() == (
+            "use case def S;"
+        )
+        # and the underscore IR forms still work
+        assert _s.UseCase("S", kind="use_case").dump().strip() == "use case S;"
 
         # W2-C part 1: _IR_KEYWORD keys == builder ir_kinds (no missing)
         # (builder_ir_kinds is a model-side list; the generated _IR_KEYWORD
@@ -1427,6 +1442,30 @@ def test_builder_and_node_dump_agree_for_all_kinds(tmp_path):
     sys.path.insert(0, str(REPO_ROOT / "src"))
     try:
         from sysml2py.builders import _BUILDER_BY_NAME, _IR_KEYWORD
+
+        # W2-3: literal keywords — the agreement loop alone is consistency-
+        # only (if _usage_kw regressed to identity, both maps would read
+        # use_case and the loop would still pass).  Pin the actual value.
+        import sysml2py as _s
+
+        assert _s.UseCase("S").build_node().dump().strip() == "use case S"
+        assert _s.UseCase("S", kind="definition").build_node().dump().strip() == (
+            "use case def S"
+        )
+
+        # the two generated keyword maps agree (same source): every IR key
+        # the builder accepts prints the same keyword the node printer uses
+        from sysml2py.ast_classes import _PRINT_KEYWORD
+        for ir, forms in _IR_KEYWORD.items():
+            assert _PRINT_KEYWORD.get(ir) == forms[0], (
+                f"usage keyword mismatch for {ir}: "
+                f"{_PRINT_KEYWORD.get(ir)!r} vs {forms[0]!r}"
+            )
+            if len(forms) > 1:
+                assert _PRINT_KEYWORD.get(f"{ir} def") == forms[1], (
+                    f"def keyword mismatch for {ir}: "
+                    f"{_PRINT_KEYWORD.get(f'{ir} def')!r} vs {forms[1]!r}"
+                )
 
         mismatches = []
         for name, cls in sorted(_BUILDER_BY_NAME.items()):
@@ -1540,24 +1579,17 @@ def test_friendly_names_pinned(tmp_path):
         # all pinned friendly names exist
         missing = sorted(n for n in pinned if not hasattr(sysml2py, n))
         assert not missing, f"missing friendly names: {missing}"
-        # no UNPINNED friendly aliases slipped in (W2-H: bidirectional)
-        # A friendly alias is a builders-module class whose __name__ has no
-        # Builder suffix and is not an AST node class.
-        from sysml2py import builders as _builders_mod
-        import sysml2py as _s
-
-        extras = sorted(
-            n
-            for n in dir(_builders_mod)
-            if not n.startswith("_")
-            and isinstance(getattr(_builders_mod, n), type)
-            and n not in pinned
-            and n not in (p + "Builder" for p in ("Package", "Comment", "Import", "Message", "Succession", "AliasMember"))
-            and n + "Builder" in dir(_builders_mod)
-            and not hasattr(_s, n)  # skip AST node classes exported too
+        # bidirectional (W2-2): no UNPINNED friendly aliases may slip in.
+        # Compare directly against the model's friendly set — the vacuous
+        # "extras" generator approach can never yield (builders are named
+        # PartUsageBuilder, not PartBuilder, and every friendly name IS
+        # exported to sysml2py), so assert set equality instead.
+        from sysml2py_lab.codegen import model as _m
+        actual = set(_m.CodegenModel.load(REPO_ROOT).builder_metadata()["friendly_class_names"])
+        assert actual == pinned, (
+            f"friendly set drift: unpinned={sorted(actual - pinned)} "
+            f"missing={sorted(pinned - actual)}"
         )
-        # (the friendly aliases are exactly pinned — nothing extra)
-        assert not extras, f"unexpected friendly aliases: {extras}"
         # builder-only names stay Builder-suffixed (collision with AST nodes)
         for n in ("Package", "Comment", "Import", "Message", "Succession", "AliasMember"):
             assert hasattr(sysml2py, n + "Builder"), f"expected {n}Builder"

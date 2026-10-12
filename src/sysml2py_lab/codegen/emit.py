@@ -42,10 +42,9 @@ def _template_env() -> Environment:
     return env
 
 
-def _emit_ast_classes(model: CodegenModel) -> str:
+def _emit_ast_classes(model: CodegenModel, bm: dict) -> str:
     env = _template_env()
     kinds = model.node_kinds()
-    bm = model.builder_metadata()
     return env.get_template("ast_classes.py.j2").render(
         header=_HEADER,
         node_kinds=kinds,
@@ -122,7 +121,7 @@ def emit_sysml2py(
     src_pkg.mkdir(parents=True, exist_ok=True)
 
     # AST classes + dispatch + provenance
-    (src_pkg / "ast_classes.py").write_text(_emit_ast_classes(model), encoding="utf-8")
+    (src_pkg / "ast_classes.py").write_text(_emit_ast_classes(model, bm), encoding="utf-8")
     (src_pkg / "ast_dispatch.py").write_text(_emit_ast_dispatch(model), encoding="utf-8")
     (src_pkg / "provenance.py").write_text(
         _emit_provenance(model, opts, repo_root, generated_at), encoding="utf-8"
@@ -213,7 +212,8 @@ def emit_sysml2py(
             f"`Reference`, `Transition`, `Import`, `Message`, `Succession`,\n"
             f"`AliasMember`, `Subject`, `ObjectiveRequirement`) reject\n"
             f"`kind='definition'` with a `ValueError` — the generator never\n"
-            f"cast back (and a class-name kind like `'PartDefinition'` raises\n"
+            f"emits a definition it cannot cast back (and a class-name kind\n"
+            f"like `'PartDefinition'` raises\n"
             f"too, since that would print invalid SysML).\n\n"
             f"`Package`/`Comment`/`Import`/`Message`/`Succession`/`AliasMember`\n"
             f"keep the `*Builder` suffix\n"
