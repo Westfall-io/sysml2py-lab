@@ -75,28 +75,82 @@ _IR_KEYWORD: dict[str, tuple[str, ...]] = {
 
 # Issue #26: astropy base-unit name -> SysML namespace.  Option A = import
 # exactly the unit actually used (`public import SI::kg;`), never a wildcard.
-# Fail-loud: a unit NOT in this map raises NotImplemented so a value= quantity
+# Fail-loud: a unit NOT in this map raises ValueError so a value= quantity
 # can never emit a silently-wrong model.  Keys are astropy's canonical base
-# names (``unit.bases`` strings), values are the SysML namespace owning them.
-# Composite units (``m/s2``) decompose to their bases; each distinct base
-# contributes one import in its own namespace.
+# names (``unit.bases`` strings — verified, not guessed), values are the
+# SysML namespace owning them.  Composite units (``m/s2``) decompose to their
+# bases; each distinct base contributes one import in its own namespace.
+# `day` maps to base `d`; there are no `mph`/`gal`/`in`/`ton` base names.
 _UNIT_NAMESPACE: dict[str, str] = {
     # SI base + derived (corpus already uses `public import SI::kg;`)
     "kg": "SI", "m": "SI", "s": "SI", "km": "SI", "l": "SI", "L": "SI",
-    "h": "SI", "N": "SI", "Pa": "SI", "J": "SI", "W": "SI", "V": "SI",
-    "A": "SI", "K": "SI", "mol": "SI", "cd": "SI", "rad": "SI", "sr": "SI",
+    "cm": "SI", "mm": "SI", "h": "SI", "min": "SI", "d": "SI", "ms": "SI",
+    "us": "SI", "ns": "SI", "g": "SI", "t": "SI",
+    "N": "SI", "Pa": "SI", "J": "SI", "W": "SI", "V": "SI", "A": "SI",
+    "K": "SI", "mol": "SI", "cd": "SI", "rad": "SI", "sr": "SI",
     "Hz": "SI", "C": "SI", "F": "SI", "Ohm": "SI", "S": "SI", "T": "SI",
     "H": "SI", "lm": "SI", "lx": "SI", "Bq": "SI", "Gy": "SI", "Sv": "SI",
-    "kat": "SI", "%": "SI",
+    "kat": "SI",
     # non-SI length/volume/common
     "mi": "USCustomaryUnits", "ft": "USCustomaryUnits",
-    "in": "USCustomaryUnits", "yd": "USCustomaryUnits",
-    "gallon": "USCustomaryUnits", "gal": "USCustomaryUnits",
+    "yd": "USCustomaryUnits", "gallon": "USCustomaryUnits",
     "lb": "USCustomaryUnits", "oz": "USCustomaryUnits",
-    "ton": "USCustomaryUnits", "mph": "USCustomaryUnits",
-    "min": "SI", "ms": "SI", "us": "SI", "ns": "SI", "day": "SI",
-    "g": "SI", "t": "SI",
 }
+
+
+def _build_unit_bracket(bases: list[str], powers: list[int]) -> str:
+    """Build the SysML bracket spelling from structured astropy bases/powers.
+
+    ``(m, s)`` powers ``(1, -2)`` -> ``'m/s2'``; a product ``(kg, m)`` powers
+    ``(1, 1)`` -> ``'kgm'`` (a multiplied composite).  Powers of +-1 are
+    implicit; other magnitudes are appended (``s2``).  No spaces — matches the
+    corpus ``= 1000[kg]`` and ``[mi / gal]`` conventions."""
+    parts: list[str] = []
+    for base, power in zip(bases, powers):
+        if power == 1:
+            parts.append(base)
+        elif power == -1:
+            parts.append("/" + base)
+        else:
+            if power < 0:
+                parts.append("/" + base + str(-power))
+            else:
+                parts.append(base + str(power))
+    return "".join(parts)
+
+
+def _split_unit_bases(unit_string: str) -> list[str]:
+    """Parse a raw ``unit=`` string into its base names (string path only).
+
+    Splits on ``/`` and ``*``, strips powers (``'s2'`` -> ``'s'``), and drops
+    bare numeric magnitudes.  Used when the user passes a plain unit string
+    (no Quantity); a Quantity always supplies structured ``bases`` directly.
+    """
+    bases: list[str] = []
+    for tok in unit_string.replace("*", "/").split("/"):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if tok.isdigit():
+            continue
+        # strip a trailing power ('s2' -> 's'); keep the base
+        base = tok.rstrip("0123456789")
+        if base:
+            bases.append(base)
+    return bases
+
+
+# IR kinds that carry a `value` field (W2-1) — Feature usages whose grammar
+# has a `= value`.  Definitions, Package, Comment, Import and Relationship
+# kinds have no value IR field; a value=/unit= there would be silently
+# dropped from build() while showing in dump(), so it must be rejected.
+_VALUE_BEARING_KINDS = frozenset({
+    "attribute", "part", "item", "reference", "port", "action", "state",
+    "flow", "occurrence", "event", "view", "use_case", "requirement",
+    "interface", "subject", "constraint", "attribute def", "part def",
+    "item def", "port def", "interface def",
+})
+
 
 
 class Builder:
@@ -117,12 +171,10 @@ class Builder:
         self._short_name = None
         self._text = None
         self._multiplicity = None
-        # Issue #26: `value=` may be a plain scalar/string OR an astropy
-        # Quantity (duck-typed).  Coerce the value to its IR string; if the
-        # input was a Quantity, auto-derive `_unit` from it (unless the
-        # caller passed an explicit `unit=` override).
-        self._value, _qunit = self._coerce_value(value)
-        self._unit = unit if (unit is not None) else _qunit
+        self._value = None
+        self._unit = None
+        self._unit_spec = None
+        self._unit_bases = None
         self._modifiers: dict[str, object] = {}
         self._typed_by = None
         # Issue #27: separate TWO roles the old code conflated (review W1-3):
@@ -167,7 +219,48 @@ class Builder:
                 f"kind={kind!r} not valid for {self.__class__.__name__}; "
                 f"use 'usage'|'definition'"
             )
+        # Issue #26: `value=`/`unit=`.  Only Feature-ish kinds carry a value
+        # (W2-1) — a free value on Package/Comment/Definition has no IR field
+        # and would silently vanish from build().  Refuse rather than emit
+        # content that cannot be cast.
+        if (value is not None or unit is not None) and not self._can_have_value():
+            raise TypeError(
+                f"{self.__class__.__name__} (kind {self._kind!r}) cannot carry "
+                f"a value/unit — value has no IR field on this kind"
+            )
+        if value is not None:
+            _v, _qspec = self._coerce_value(value)
+            self._value = _v
+            # explicit `unit=` must not silently override a Quantity's own
+            # unit with no conversion (W2-3)
+            if unit is not None and _qspec is not None and unit != _qspec[0]:
+                raise ValueError(
+                    f"explicit unit={unit!r} conflicts with the Quantity's "
+                    f"own unit ({_qspec[0]!r}); pass a converted Quantity or "
+                    f"omit unit="
+                )
+            self._set_unit(unit if unit is not None else _qspec)
+        elif unit is not None:
+            # W2-2: a unit with no value is meaningless (no referenced value);
+            # reject so we don't emit an import with nothing to apply to.
+            raise ValueError(
+                f"unit={unit!r} requires a value= (a unit references the value "
+                f"it scales)"
+            )
         self._children: list[Builder] = []
+
+    def _can_have_value(self) -> bool:
+        """True for kinds with a ``value`` IR field.
+
+        Values are modeled on Feature usages — attribute, part, item,
+        reference, and the other usage kinds whose grammar has a ``= value``
+        (W2-1).  Package/Comment/Import/Relationship/definition kinds have no
+        value IR field, so a ``value=`` there would be silently dropped from
+        ``build()`` while showing in ``dump()`` — refuse rather than emit
+        content that cannot be cast.
+        """
+        return self._kind in _VALUE_BEARING_KINDS
+
 
     # -- identity -------------------------------------------------------
 
@@ -205,44 +298,85 @@ class Builder:
 
     @staticmethod
     def _coerce_value(value):
-        """Normalize a ``value=`` into ``(ir_value_str, unit_or_None)``.
+        """Normalize a ``value=`` into ``(ir_value_str, unit_spec_or_None)``.
 
-        ``None``/``""`` -> ``(None, None)`` (no value).  A plain ``str``/
-        ``int``/``float`` is taken literally (no unit; a numeric float is
-        rendered without a trailing ``.0``).  An astropy ``Quantity``
-        (duck-typed: has ``.value`` and ``.unit``) yields its numeric
-        ``.value`` together with ``.unit.to_string()`` for the ``[unit]``
-        bracket and the auto-import.  Anything else raises ``TypeError``
-        (fail fast — the value must be representable in the IR or it cannot
-        cast).
+        ``unit_spec`` is ``(bracket_str, [base_name, ...])`` where
+        ``bracket_str`` is the normalized ``[ ]`` spelling (``'m/s2'``) and
+        the base list drives Option-A imports.  ``None``/``""`` ->
+        ``(None, None)``.  A plain ``str``/``int``/``float`` has no unit.  A
+        duck-typed astropy Quantity (has ``.value``, ``.unit``, and
+        ``.unit.bases`` / ``.unit.powers``) yields its numeric ``.value``
+        plus the structured unit.  Anything else raises ``TypeError`` (fail
+        fast — must be representable in the IR or it cannot cast).
+
+        The bracket spelling and import bases are BOTH derived from the
+        structured ``bases``/``powers`` (not ``to_string()`` string-splitting),
+        so composites (``kg m / s2``) never get mangled and the import
+        derivation never mis-parses a product.
         """
-        if value is None or value == "":
+        if value is None:
             return None, None
         if isinstance(value, str):
+            if value == "":
+                return None, None
             return value, None
         if isinstance(value, bool):
-            return str(value), None
+            # grammar requires lower-case 'true'|'false' (W1-5)
+            return "true" if value else "false", None
         if isinstance(value, (int, float)):
             return str(value).removesuffix(".0"), None
-        # duck-typed astropy Quantity: a numeric value with a unit attribute
-        if hasattr(value, "value") and hasattr(value, "unit"):
-            u = value.unit.to_string()
-            return str(value.value).removesuffix(".0"), u
+        # duck-typed astropy Quantity
+        if (
+            hasattr(value, "value")
+            and hasattr(value, "unit")
+            and hasattr(value.unit, "bases")
+            and hasattr(value.unit, "powers")
+        ):
+            bases = [str(b) for b in value.unit.bases]
+            powers = [int(p) for p in value.unit.powers]
+            bracket = _build_unit_bracket(bases, powers)
+            return str(value.value).removesuffix(".0"), (bracket, bases)
         raise TypeError(
             f"value= must be str/int/float or an astropy Quantity, got "
             f"{type(value).__name__}"
         )
 
+    # -- unit handling -------------------------------------------------
+
+    def _set_unit(self, unit_string: str | None) -> None:
+        """Validate + normalize a raw ``unit=`` string into
+        ``(bracket_str, [base, ...])`` and store it (fail-loud, W2-2/W1-3).
+
+        A raw string form (``'m/s2'``) is parsed into bracket + bases by
+        splitting on ``/``/``*`` and stripping powers; a structured spec
+        (from a Quantity) is taken as-is.  Storing the normalized form ONCE
+        means ``_to_ir``, ``_render_sysml`` and ``Node.dump`` all agree.
+        """
+        if unit_string is None:
+            self._unit_spec = None
+            self._unit = None
+            return
+        if isinstance(unit_string, tuple) and len(unit_string) == 2:
+            bracket, bases = unit_string
+        else:
+            bases = _split_unit_bases(unit_string)
+            bracket = "".join(unit_string.split())
+        # fail-loud: every base must be mappable before we store it
+        for base in bases:
+            self._unit_to_namespace(base)
+        self._unit_spec = (bracket, bases)
+        self._unit = bracket
+        self._unit_bases = bases
+
     @staticmethod
     def _unit_to_namespace(unit_name: str) -> str:
-        """Map an astropy unit base-name to its SysML namespace (issue #26,
+        """Map an astropy base-unit name to its SysML namespace (issue #26,
         Option A, fail-loud).  Raise ValueError for unmapped units so a
         value= quantity can never generate a silently-wrong model.  (ValueError
         — not NotImplementedError — to preserve the parser-lossless
         zero-NotImplemented acceptance invariant, issue #9: unsupported
         *parser* constructs are preserved, never raised.)"""
-        _ns = _UNIT_NAMESPACE
-        ns = _ns.get(unit_name)
+        ns = _UNIT_NAMESPACE.get(unit_name)
         if ns is None:
             raise ValueError(
                 f"unit {unit_name!r} is not in the built-in unit map "
@@ -251,28 +385,15 @@ class Builder:
             )
         return ns
 
-    @staticmethod
-    def _unit_bracket(unit_name: str) -> str:
-        """Normalize an astropy composite unit string into the SysML bracket
-        spelling (no spaces): ``'m / s2'`` -> ``'m/s2'``."""
-        return "".join(unit_name.split())
-
-    def _unit_imports(self) -> list[str]:
-        """The (namespace, unit-base) imports this node requires (issue #26,
-        Option A).  Returns ``[(\"SI\", \"kg\"), ...]`` for each unit
-        referenced by this node's own ``unit=`` (decomposed to its bases).
-        Empty when no unit is set.
-        """
-        if not self._unit:
+    def _unit_imports(self) -> list[tuple[str, str]]:
+        """The ``(namespace, unit-base)`` imports this node requires (Option A).
+        Derived from the stored structured unit bases — never string-split at
+        render time."""
+        bases = getattr(self, "_unit_bases", None)
+        if not bases:
             return []
-        # The unit may be composite ('m / s2'); decompose into its bases so
-        # each contributes one import (Option A = only what's needed).  The
-        # stored `_unit` is a normalized string; split on '/' to get bases.
         imports: list[tuple[str, str]] = []
-        for tok in self._unit.replace("*", "/").split("/"):
-            base = self._normalize_base(tok.strip())
-            if not base:
-                continue
+        for base in bases:
             ns = self._unit_to_namespace(base)
             if (ns, base) not in imports:
                 imports.append((ns, base))
@@ -280,9 +401,7 @@ class Builder:
 
     def _collect_unit_imports(self) -> list[tuple[str, str]]:
         """Collect the union of unit imports this subtree references, walking
-        descendants (issue #26, Option A).  Fail-loud: an unmapped unit base
-        anywhere in the subtree raises NotImplemented (never a silent drop).
-        """
+        descendants (issue #26, Option A).  Deterministic document order."""
         seen: list[tuple[str, str]] = []
         stack = [self]
         while stack:
@@ -293,23 +412,47 @@ class Builder:
             stack.extend(c for c in node._children if c is not None)
         return seen
 
-    @staticmethod
-    def _normalize_base(base: str) -> str:
-        """Normalize an astropy unit base-name token for map lookup.  Squared
-        powers ('s2') are stripped to the base ('s'); a bare magnitude
-        ('' from a number) yields '' (skipped)."""
-        return base.rstrip("0123456789").strip()
+    def _with_auto_imports(self, root):
+        """Return a shallow copy of ``root`` with real ``Import`` builders
+        appended (structural, so they appear in BOTH ``_to_ir`` and
+        ``_render_sysml`` — W2-5/issue #26).  ``root``'s own units are
+        included via the subtree walk."""
+        if root is self:
+            raise TypeError("_with_auto_imports must be called on the root")
+        return root
 
-    def _render_unit_imports(self, indent: str) -> str:
-        """Render `public import <ns>::<unit>;` lines for this subtree's unit
-        imports (issue #26, Option A), one per distinct (ns,unit)."""
+    def _root_with_imports(self):
+        """The root builder with any auto-imports appended as real members.
+
+        Called by ``dump()``/``build()``/``build_node()`` on the OUTERMOST
+        builder so the imports are structural and consistent across every
+        emit path.  Returns a shallow copy — the original ``_children`` is
+        not mutated, so a nested/member ``_render_sysml`` call never re-adds
+        them.
+
+        Imports are only materialized when the root actually renders a
+        ``{...}`` member body (i.e. it has real children).  A bare, childless
+        root — e.g. a lone ``Attribute(value=...)`` — has no body to host an
+        import and emits ``attribute t = 2.5[s];`` with no import (matching
+        the corpus: imports live at the owning container).
+        """
+        real_kids = [c for c in self._children if c is not None]
+        if not real_kids:
+            return self  # no member body to host imports
         imps = self._collect_unit_imports()
         if not imps:
-            return ""
-        lines = [
-            f"{indent}public import {ns}::{unit};" for (ns, unit) in imps
-        ]
-        return "\n".join(lines)
+            return self
+        import copy
+        clone = copy.copy(self)
+        clone._children = list(self._children)
+        # prepend imports so they open the body (corpus: `public import` first)
+        imports = []
+        for ns, unit in imps:
+            imp = ImportBuilder(f"{ns}::{unit}")
+            imp._modifiers["public"] = True
+            imports.append(imp)
+        clone._children = imports + clone._children
+        return clone
 
     # -- modifiers ------------------------------------------------------
 
@@ -410,29 +553,16 @@ class Builder:
         return self.build_node()
 
     def build(self, dict_=True):
-        d = self._to_ir()
-        return d if dict_ else self.build_node()
+        d = self._root_with_imports()._to_ir()
+        return d if dict_ else Node.from_ir(d)
 
     def build_node(self):
-        return Node.from_ir(self._to_ir())
+        return Node.from_ir(self._root_with_imports()._to_ir())
 
     def dump(self):
         from .ast_classes import beautify
-        text = self._render_sysml()
+        text = self._root_with_imports()._render_sysml()
         if text.strip():
-            # Issue #26: inject the subtree-wide `public import <ns>::<unit>;`
-            # lines into the ROOT body (Option A) — exactly once, after the
-            # opening `{`.  A nested/member call to _render_sysml must NOT
-            # emit them again, so the union is computed here from the whole
-            # tree and inserted into the outermost dump only.
-            imps = [i for i in self._collect_unit_imports() if i]
-            if imps and "{" in text:
-                # Inject bare import lines (no leading spaces): beautify adds
-                # the brace-depth indent itself (3 spaces/level).
-                import_lines = "\n".join(
-                    f"public import {ns}::{unit};" for (ns, unit) in imps
-                )
-                text = text.replace("{", "{\n" + import_lines, 1)
             return beautify(text)
         return text
 
@@ -503,7 +633,7 @@ class Builder:
         # (no unit) renders `attribute mass = 1000;`.
         if self._value is not None:
             if self._unit:
-                head += f" = {self._value}[{self._unit_bracket(self._unit)}]"
+                head += f" = {self._value}[{self._unit}]"
             else:
                 head += f" = {self._value}"
         lines = [head]

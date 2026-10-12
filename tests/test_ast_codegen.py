@@ -1612,14 +1612,28 @@ def test_friendly_names_pinned(tmp_path):
 # ---------------------------------------------------------------------------
 
 class _FakeQ:
-    """Minimal duck-typed astropy Quantity (no astropy hard dep)."""
-    def __init__(self, value, unit):
+    """Minimal duck-typed astropy Quantity (no astropy hard dep).
+
+    Mirrors the real astropy surface the builder consumes: ``.value``,
+    ``.unit.to_string()`` (header spelling) and ``.unit.bases``/``.unit.powers``
+    (structured unit for bracket + Option-A imports).  ``unit`` is the
+    power-composite string ('m2') or plain name; ``bases``/``powers`` give the
+    structured decomposition the builder actually reads."""
+    def __init__(self, value, unit, bases, powers):
         self.value = value
-        self.unit = type("U", (), {"to_string": lambda self, u=unit: u})()
+        self.unit = type("U", (), {
+            "to_string": lambda self, u=unit: u,
+            "bases": bases,
+            "powers": powers,
+        })()
 
 
-def _unit_q(value, unit):
-    return _FakeQ(value, unit)
+def _unit_q(value, unit, bases=None, powers=None):
+    if bases is None:
+        bases = [unit]
+    if powers is None:
+        powers = [1]
+    return _FakeQ(value, unit, bases, powers)
 
 
 def test_value_quantity_autoimport_and_cast(tmp_path):
@@ -1642,11 +1656,25 @@ def test_value_quantity_autoimport_and_cast(tmp_path):
         assert "SI::*" not in txt
         # cast: IR carries value/unit, get_definition is lossless
         ir = pkgb.build()
-        attr = ir["children"][0]["children"][0]
+        # imports are now structural members (child[0] is `import`); walk to
+        # the attribute node rather than assuming position
+        def _find_attr(node):
+            if node.get("kind") == "attribute":
+                return node
+            for c in node.get("children", []):
+                r = _find_attr(c)
+                if r:
+                    return r
+            return None
+        attr = _find_attr(ir)
+        assert attr is not None, ir
         assert attr["value"] == "1000" and attr["unit"] == "kg", attr
+        # structural import present in build() IR too
+        assert any(c.get("kind") == "import" for c in ir["children"]), ir
         node = pkgb.build_node()
         gd = node.get_definition()
-        ga = gd["children"][0]["children"][0]
+        ga = _find_attr(gd)
+        assert ga is not None, gd
         assert ga["value"] == "1000" and ga["unit"] == "kg", ga
     finally:
         sys.path.remove(str(pkg / "src"))
@@ -1663,7 +1691,7 @@ def test_value_composite_unit_decomposes_imports(tmp_path):
         import sysml2py
         pb = sysml2py.PackageBuilder("M2")
         p = sysml2py.Part("P")
-        p.add(sysml2py.Attribute("accel", value=_unit_q(9.81, "m / s2")))
+        p.add(sysml2py.Attribute("accel", value=_unit_q(9.81, "m / s2", ["m", "s"], [1, -2])))
         pb.add(p)
         txt = pb.dump()
         assert "attribute accel = 9.81[m/s2];" in txt, txt
@@ -1773,6 +1801,125 @@ def test_usecase_docstring_uses_printable_keyword(tmp_path):
         assert "use case S;" in doc, doc
         assert "use case def S;" in doc, doc
         assert "use_case S;" not in doc, doc  # IR key must not leak
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_import_cast_roundtrip_symmetric(tmp_path):
+    """Issue #26 / W2-5: the auto-import must be STRUCTURAL (a real member in
+    both build() IR and get_definition), so parse_ir(dump()) recovers exactly
+    the import the Python model carries — the cast must hold, not just the
+    text.  Also dedups: one import per (namespace, unit) across the subtree."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        from sysml2py_lab.ir import parse_ir
+        from sysml2py_lab.regress import _ir_to_json
+        pb = sysml2py.PackageBuilder("MyModel")
+        stage = sysml2py.Part("Stage_1")
+        stage.add(sysml2py.Attribute("mass", value=_unit_q(1000, "kg")))
+        pb.add(stage)
+        txt = pb.dump()
+        # parse the emitted text back (the cast): must recover an `import`
+        tree = sysml2py.Node.from_ir(_ir_to_json(parse_ir(txt)))
+        gd = tree.get_definition()
+
+        def imports_of(node):
+            out = []
+            if node.get("kind") == "import":
+                out.append((node.get("name"), tuple(node.get("modifiers", []))))
+            for c in node.get("children", []):
+                out.extend(imports_of(c))
+            return out
+
+        parsed_imports = imports_of(gd)
+        model_imports = imports_of(pb.build())
+        assert parsed_imports == model_imports, (
+            f"cast asymmetry: parsed={parsed_imports} "
+            f"model={model_imports}"
+        )
+        assert ("SI::kg", ("public",)) in parsed_imports, parsed_imports
+        # exactly one import even with two kg attributes elsewhere in tree
+        assert len([i for i in parsed_imports if i[0] == "SI::kg"]) == 1
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_bool_renders_lowercase(tmp_path):
+    """Issue #26 / W1-5: a Python bool value= must render the grammar's
+    lower-case 'true'/'false', not 'True'/'False' (which would parse as a
+    feature reference — silently wrong)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        assert sysml2py.Attribute("f", value=True).dump() == "attribute f = true;"
+        assert sysml2py.Attribute("f", value=False).dump() == "attribute f = false;"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_rejected_on_non_attribute_kind(tmp_path):
+    """Issue #26 / W2-1: value= on a package/comment/definition has no IR
+    field and would be silently dropped from build() — must raise, not emit
+    content that cannot be cast."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        with pytest.raises(TypeError):
+            sysml2py.PackageBuilder("P", value="x")
+        with pytest.raises(TypeError):
+            sysml2py.Comment("c", value="x")
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_unit_requires_value_and_no_conflict(tmp_path):
+    """Issue #26 / W2-2, W2-3: unit= without value= raises (no referenced
+    value); an explicit unit= conflicting with a Quantity's own unit raises
+    (no silent relabel)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        # W2-2
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("x", unit="kg")
+        # W2-3
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("m", value=_unit_q(1000, "kg"), unit="lb")
+        # matching explicit unit / same unit is fine
+        a = sysml2py.Attribute("m", value=_unit_q(1000, "kg"), unit="kg")
+        assert a._unit == "kg"
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_rejected_on_non_value_bearing(tmp_path):
+    """Issue #26 / W2-1 (import/relationship kinds): value= on a non-feature
+    kind that has no value IR field must raise, not silently vanish from
+    build()."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        with pytest.raises(TypeError):
+            sysml2py.ImportBuilder("SI::kg", value="x")
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))

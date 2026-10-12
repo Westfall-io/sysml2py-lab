@@ -24,7 +24,11 @@ __all__ = ["canonical", "canonicalize", "print_model"]
 
 def _render(node, indent: bool) -> str:
     if isinstance(node, _Builder):
-        text = node._render_sysml()
+        # Issue #26 (W1-1): route through the import-materialized root so the
+        # printer path emits the structural `public import` members and
+        # fail-looud validation exactly like dump()/build(), never a silent
+        # wrong model.
+        text = node._root_with_imports()._render_sysml()
     else:
         text = node.dump()
     return beautify(text) if indent else text
