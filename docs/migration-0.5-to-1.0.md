@@ -46,12 +46,13 @@ note explains how a 0.5.x consumer moves to 1.0.0 and what to expect.
    -> `part def Stage_1;`. `add()` appends children (`pkg.add(part)`).
    Container names that collide with AST node classes (`Package`, `Comment`,
    `Import`, `Message`, `Succession`, `AliasMember`) keep the `*Builder`
-   suffix — use `PackageBuilder`, etc. Kinds have no definition form
+   suffix — use `PackageBuilder`, etc. Kinds with no definition form
    (`Package`, `Comment`, `Actor`, `Reference`, `Transition`, `Import`,
-   `Message`, `Succession`, `AliasMember`, `Subject`) reject
-   `kind='definition'` with `ValueError` — and a class-name kind like
-   `kind='PartDefinition'` also raises, because it would print invalid SysML
-   (behavior change vs 1.0.0's silent `PartDefinition S;`). The classic 0.5.x
+   `Message`, `Succession`, `AliasMember`, `Subject`,
+   `ObjectiveRequirement`) reject `kind='definition'` with `ValueError` —
+   and a class-name kind like `kind='PartDefinition'` also raises, because
+   it would print invalid SysML (a pre-release regression in the issue #27
+   branch, caught by review and never shipped). The classic 0.5.x
    example also used `set_value` with `astropy.units`
    — **that value path is not in 1.0.0 yet** (see the generated README).
    Value-bearing attributes (`attribute mass = 100.0 [kg];`) are tracked as

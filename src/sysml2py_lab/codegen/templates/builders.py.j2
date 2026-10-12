@@ -57,35 +57,20 @@ _MODIFIER_SLOTS: list[tuple[str, tuple[str, ...], str]] = [
 {% endfor %}
 ]
 
-# IR kind -> printable SysML keyword forms (issue #27).  `ir_kind` carries
-# the coarse canonical kind (part/attribute/package/...); the definition
-# variant adds the `def` keyword.  Module-level so generated subclasses stay
-# immutable (ruff RUF012) and the friendly `kind=` normalizer has ONE source
-# of truth for what it accepts + prints.
+# IR kind -> printable SysML keyword forms (issue #27, W1-A/W2-C single
+# source).  Generated from the model's IR_KIND_ALIASES so the builder's
+# accepted kinds and the node's printed keywords can never drift.  For each
+# builder ir_kind: (usage keyword, def keyword-or-None).  Module-level so
+# generated subclasses stay immutable (ruff RUF012) and the friendly `kind=`
+# normalizer has ONE source of truth for what it accepts + prints.
 _IR_KEYWORD: dict[str, tuple[str, ...]] = {
-    "package": ("package",),
-    "part": ("part", "part def"),
-    "item": ("item", "item def"),
-    "attribute": ("attribute", "attribute def"),
-    "port": ("port", "port def"),
-    "constraint": ("constraint", "constraint def"),
-    "connection": ("connection", "connection def"),
-    "occurrence": ("occurrence", "occurrence def"),
-    "actor": ("actor",),  # usage-only (review W1-2): no `actor def` in SysML v2
-    "action": ("action", "action def"),
-    "state": ("state", "state def"),
-    "subject": ("subject",),  # usage-only (review W1-1): SubjectDefinition absent
-    "use_case": ("use case", "use case def"),
-    "requirement": ("requirement", "requirement def"),
-    "interface": ("interface", "interface def"),
-    "objective": ("objective",),  # usage-only: ObjectiveRequirement is a usage
-    "reference": ("reference",),  # usage-only (review W1-2)
-    "comment": ("comment",),
-    "alias": ("alias",),
-    "message": ("message",),
-    "succession": ("succession",),
-    "transition": ("transition",),
-    "import": ("import",),
+{% for ir, usage_kw, def_kw in ir_keywords %}
+{% if def_kw %}
+    "{{ ir }}": ("{{ usage_kw }}", "{{ def_kw }}"),
+{% else %}
+    "{{ ir }}": ("{{ usage_kw }}",),
+{% endif %}
+{% endfor %}
 }
 
 
@@ -121,19 +106,29 @@ class Builder:
         # form ("part def"), or the IR kind ("part").  Class-name forms
         # ("PartDefinition") are REJECTED.
         ir = self.ir_kind
+        # W2-D: base `Builder` is abstract; reject bare construction.
+        if not ir:
+            raise TypeError(
+                f"{self.__class__.__name__} is abstract; use a generated "
+                f"subclass (e.g. Part, Attribute)"
+            )
         kw = _IR_KEYWORD[ir]  # strict: a kind the generator forgot -> KeyError
         usage_kw = kw[0]
         def_kw = kw[1] if len(kw) > 1 else None
-        if kind is None or kind == "usage" or kind == ir:
+        # Accept BOTH the IR (underscore) and printable (space) keyword forms
+        # for `kind=` (W2-E): 'part'/'use_case' == usage; 'part def'/
+        # 'use_case def'/'use case def' == definition.
+        _ir_def = f"{ir} def"
+        if kind is None or kind == "usage" or kind in (ir, usage_kw):
             self._kind = ir
             self._keyword = usage_kw
-        elif kind in ("definition", "def") or kind == f"{ir} def":
+        elif kind in ("definition", "def") or kind in (_ir_def, def_kw):
             if def_kw is None:
                 raise ValueError(
                     f"{self.__class__.__name__} has no definition form "
                     f"(kind={kind!r})"
                 )
-            self._kind = f"{ir} def"
+            self._kind = _ir_def
             self._keyword = def_kw
             self._is_definition = True  # W2-5: honest introspection + typing guard
         else:

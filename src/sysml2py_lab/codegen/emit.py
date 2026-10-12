@@ -45,10 +45,12 @@ def _template_env() -> Environment:
 def _emit_ast_classes(model: CodegenModel) -> str:
     env = _template_env()
     kinds = model.node_kinds()
+    bm = model.builder_metadata()
     return env.get_template("ast_classes.py.j2").render(
         header=_HEADER,
         node_kinds=kinds,
         ir_kind_aliases=IR_KIND_ALIASES,
+        print_keywords=bm["ir_keywords"],  # W1-A: node printer keyword map
     )
 
 
@@ -72,9 +74,8 @@ def _emit_provenance(model: CodegenModel, opts: EmitOptions, repo_root: Path, ge
     )
 
 
-def _emit_builders(model: CodegenModel) -> str:
+def _emit_builders(model: CodegenModel, bm: dict) -> str:
     env = _template_env()
-    bm = model.builder_metadata()
     return env.get_template("builders.py.j2").render(
         header=_HEADER,
         builder_class_names=[b["name"] for b in bm["builder_classes"]],
@@ -83,6 +84,7 @@ def _emit_builders(model: CodegenModel) -> str:
         usage_modifier_slots=bm["usage_modifier_slots"],
         friendly_class_names=bm["friendly_class_names"],
         def_ir_kinds=bm["def_ir_kinds"],
+        ir_keywords=bm["ir_keywords"],
     )
 
 
@@ -139,7 +141,7 @@ def emit_sysml2py(
             (gdir / tx.name).write_text(tx.read_text(encoding="utf-8"), encoding="utf-8")
 
     # Builder API + traversal + printer (issue #10, phase-5)
-    (src_pkg / "builders.py").write_text(_emit_builders(model), encoding="utf-8")
+    (src_pkg / "builders.py").write_text(_emit_builders(model, bm), encoding="utf-8")
     (src_pkg / "traversal.py").write_text(
         env.get_template("traversal.py.j2").render(header=_HEADER), encoding="utf-8"
     )
@@ -209,8 +211,8 @@ def emit_sysml2py(
             f"`Part('Stage_1', kind='definition')` -> `part def Stage_1;`\n\n"
             f"Kinds without a definition form (`Package`, `Comment`, `Actor`,\n"
             f"`Reference`, `Transition`, `Import`, `Message`, `Succession`,\n"
-            f"`AliasMember`, `Subject`) reject `kind='definition'` with a\n"
-            f"`ValueError` — the generator never emits a definition it cannot\n"
+            f"`AliasMember`, `Subject`, `ObjectiveRequirement`) reject\n"
+            f"`kind='definition'` with a `ValueError` — the generator never\n"
             f"cast back (and a class-name kind like `'PartDefinition'` raises\n"
             f"too, since that would print invalid SysML).\n\n"
             f"`Package`/`Comment`/`Import`/`Message`/`Succession`/`AliasMember`\n"

@@ -468,10 +468,24 @@ class CodegenModel:
         _def_ir_kinds = {
             k[: -len(" def")] for k in IR_KIND_ALIASES if k.endswith(" def")
         }
+        # Printable SysML keyword per builder ir_kind, derived from the IR
+        # kind (W1-A / W2-B/C single source).  usage = ir without the
+        # underscore (use_case -> "use case"); def = usage + " def" iff a
+        # "<ir> def" alias exists in IR_KIND_ALIASES, else None.  Both the
+        # builder `_IR_KEYWORD` and the node `_PRINT_KEYWORD` are generated
+        # from this, so they can never drift.
+        def _usage_kw(ir: str) -> str:
+            return ir.replace("_", " ")
+        _ir_keywords = [
+            (b["ir_kind"], _usage_kw(b["ir_kind"]),
+             (_usage_kw(b["ir_kind"]) + " def") if (b["ir_kind"] + " def") in IR_KIND_ALIASES else None)
+            for b in kinds_out
+        ]
         return {
             "builder_classes": kinds_out,
             "legal_children": legal,
             "usage_modifier_slots": self.modifier_slots("BasicUsagePrefix"),
+            "ir_keywords": _ir_keywords,
             "friendly_class_names": [
                 _friendly_name(b["class_name"])
                 for b in kinds_out
