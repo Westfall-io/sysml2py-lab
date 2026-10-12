@@ -73,6 +73,227 @@ _IR_KEYWORD: dict[str, tuple[str, ...]] = {
 {% endfor %}
 }
 
+# Issue #26: astropy base-unit name -> SysML namespace.  Option A = import
+# exactly the unit actually used (`public import SI::kg;`), never a wildcard.
+# Fail-loud: a unit NOT in this map raises ValueError so a value= quantity
+# can never emit a silently-wrong model.  Keys are astropy's canonical base
+# names (``unit.bases`` strings — verified, not guessed), values are the
+# SysML namespace owning them.  Composite units decompose to their bases;
+# each distinct base contributes one import in its own namespace.
+_UNIT_NAMESPACE: dict[str, str] = {
+    # SI base + derived (corpus already uses `public import SI::kg;`)
+    "kg": "SI", "m": "SI", "s": "SI", "km": "SI", "l": "SI", "L": "SI",
+    "cm": "SI", "mm": "SI", "h": "SI", "min": "SI", "d": "SI", "ms": "SI",
+    "us": "SI", "ns": "SI", "g": "SI", "t": "SI",
+    "N": "SI", "Pa": "SI", "J": "SI", "W": "SI", "V": "SI", "A": "SI",
+    "K": "SI", "mol": "SI", "cd": "SI", "rad": "SI", "sr": "SI",
+    "Hz": "SI", "C": "SI", "F": "SI", "Ohm": "SI", "S": "SI", "T": "SI",
+    "H": "SI", "lm": "SI", "lx": "SI", "Bq": "SI", "Gy": "SI", "Sv": "SI",
+    "kat": "SI", "%": "SI",
+    # non-SI length/volume/common
+    "mi": "USCustomaryUnits", "ft": "USCustomaryUnits",
+    "yd": "USCustomaryUnits", "inch": "USCustomaryUnits", "in": "USCustomaryUnits",
+    "gallon": "USCustomaryUnits", "gal": "USCustomaryUnits",
+    "lb": "USCustomaryUnits", "oz": "USCustomaryUnits",
+}
+
+# astropy base name -> the SysML MEMBER name (W2-5).  astropy's first aliases
+# differ from the SysML library spellings the corpus uses; map them so the
+# bracket and the import both use the SysML name.  Names absent here use the
+# base name unchanged.
+_UNIT_SYSML_NAME: dict[str, str] = {
+    "inch": "in",        # corpus: `33 ['in']` (in is a direction keyword -> quoted)
+    "gallon": "gal",     # astropy imperial.gallon base name -> `gal` (corpus `[mi / gal]`)
+}
+
+# SysML keywords that are NOT valid bare IDs and so must be 'quoted' when used
+# as a member name in a unit bracket / import (W2-4).
+_UNIT_KEYWORD_NAMES = frozenset({
+    "in", "out", "inout", "all", "optional", "unique", "variant", "ordered",
+    "nonunique", "redefines", "refines", "specializes", "import", "attribute",
+    "part", "package", "comment", "public", "private", "protected", "readonly",
+})
+
+
+def _quote_unit_name(name: str) -> str:
+    """Quote ``name`` if it is not a valid bare SysML ID (W2-4).
+
+    ``%``, or a keyword like ``in``/``out``, must be written ``'%'``/``'in'``
+    so it tokenizes as a name, not an operator/keyword."""
+    if not name:
+        return "''"
+    is_plain = (name[0].isalpha() or name[0] == "_") and (
+        name.isalnum() or all(c.isalnum() or c == "_" for c in name[1:])
+    )
+    if is_plain and name not in _UNIT_KEYWORD_NAMES:
+        return name
+    return f"'{name}'"
+
+
+def _unit_sysml_name(astropy_base: str) -> str:
+    """The SysML member name for an astropy base (W2-5)."""
+    return _UNIT_SYSML_NAME.get(astropy_base, astropy_base)
+
+
+def _unit_import_spec(astropy_base: str) -> tuple[str, str]:
+    """The ``(namespace, sysml_name)`` import for an astropy base (W2-4/5)."""
+    ns = _UNIT_NAMESPACE[astropy_base]
+    return ns, _quote_unit_name(_unit_sysml_name(astropy_base))
+
+
+def _build_unit_bracket(bases: list[str], powers: list[int]) -> str:
+    """Build the SysML bracket spelling from structured astropy bases/powers.
+
+    Rules (all r3 fixes):
+    - Positive powers PRODUCT is joined with ``*`` (``(N, m)`` powers
+      ``(1, 1)`` -> ``'N*m'``).
+    - Non-±1 powers use the grammar's exponent operator ``**`` — ``(m, s)``
+      powers ``(1, -2)`` -> ``'m/s**2'``.  A digit-suffixed ``s2`` would be a
+      *member identifier reference*, not an exponent, and would disagree with
+      the emitted ``SI::s`` import (W1-1).
+    - With no positive power, a leading ``1`` numerator is supplied:
+      ``(s,)`` powers ``(-1,)`` -> ``'1/s'``, not ``'/s'`` (W1-2).
+    - A dimensionless unit (empty bases) -> an empty bracket ``''`` (W2-1).
+    - Names go through the astropy->SysML map and quoting (``'in'``, ``'%'``).
+    - Non-integer powers raise (W2-2).
+    No spaces — matches the corpus ``= 1000[kg]`` and ``[mi / gal]``.
+    """
+    numer: list[str] = []
+    denom: list[str] = []
+    for base, power in zip(bases, powers):
+        p = int(power)
+        if power != p:  # non-integer (fractional) power -> fail loud
+            raise ValueError(
+                f"unit power {power!r} on base {base!r} is not an integer; "
+                f"fractional powers cannot be rendered faithfully in SysML"
+            )
+        if p == 0:
+            continue
+        nm = _quote_unit_name(_unit_sysml_name(base))
+        if p > 0:
+            numer.append(nm if p == 1 else f"{nm}**{p}")
+        else:
+            denom.append(nm if p == -1 else f"{nm}**{-p}")
+    if not numer and not denom:
+        return ""  # dimensionless
+    num = "*".join(numer) if numer else "1"
+    if denom:
+        # join denominators with `/`, NOT `*` (r5 W1-1): the grammar folds
+        # `*` and `/` into ONE left-associative precedence level, so `a/b*c`
+        # parses as `(a/b)*c` — multipliers would move divisor bases back into
+        # the numerator and silently change the dimension.  Left-associative
+        # chained division `a/b/c` reads as `a/(b*c)`, which is exactly the
+        # term(-1) reading, so this is correct AND idempotent.
+        return f"{num}/{'/'.join(denom)}"
+    return num
+
+
+def _parse_unit_terms(unit_string: str) -> list[tuple[str, int]]:
+    """Parse a raw ``unit=`` string into ``(base, power)`` terms (r4 W1-1).
+
+    Single source of truth for the string path: BOTH the bracket and the
+    bases are derived from ONE parse, so imports and spelling can never
+    diverge.  Handles ``s**2``/``s^2``/``s2`` (and negative exponents),
+    ``m/s``, ``m/s/s`` (== ``m/(s*s)``), ``kg*m/s**2`` and ``mi/gal``.
+
+    ``a/b/c`` is read as ``a/(b*c)`` (SysML / is non-associative, so a
+    multi-slash quantity means an iterated product of divisors).  NOTE: a
+    mixed-operator string like ``a/b*c`` is also read as ``a/(b*c)`` — the
+    builder never emits that shape (its divisor joins use ``/``), so
+    idempotence is unaffected; it only changes the informal interpretation
+    of a user-authored mixed-operator string (r6 note 2)."""
+    head, sep, tail = unit_string.partition("/")
+    groups = [(head, 1), (tail, -1)] if sep else [(head, 1)]
+    terms: list[tuple[str, int]] = []
+    for text, sign in groups:
+        for token in text.replace("**", "^").replace("*", " ").replace("/", " ").split():
+            if token == "1":
+                continue  # the bare `1` numerator of `1/s` carries no scale
+            if token.isdigit() or _is_float_literal(token):
+                # a bare magnitude like `100 m` or `m/100` is a multiplicative
+                # scale factor — same silent-magnitude class the Quantity path
+                # fails loud on (scale != 1), so the two paths must agree (r5)
+                raise ValueError(
+                    f"unit string {unit_string!r} has a multiplicative scale "
+                    f"factor ({token!r}); scaled units cannot be rendered "
+                    f"faithfully in SysML — use a plain unit without the "
+                    f"magnitude"
+                )
+            base, sep2, exp = token.partition("^")
+            if not sep2:
+                # digit-suffix form: 's2' -> base 's', exp '2'
+                trimmed = base.rstrip("0123456789")
+                base, exp = trimmed, base[len(trimmed):]
+            # strip a quoted name (`'in'`/`'%'`) fed back from a previous
+            # normalization so `unit=` is idempotent over quoted units (r4)
+            if len(base) >= 2 and base[0] == base[-1] == "'":
+                base = base[1:-1]
+            try:
+                power = int(exp or 1)
+            except ValueError:
+                raise ValueError(
+                    f"unit string {unit_string!r} has a malformed exponent "
+                    f"{exp!r} on base {base!r}; expected an integer"
+                ) from None
+            terms.append((base, sign * power))
+    return terms
+
+
+def _is_float_literal(token: str) -> bool:
+    """True for a bare numeric token (``100``, ``2.5``) — a scale factor, not
+    a unit base."""
+    try:
+        float(token)
+        return True
+    except ValueError:
+        return False
+
+
+def _split_unit_bases(unit_string: str) -> list[str]:
+    """Parse a raw ``unit=`` string into its base names (string path only)."""
+    return [base for base, _ in _parse_unit_terms(unit_string)]
+
+
+def _normalize_unit_string(unit_string: str) -> str:
+    """Normalize a raw ``unit=`` string to its SysML bracket form.
+
+    ``'m / s2'`` -> ``'m/s**2'``, ``'m/s**2'`` -> ``'m/s**2'`` (idempotent on
+    the builder's own output — r4 W1-1).  This is the SAME normalization a
+    Quantity derives from its structured bases, so an explicit ``unit=`` and
+    a Quantity's own unit compare equal when they denote the same unit.
+    Raises ValueError for a unit with no parseable base."""
+    terms = _parse_unit_terms(unit_string)
+    if not terms:
+        raise ValueError(
+            f"unit={unit_string!r} has no parseable unit base; expected "
+            f"something like 'm', 'kg', 'm/s**2' (got no unit name)"
+        )
+    bases = [base for base, _ in terms]
+    powers = [power for _, power in terms]
+    return _build_unit_bracket(bases, powers)
+
+
+# IR kinds that carry a `value` field (W2-1) — Feature usages whose grammar
+# has a `= value`.  Definition kinds have no value IR field (a `def` cannot
+# carry a FeatureValue), Package/Comment/Import and Relationship kinds have
+# no value either; a value=/unit= there would be silently dropped from
+# build() while showing in dump(), so it must be rejected.
+# This set is deliberately CONSERVATIVE: it lists only the usage kinds the
+# corpus demonstrably gives a `= value` (r3 N-4).  The review suggested
+# widening it to actor/objective/connection/succession/transition; nothing in
+# the corpus shows those carrying `= value`, so adding them could instead EMIT
+# invalid output.  Over-restriction (fail-loud TypeError) is the safe
+# direction — it can never produce silently-wrong model text, only an explicit
+# error.  If a real model needs one, add the kind here alongside a corpus
+# proof, not speculatively.
+_VALUE_BEARING_KINDS = frozenset({
+    "attribute", "part", "item", "reference", "port", "action",
+    "state", "occurrence", "requirement", "constraint", "interface",
+    "use_case", "subject",
+})
+
+
+
 
 class Builder:
     """Base builder: accumulates a canonical-IR dict sub-tree.
@@ -87,11 +308,14 @@ class Builder:
     owned_body = None  # e.g. "PackageBody" — advisory legal-child body
     _is_definition = False
 
-    def __init__(self, name=None, *, kind=None):
+    def __init__(self, name=None, *, kind=None, value=None, unit=None):
         self._name = name
         self._short_name = None
         self._text = None
         self._multiplicity = None
+        self._value = None
+        self._unit = None
+        self._unit_bases = None
         self._modifiers: dict[str, object] = {}
         self._typed_by = None
         # Issue #27: separate TWO roles the old code conflated (review W1-3):
@@ -136,7 +360,73 @@ class Builder:
                 f"kind={kind!r} not valid for {self.__class__.__name__}; "
                 f"use 'usage'|'definition'"
             )
+        # Issue #26: `value=`/`unit=`.  Only Feature-ish kinds carry a value
+        # (W2-1) — a free value on Package/Comment/Definition has no IR field
+        # and would silently vanish from build().  Refuse rather than emit
+        # content that cannot be cast.
+        if (value is not None or unit is not None) and not self._can_have_value():
+            raise TypeError(
+                f"{self.__class__.__name__} (kind {self._kind!r}) cannot carry "
+                f"a value/unit — value has no IR field on this kind"
+            )
+        if value is not None:
+            _v, _qspec = self._coerce_value(value)
+            if _v is None:
+                # value="" or an empty Quantity coerces to no value (W2-1);
+                # treat as "no value" so `unit=` still requires a real value,
+                # rather than emitting a dangling unit import.
+                if unit is not None:
+                    raise ValueError(
+                        f"value={value!r} is empty; a unit= requires a "
+                        f"non-empty value to scale"
+                    )
+                self._value = None
+            else:
+                self._value = _v
+                # explicit `unit=` must not silently override a Quantity's own
+                # unit with no conversion, and must compare against the
+                # NORMALIZED bracket, not a raw string (W2-3/W2-4).  Handles
+                # both a string and the internal (bracket, bases) pair form so
+                # a tuple unit can never silently drop the Quantity's unit
+                # (r6 note 1).
+                if unit is not None and _qspec is not None:
+                    if isinstance(unit, str):
+                        try:
+                            norm_unit = _normalize_unit_string(unit)
+                        except ValueError:
+                            norm_unit = unit
+                    elif isinstance(unit, tuple) and len(unit) == 2:
+                        norm_unit = unit[0]
+                    else:
+                        norm_unit = None  # non-string/tuple -> _set_unit raises
+                    if norm_unit is not None and norm_unit != _qspec[0]:
+                        raise ValueError(
+                            f"explicit unit={unit!r} conflicts with the "
+                            f"Quantity's own unit ({_qspec[0]!r}); pass a "
+                            f"converted Quantity or omit unit="
+                        )
+                self._set_unit(unit if unit is not None else _qspec)
+        elif unit is not None:
+            # W2-2: a unit with no value is meaningless (no referenced value);
+            # reject so we don't emit an import with nothing to apply to.
+            raise ValueError(
+                f"unit={unit!r} requires a value= (a unit references the value "
+                f"it scales)"
+            )
         self._children: list[Builder] = []
+
+    def _can_have_value(self) -> bool:
+        """True for kinds with a ``value`` IR field.
+
+        Values are modeled on Feature usages — attribute, part, item,
+        reference, and the other usage kinds whose grammar has a ``= value``
+        (W2-1).  Package/Comment/Import/Relationship/definition kinds have no
+        value IR field, so a ``value=`` there would be silently dropped from
+        ``build()`` while showing in ``dump()`` — refuse rather than emit
+        content that cannot be cast.
+        """
+        return self._kind in _VALUE_BEARING_KINDS
+
 
     # -- identity -------------------------------------------------------
 
@@ -169,6 +459,244 @@ class Builder:
             )
         self._text = text
         return self
+
+    # -- value (issue #26) ---------------------------------------------
+
+    @staticmethod
+    def _coerce_value(value):
+        """Normalize a ``value=`` into ``(ir_value_str, unit_spec_or_None)``.
+
+        ``unit_spec`` is ``(bracket_str, [base_name, ...])`` where
+        ``bracket_str`` is the normalized ``[ ]`` spelling (``'m/s2'``) and
+        the base list drives Option-A imports.  ``None``/``""`` ->
+        ``(None, None)``.  A plain ``str``/``int``/``float`` has no unit.  A
+        duck-typed astropy Quantity (has ``.value``, ``.unit``, and
+        ``.unit.bases`` / ``.unit.powers``) yields its numeric ``.value``
+        plus the structured unit.  Anything else raises ``TypeError`` (fail
+        fast — must be representable in the IR or it cannot cast).
+
+        The bracket spelling and import bases are BOTH derived from the
+        structured ``bases``/``powers`` (not ``to_string()`` string-splitting),
+        so composites (``kg m / s2``) never get mangled and the import
+        derivation never mis-parses a product.
+        """
+        if value is None:
+            return None, None
+        if isinstance(value, str):
+            if value == "":
+                return None, None
+            return value, None
+        if isinstance(value, bool):
+            # grammar requires lower-case 'true'|'false' (W1-5)
+            return "true" if value else "false", None
+        if isinstance(value, (int, float)):
+            return str(value).removesuffix(".0"), None
+        # duck-typed astropy Quantity
+        if (
+            hasattr(value, "value")
+            and hasattr(value, "unit")
+            and hasattr(value.unit, "bases")
+            and hasattr(value.unit, "powers")
+        ):
+            # W2-3: a scaled unit (e.g. u.Unit(100*u.m)) has scale != 1 while
+            # decomposing to a single base — folding it would silently change
+            # the value, and emitting `[m]` would be 100x wrong.  Fail loud.
+            scale = getattr(value.unit, "scale", 1)
+            if scale != 1:
+                raise ValueError(
+                    f"value= Quantity has a multiplicative scaling factor "
+                    f"({scale!r}); scaled units cannot be rendered faithfully "
+                    f"in SysML — convert to a named unit first"
+                )
+            bases = [str(b) for b in value.unit.bases]
+            raw_powers = list(value.unit.powers)
+            # W2-2: non-integer (Fraction/float) powers — int() would silently
+            # drop them; fail loud instead
+            for bp in raw_powers:
+                if int(bp) != bp:
+                    raise ValueError(
+                        f"unit power {bp!r} is not an integer; fractional "
+                        f"powers cannot be rendered faithfully in SysML"
+                    )
+            powers = [int(p) for p in raw_powers]
+            raw = value.value
+            if hasattr(raw, "shape") and getattr(raw, "shape", None):
+                # a non-scalar Quantity (array) can't render as a single valued
+                # literal in the IR — fail loud instead of emitting `= [1. 2.]`
+                raise ValueError(
+                    f"value= Quantity is non-scalar (shape="
+                    f"{raw.shape}); only scalar quantities are supported"
+                )
+            # W2-1: a dimensionless Quantity (empty bases) carries no unit at
+            # all — emit the bare value, no bracket, no import
+            bracket = _build_unit_bracket(bases, powers)
+            if not bases:
+                return str(raw).removesuffix(".0"), None
+            return str(raw).removesuffix(".0"), (bracket, bases)
+        raise TypeError(
+            f"value= must be str/int/float or an astropy Quantity, got "
+            f"{type(value).__name__}"
+        )
+
+    # -- unit handling -------------------------------------------------
+
+    def _set_unit(self, unit_string: str | None) -> None:
+        """Validate + normalize a raw ``unit=`` string into
+        ``(bracket_str, [base, ...])`` and store it (fail-loud, W2-2/W1-3).
+
+        A raw string form (``'m/s2'``) is parsed into bracket + bases by
+        splitting on ``/``/``*`` and stripping powers; a structured spec
+        (from a Quantity) is taken as-is.  Storing the normalized form ONCE
+        means ``_to_ir``, ``_render_sysml`` and ``Node.dump`` all agree.
+        """
+        if unit_string is None:
+            self._unit = None
+            self._unit_bases = None
+            return
+        if not isinstance(unit_string, str):
+            if isinstance(unit_string, tuple) and len(unit_string) == 2:
+                bracket, bases = unit_string
+            else:
+                # e.g. an astropy Unit like u.m (not a Quantity) — it has no
+                # string base to parse.  Fail loud with a clear message (r4).
+                raise TypeError(
+                    f"unit= must be a string like 'm'/'kg'/'m/s**2', a "
+                    f"(bracket, bases) pair, or come from a value= Quantity; "
+                    f"got {type(unit_string).__name__}. Pass a string unit, "
+                    f"or wrap it in a Quantity (e.g. value=1*u.m)."
+                )
+        else:
+            bases = _split_unit_bases(unit_string)
+            # normalize to the SysML bracket (whitespace + exponent operator
+            # + quoting), which also validates a parseable base exists; this is
+            # idempotent on the builder's own emitted spelling (r4 W1-1)
+            bracket = _normalize_unit_string(unit_string)
+        # a unit with no parseable base is meaningless (W2-1): an empty string
+        # or a bare magnitude like '123' yields no import and a bogus `[ ]`
+        # bracket — fail loud rather than emit a dangling unit
+        if not bases:
+            raise ValueError(
+                f"unit={unit_string!r} has no parseable unit base; expected "
+                f"something like 'm', 'kg', 'm/s**2' (got no unit name)"
+            )
+        if not bracket:
+            raise ValueError(f"unit={unit_string!r} normalizes to an empty "
+                             f"unit; expected e.g. 'm/s2'")
+        # fail-loud: every base must be mappable before we store it
+        for base in bases:
+            self._unit_to_namespace(base)
+        self._unit = bracket
+        self._unit_bases = bases
+
+    @staticmethod
+    def _unit_to_namespace(unit_name: str) -> str:
+        """Map an astropy base-unit name to its SysML namespace (issue #26,
+        Option A, fail-loud).  Raise ValueError for unmapped units so a
+        value= quantity can never generate a silently-wrong model.  (ValueError
+        — not NotImplementedError — to preserve the parser-lossless
+        zero-NotImplemented acceptance invariant, issue #9: unsupported
+        *parser* constructs are preserved, never raised.)"""
+        ns = _UNIT_NAMESPACE.get(unit_name)
+        if ns is None:
+            raise ValueError(
+                f"unit {unit_name!r} is not in the built-in unit map "
+                f"(issue #26); add it to _UNIT_NAMESPACE or use a plain "
+                f"string value with no unit"
+            )
+        return ns
+
+    def _unit_imports(self) -> list[tuple[str, str]]:
+        """The ``(namespace, sysml-name)`` imports this node requires (Option A).
+        Derived from the stored structured unit bases — never string-split at
+        render time.  Names go through the SysML map + quoting so `in` -> `'in'`
+        and `gallon` -> `gal` are consistent with the bracket (W2-4/5)."""
+        bases = getattr(self, "_unit_bases", None)
+        if not bases:
+            return []
+        imports: list[tuple[str, str]] = []
+        for base in bases:
+            ns, sysml_name = _unit_import_spec(base)
+            if (ns, sysml_name) not in imports:
+                imports.append((ns, sysml_name))
+        return imports
+
+    def _collect_unit_imports(self) -> list[tuple[str, str]]:
+        """Collect the union of unit imports this subtree references, walking
+        descendants (issue #26, Option A).
+
+        Returns ``(namespace, unit)`` pairs in deterministic order.  The
+        walk is deterministic (not necessarily source-document order — N-3).
+        A user-authored ``Import`` child whose name already matches an
+        auto-derived unit (e.g. ``public import SI::kg;``) is NOT re-emitted:
+        the name ``<ns>::<unit>`` is compared against every existing Import
+        child's name so we never double-import (W2-2).
+        """
+        seen: list[tuple[str, str]] = []
+        existing = self._existing_import_names()
+        stack = [self]
+        while stack:
+            node = stack.pop()
+            for imp in node._unit_imports():
+                # skip if an existing Import member already declares it
+                fq = f"{imp[0]}::{imp[1]}"
+                if fq in existing:
+                    continue
+                if imp not in seen:
+                    seen.append(imp)
+            stack.extend(c for c in node._children if c is not None)
+        return seen
+
+    def _existing_import_names(self) -> set[str]:
+        """Names of `import` members already present in this subtree (W2-2).
+
+        When a user authors their own ``ImportBuilder("SI::kg")`` child, the
+        auto-importer must not also emit ``public import SI::kg;``."""
+        names: set[str] = set()
+        stack = [self]
+        while stack:
+            node = stack.pop()
+            if getattr(node, "_kind", "") == "import":
+                name = node._name or ""
+                if "::" in name:
+                    ns, unit = name.split("::", 1)
+                    # normalize the unit segment to the SysML spelling +
+                    # quoting so a user-authored `USCustomaryUnits::in` dedups
+                    # against the auto `USCustomaryUnits::'in'` (r4).
+                    name = f"{ns}::{_quote_unit_name(_unit_sysml_name(unit))}"
+                names.add(name)
+            stack.extend(c for c in node._children if c is not None)
+        return names
+
+    def _root_with_imports(self):
+        """The root builder with any auto-imports prepended as real members.
+
+        Called by ``dump()``/``build()``/``build_node()`` on the OUTERMOST
+        builder so the imports are structural and consistent across every
+        emit path.  Returns a shallow copy — the original ``_children`` is not
+        mutated, so a nested/member ``_render_sysml`` call never re-adds them.
+
+        Imports are only materialized when the root actually renders a
+        ``{...}`` member body (i.e. it has real children).  A bare, childless
+        root — e.g. a lone ``Attribute(value=...)`` — has no body to host an
+        import and emits ``attribute t = 2.5[s];`` with no import (matching
+        the corpus: imports live at the owning container).
+        """
+        real_kids = [c for c in self._children if c is not None]
+        if not real_kids:
+            return self  # no member body to host imports
+        imps = self._collect_unit_imports()
+        if not imps:
+            return self
+        import copy
+        clone = copy.copy(self)
+        # prepend imports so they open the body (corpus: `public import` first)
+        imports = []
+        for ns, unit in imps:
+            imp = ImportBuilder(f"{ns}::{unit}")
+            imp._modifiers["public"] = True
+            imports.append(imp)
+        clone._children = imports + clone._children
+        return clone
 
     # -- modifiers ------------------------------------------------------
 
@@ -269,16 +797,18 @@ class Builder:
         return self.build_node()
 
     def build(self, dict_=True):
-        d = self._to_ir()
-        return d if dict_ else self.build_node()
+        d = self._root_with_imports()._to_ir()
+        return d if dict_ else Node.from_ir(d)
 
     def build_node(self):
-        return Node.from_ir(self._to_ir())
+        return Node.from_ir(self._root_with_imports()._to_ir())
 
     def dump(self):
         from .ast_classes import beautify
-        text = self._render_sysml()
-        return beautify(text) if text.strip() else text
+        text = self._root_with_imports()._render_sysml()
+        if text.strip():
+            return beautify(text)
+        return text
 
     def _render_sysml(self) -> str:
         """Render this builder subtree as textual SysML.
@@ -342,6 +872,14 @@ class Builder:
             head += f" [{self._multiplicity}]"
         if self._typed_by is not None:
             head += f" : {self._typed_by._name}"
+        # Issue #26: value (and optional unit) — `attribute mass = 1000[kg];`
+        # value+unit with NO space between them (corpus).  Plain string value
+        # (no unit) renders `attribute mass = 1000;`.
+        if self._value is not None:
+            if self._unit:
+                head += f" = {self._value}[{self._unit}]"
+            else:
+                head += f" = {self._value}"
         lines = [head]
         kids = [c for c in self._children if c is not None]
         # (rest unchanged) — indentation/termination follows
@@ -368,6 +906,10 @@ class Builder:
             d["raw_text"] = self._text
         if self._multiplicity is not None:
             d["multiplicity"] = self._multiplicity
+        if self._value is not None:
+            d["value"] = self._value
+            if self._unit:
+                d["unit"] = self._unit
         mods: list[str] = []
         for _nm, _tk, _kd in _MODIFIER_SLOTS:
             key = _tk[0] if _kd == "flag" else _nm
@@ -463,21 +1005,23 @@ class {{ cls.name }}(Builder):
 # named any of the 17 friendly names).
 {% for cls in builder_classes %}
 {% set alias = cls.friendly_name %}
+{% set _ik = {} %}
+{% for __ir, __u, __d in ir_keywords %}{% if __ir == cls.ir_kind %}{% set _ = _ik.update({"u": __u, "d": __d}) %}{% endif %}{% endfor %}
 {% if alias in friendly_class_names %}
 {% if cls.ir_kind in def_ir_kinds %}
 class {{ alias }}({{ cls.name }}):
     """Friendly builder for a {{ cls.ir_kind }} (issue #27): ``{{ alias }}('S')``.
 
     ``kind='usage'`` (default) or ``kind='definition'`` selects the SysML
-    form at creation: ``{{ alias }}('S')`` -> ``{{ cls.ir_kind }} S;``,
-    ``{{ alias }}('S', kind='definition')`` -> ``{{ cls.ir_kind }} def S;``.
+    form at creation: ``{{ alias }}('S')`` -> ``{{ _ik['u'] }} S;``,
+    ``{{ alias }}('S', kind='definition')`` -> ``{{ _ik['d'] }} S;``.
     """
 
 {% else %}
 class {{ alias }}({{ cls.name }}):
     """Friendly builder for a {{ cls.ir_kind }} (issue #27): ``{{ alias }}('S')``.
 
-    ``kind='usage'`` only — ``{{ cls.ir_kind }}`` has no definition form;
+    ``kind='usage'`` only — ``{{ _ik['u'] }}`` has no definition form;
     ``kind='definition'`` raises ValueError.
     """
 
