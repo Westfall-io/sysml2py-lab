@@ -54,7 +54,7 @@ _PRINT_KEYWORD: dict[str, str] = {
 # separately by each path.)
 _NODE_IR_FIELDS = frozenset(
     {"kind", "name", "short_name", "modifiers", "type_refs",
-     "multiplicity", "source_span", "raw_text", "fidelity"}
+     "multiplicity", "value", "unit", "source_span", "raw_text", "fidelity"}
 )
 
 
@@ -122,6 +122,8 @@ class Unsupported:
         modifiers=None,
         type_refs=None,
         multiplicity=None,
+        value=None,
+        unit=None,
         children=None,
         source_span=(0, 0),
         fidelity="modelled",
@@ -136,6 +138,8 @@ class Unsupported:
         self.modifiers = list(modifiers or [])
         self.type_refs = list(type_refs or [])
         self.multiplicity = multiplicity
+        self.value = value
+        self.unit = unit
         self.children = list(children or [])
         self.source_span = tuple(source_span)
         self.fidelity = fidelity
@@ -161,7 +165,7 @@ class Unsupported:
             if self.children:
                 out["children"] = [c.get_definition() for c in self.children]
             return out
-        return {
+        d = {
             "kind": self.ir_kind or self.kind or "Unsupported",
             "name": self.name,
             "short_name": self.short_name,
@@ -171,8 +175,13 @@ class Unsupported:
             "source_span": list(self.source_span),
             "raw_text": self.raw_text if self.raw_text is not None else "",
             "fidelity": self.fidelity,
-            "children": [c.get_definition() for c in self.children],
         }
+        if self.value is not None:
+            d["value"] = self.value
+            if self.unit is not None:
+                d["unit"] = self.unit
+        d["children"] = [c.get_definition() for c in self.children]
+        return d
 
     @classmethod
     def from_ir(cls, d: dict) -> Unsupported:
@@ -197,6 +206,8 @@ class Unsupported:
             modifiers=list(d.get("modifiers", [])),
             type_refs=list(d.get("type_refs", [])),
             multiplicity=d.get("multiplicity"),
+            value=d.get("value"),
+            unit=d.get("unit"),
             children=[Node.from_ir(c) for c in d.get("children", [])],
             source_span=tuple(d.get("source_span", (0, 0))),
             fidelity=d.get("fidelity", "unsupported"),
@@ -213,6 +224,8 @@ class Node:
     modifiers: list[str] = field(default_factory=list)
     type_refs: list[str] = field(default_factory=list)
     multiplicity: str | None = None
+    value: str | None = None
+    unit: str | None = None
     children: list[Node] = field(default_factory=list)
     source_span: tuple[int, int] = (0, 0)
     raw_text: str = ""
@@ -260,6 +273,8 @@ class Node:
             modifiers=list(d.get("modifiers", [])),
             type_refs=list(d.get("type_refs", [])),
             multiplicity=d.get("multiplicity"),
+            value=d.get("value"),
+            unit=d.get("unit"),
             children=children,
             source_span=tuple(d.get("source_span", (0, 0))),
             raw_text=d.get("raw_text", ""),
@@ -316,9 +331,15 @@ class Node:
             if self.multiplicity:
                 parts.append(self.multiplicity)
             if self.type_refs:
-                # W1-4 r2: reconstruct the typed reference (": ref"), matching
-                # the builder's _render_sysml, so it isn't dropped on Node.dump.
-                parts.extend(f": {t}" for t in self.type_refs)
+                # W1-4 r2: reconstruct the typed reference, matching the
+                # builder's _render_sysml, so it isn't dropped on Node.dump.
+                parts.extend(": " + t for t in self.type_refs)
+            if self.value is not None:
+                # Issue #26: value (and optional unit) — `attribute mass = 1000[kg];`
+                if self.unit:
+                    parts.append("= " + self.value + "[" + self.unit + "]")
+                else:
+                    parts.append("= " + self.value)
             if parts:
                 out.append(" ".join(parts))
         for c in self.children:
@@ -333,7 +354,7 @@ class Node:
 
     def get_definition(self) -> dict:
         """Serialize back to an IR-JSON dict (preserving the IR coarse kind)."""
-        return {
+        d = {
             "kind": self.ir_kind or self.kind,
             "name": self.name,
             "short_name": self.short_name,
@@ -343,8 +364,16 @@ class Node:
             "source_span": list(self.source_span),
             "raw_text": self.raw_text,
             "fidelity": self.fidelity,
-            "children": [c.get_definition() for c in self.children],
         }
+        # Issue #26: only include value/unit when set, so get_definition stays
+        # lossless vs an IR that never carried them (parser corpus path uses
+        # raw_text for valued attrs).  A builder-built attribute carries both.
+        if self.value is not None:
+            d["value"] = self.value
+            if self.unit is not None:
+                d["unit"] = self.unit
+        d["children"] = [c.get_definition() for c in self.children]
+        return d
 
 
 {% for kind in node_kinds %}

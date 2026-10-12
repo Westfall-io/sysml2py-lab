@@ -73,6 +73,31 @@ _IR_KEYWORD: dict[str, tuple[str, ...]] = {
 {% endfor %}
 }
 
+# Issue #26: astropy base-unit name -> SysML namespace.  Option A = import
+# exactly the unit actually used (`public import SI::kg;`), never a wildcard.
+# Fail-loud: a unit NOT in this map raises NotImplemented so a value= quantity
+# can never emit a silently-wrong model.  Keys are astropy's canonical base
+# names (``unit.bases`` strings), values are the SysML namespace owning them.
+# Composite units (``m/s2``) decompose to their bases; each distinct base
+# contributes one import in its own namespace.
+_UNIT_NAMESPACE: dict[str, str] = {
+    # SI base + derived (corpus already uses `public import SI::kg;`)
+    "kg": "SI", "m": "SI", "s": "SI", "km": "SI", "l": "SI", "L": "SI",
+    "h": "SI", "N": "SI", "Pa": "SI", "J": "SI", "W": "SI", "V": "SI",
+    "A": "SI", "K": "SI", "mol": "SI", "cd": "SI", "rad": "SI", "sr": "SI",
+    "Hz": "SI", "C": "SI", "F": "SI", "Ohm": "SI", "S": "SI", "T": "SI",
+    "H": "SI", "lm": "SI", "lx": "SI", "Bq": "SI", "Gy": "SI", "Sv": "SI",
+    "kat": "SI", "%": "SI",
+    # non-SI length/volume/common
+    "mi": "USCustomaryUnits", "ft": "USCustomaryUnits",
+    "in": "USCustomaryUnits", "yd": "USCustomaryUnits",
+    "gallon": "USCustomaryUnits", "gal": "USCustomaryUnits",
+    "lb": "USCustomaryUnits", "oz": "USCustomaryUnits",
+    "ton": "USCustomaryUnits", "mph": "USCustomaryUnits",
+    "min": "SI", "ms": "SI", "us": "SI", "ns": "SI", "day": "SI",
+    "g": "SI", "t": "SI",
+}
+
 
 class Builder:
     """Base builder: accumulates a canonical-IR dict sub-tree.
@@ -87,11 +112,17 @@ class Builder:
     owned_body = None  # e.g. "PackageBody" — advisory legal-child body
     _is_definition = False
 
-    def __init__(self, name=None, *, kind=None):
+    def __init__(self, name=None, *, kind=None, value=None, unit=None):
         self._name = name
         self._short_name = None
         self._text = None
         self._multiplicity = None
+        # Issue #26: `value=` may be a plain scalar/string OR an astropy
+        # Quantity (duck-typed).  Coerce the value to its IR string; if the
+        # input was a Quantity, auto-derive `_unit` from it (unless the
+        # caller passed an explicit `unit=` override).
+        self._value, _qunit = self._coerce_value(value)
+        self._unit = unit if (unit is not None) else _qunit
         self._modifiers: dict[str, object] = {}
         self._typed_by = None
         # Issue #27: separate TWO roles the old code conflated (review W1-3):
@@ -169,6 +200,116 @@ class Builder:
             )
         self._text = text
         return self
+
+    # -- value (issue #26) ---------------------------------------------
+
+    @staticmethod
+    def _coerce_value(value):
+        """Normalize a ``value=`` into ``(ir_value_str, unit_or_None)``.
+
+        ``None``/``""`` -> ``(None, None)`` (no value).  A plain ``str``/
+        ``int``/``float`` is taken literally (no unit; a numeric float is
+        rendered without a trailing ``.0``).  An astropy ``Quantity``
+        (duck-typed: has ``.value`` and ``.unit``) yields its numeric
+        ``.value`` together with ``.unit.to_string()`` for the ``[unit]``
+        bracket and the auto-import.  Anything else raises ``TypeError``
+        (fail fast — the value must be representable in the IR or it cannot
+        cast).
+        """
+        if value is None or value == "":
+            return None, None
+        if isinstance(value, str):
+            return value, None
+        if isinstance(value, bool):
+            return str(value), None
+        if isinstance(value, (int, float)):
+            return str(value).removesuffix(".0"), None
+        # duck-typed astropy Quantity: a numeric value with a unit attribute
+        if hasattr(value, "value") and hasattr(value, "unit"):
+            u = value.unit.to_string()
+            return str(value.value).removesuffix(".0"), u
+        raise TypeError(
+            f"value= must be str/int/float or an astropy Quantity, got "
+            f"{type(value).__name__}"
+        )
+
+    @staticmethod
+    def _unit_to_namespace(unit_name: str) -> str:
+        """Map an astropy unit base-name to its SysML namespace (issue #26,
+        Option A, fail-loud).  Raise ValueError for unmapped units so a
+        value= quantity can never generate a silently-wrong model.  (ValueError
+        — not NotImplementedError — to preserve the parser-lossless
+        zero-NotImplemented acceptance invariant, issue #9: unsupported
+        *parser* constructs are preserved, never raised.)"""
+        _ns = _UNIT_NAMESPACE
+        ns = _ns.get(unit_name)
+        if ns is None:
+            raise ValueError(
+                f"unit {unit_name!r} is not in the built-in unit map "
+                f"(issue #26); add it to _UNIT_NAMESPACE or use a plain "
+                f"string value with no unit"
+            )
+        return ns
+
+    @staticmethod
+    def _unit_bracket(unit_name: str) -> str:
+        """Normalize an astropy composite unit string into the SysML bracket
+        spelling (no spaces): ``'m / s2'`` -> ``'m/s2'``."""
+        return "".join(unit_name.split())
+
+    def _unit_imports(self) -> list[str]:
+        """The (namespace, unit-base) imports this node requires (issue #26,
+        Option A).  Returns ``[(\"SI\", \"kg\"), ...]`` for each unit
+        referenced by this node's own ``unit=`` (decomposed to its bases).
+        Empty when no unit is set.
+        """
+        if not self._unit:
+            return []
+        # The unit may be composite ('m / s2'); decompose into its bases so
+        # each contributes one import (Option A = only what's needed).  The
+        # stored `_unit` is a normalized string; split on '/' to get bases.
+        imports: list[tuple[str, str]] = []
+        for tok in self._unit.replace("*", "/").split("/"):
+            base = self._normalize_base(tok.strip())
+            if not base:
+                continue
+            ns = self._unit_to_namespace(base)
+            if (ns, base) not in imports:
+                imports.append((ns, base))
+        return imports
+
+    def _collect_unit_imports(self) -> list[tuple[str, str]]:
+        """Collect the union of unit imports this subtree references, walking
+        descendants (issue #26, Option A).  Fail-loud: an unmapped unit base
+        anywhere in the subtree raises NotImplemented (never a silent drop).
+        """
+        seen: list[tuple[str, str]] = []
+        stack = [self]
+        while stack:
+            node = stack.pop()
+            for imp in node._unit_imports():
+                if imp not in seen:
+                    seen.append(imp)
+            stack.extend(c for c in node._children if c is not None)
+        return seen
+
+    @staticmethod
+    def _normalize_base(base: str) -> str:
+        """Normalize an astropy unit base-name token for map lookup.  Squared
+        powers ('s2') are stripped to the base ('s'); a bare magnitude
+        ('' from a number) yields '' (skipped)."""
+        return base.rstrip("0123456789").strip()
+
+    def _render_unit_imports(self, indent: str) -> str:
+        """Render `public import <ns>::<unit>;` lines for this subtree's unit
+        imports (issue #26, Option A), one per distinct (ns,unit)."""
+        imps = self._collect_unit_imports()
+        if not imps:
+            return ""
+        lines = [
+            f"{indent}public import {ns}::{unit};" for (ns, unit) in imps
+        ]
+        return "\n".join(lines)
 
     # -- modifiers ------------------------------------------------------
 
@@ -278,7 +419,22 @@ class Builder:
     def dump(self):
         from .ast_classes import beautify
         text = self._render_sysml()
-        return beautify(text) if text.strip() else text
+        if text.strip():
+            # Issue #26: inject the subtree-wide `public import <ns>::<unit>;`
+            # lines into the ROOT body (Option A) — exactly once, after the
+            # opening `{`.  A nested/member call to _render_sysml must NOT
+            # emit them again, so the union is computed here from the whole
+            # tree and inserted into the outermost dump only.
+            imps = [i for i in self._collect_unit_imports() if i]
+            if imps and "{" in text:
+                # Inject bare import lines (no leading spaces): beautify adds
+                # the brace-depth indent itself (3 spaces/level).
+                import_lines = "\n".join(
+                    f"public import {ns}::{unit};" for (ns, unit) in imps
+                )
+                text = text.replace("{", "{\n" + import_lines, 1)
+            return beautify(text)
+        return text
 
     def _render_sysml(self) -> str:
         """Render this builder subtree as textual SysML.
@@ -342,6 +498,14 @@ class Builder:
             head += f" [{self._multiplicity}]"
         if self._typed_by is not None:
             head += f" : {self._typed_by._name}"
+        # Issue #26: value (and optional unit) — `attribute mass = 1000[kg];`
+        # value+unit with NO space between them (corpus).  Plain string value
+        # (no unit) renders `attribute mass = 1000;`.
+        if self._value is not None:
+            if self._unit:
+                head += f" = {self._value}[{self._unit_bracket(self._unit)}]"
+            else:
+                head += f" = {self._value}"
         lines = [head]
         kids = [c for c in self._children if c is not None]
         # (rest unchanged) — indentation/termination follows
@@ -368,6 +532,10 @@ class Builder:
             d["raw_text"] = self._text
         if self._multiplicity is not None:
             d["multiplicity"] = self._multiplicity
+        if self._value is not None:
+            d["value"] = self._value
+            if self._unit:
+                d["unit"] = self._unit
         mods: list[str] = []
         for _nm, _tk, _kd in _MODIFIER_SLOTS:
             key = _tk[0] if _kd == "flag" else _nm
@@ -463,21 +631,23 @@ class {{ cls.name }}(Builder):
 # named any of the 17 friendly names).
 {% for cls in builder_classes %}
 {% set alias = cls.friendly_name %}
+{% set _ik = {} %}
+{% for __ir, __u, __d in ir_keywords %}{% if __ir == cls.ir_kind %}{% set _ = _ik.update({"u": __u, "d": __d}) %}{% endif %}{% endfor %}
 {% if alias in friendly_class_names %}
 {% if cls.ir_kind in def_ir_kinds %}
 class {{ alias }}({{ cls.name }}):
     """Friendly builder for a {{ cls.ir_kind }} (issue #27): ``{{ alias }}('S')``.
 
     ``kind='usage'`` (default) or ``kind='definition'`` selects the SysML
-    form at creation: ``{{ alias }}('S')`` -> ``{{ cls.ir_kind }} S;``,
-    ``{{ alias }}('S', kind='definition')`` -> ``{{ cls.ir_kind }} def S;``.
+    form at creation: ``{{ alias }}('S')`` -> ``{{ _ik['u'] }} S;``,
+    ``{{ alias }}('S', kind='definition')`` -> ``{{ _ik['d'] }} S;``.
     """
 
 {% else %}
 class {{ alias }}({{ cls.name }}):
     """Friendly builder for a {{ cls.ir_kind }} (issue #27): ``{{ alias }}('S')``.
 
-    ``kind='usage'`` only — ``{{ cls.ir_kind }}`` has no definition form;
+    ``kind='usage'`` only — ``{{ _ik['u'] }}`` has no definition form;
     ``kind='definition'`` raises ValueError.
     """
 

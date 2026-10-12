@@ -442,6 +442,7 @@ def test_from_ir_forwards_full_ir_key_set(tmp_path):
         SENT = {
             "name": "zzz", "short_name": "zz", "modifiers": ["abstract"],
             "type_refs": ["T"], "multiplicity": "[1]",
+            "value": "10", "unit": "kg",
             "source_span": [3, 7], "raw_text": "raw", "fidelity": "test",
         }
         # r10 W3: the field surface comes from Node alone; assert Unsupported
@@ -1601,6 +1602,177 @@ def test_friendly_names_pinned(tmp_path):
             assert "ast_classes" in node_cls.__module__, (
                 f"{n} top-level should be the AST node, got {node_cls.__module__}"
             )
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+# ---------------------------------------------------------------------------
+# Issue #26 — value + unit attributes with auto-import (Option A, fail-loud)
+# ---------------------------------------------------------------------------
+
+class _FakeQ:
+    """Minimal duck-typed astropy Quantity (no astropy hard dep)."""
+    def __init__(self, value, unit):
+        self.value = value
+        self.unit = type("U", (), {"to_string": lambda self, u=unit: u})()
+
+
+def _unit_q(value, unit):
+    return _FakeQ(value, unit)
+
+
+def test_value_quantity_autoimport_and_cast(tmp_path):
+    """Issue #26: Attribute(value=<Quantity>) renders `= V[kg];` AND the owning
+    package auto-emits `public import SI::kg;` (Option A).  Cast: build()
+    carries value/unit; dump -> get_definition is lossless."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pkgb = sysml2py.PackageBuilder("MyModel")
+        stage = sysml2py.Part("Stage_1")
+        stage.add(sysml2py.Attribute("mass", value=_unit_q(1000, "kg")))
+        pkgb.add(stage)
+        txt = pkgb.dump()
+        assert "attribute mass = 1000[kg];" in txt, txt
+        assert "public import SI::kg;" in txt, txt
+        # Option A: no wildcard
+        assert "SI::*" not in txt
+        # cast: IR carries value/unit, get_definition is lossless
+        ir = pkgb.build()
+        attr = ir["children"][0]["children"][0]
+        assert attr["value"] == "1000" and attr["unit"] == "kg", attr
+        node = pkgb.build_node()
+        gd = node.get_definition()
+        ga = gd["children"][0]["children"][0]
+        assert ga["value"] == "1000" and ga["unit"] == "kg", ga
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_composite_unit_decomposes_imports(tmp_path):
+    """Issue #26: a composite `m/s2` decomposes into `SI::m` + `SI::s`
+    imports (Option A = per-base, never a wildcard)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("M2")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("accel", value=_unit_q(9.81, "m / s2")))
+        pb.add(p)
+        txt = pb.dump()
+        assert "attribute accel = 9.81[m/s2];" in txt, txt
+        assert "public import SI::m;" in txt, txt
+        assert "public import SI::s;" in txt, txt
+        assert "SI::*" not in txt  # no wildcard
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_fail_loud_unmapped_unit(tmp_path):
+    """Issue #26: an unmapped unit raises ValueError (fail-loud) so a
+    value= quantity can never emit a silently-wrong model.  Uses ValueError
+    (not NotImplementedError) to preserve the parser-lossless invariant."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        # fail-loud must happen at build/dump, not silently render
+        with pytest.raises(ValueError):
+            a = sysml2py.Attribute("d", value=_unit_q(1, "pc"))  # unmapped
+            a.dump()
+        with pytest.raises(ValueError):
+            pb = sysml2py.PackageBuilder("X")
+            p = sysml2py.Part("P")
+            p.add(sysml2py.Attribute("d", value=_unit_q(1, "pc")))
+            pb.add(p)
+            pb.dump()
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_explicit_unit_no_quantity(tmp_path):
+    """Issue #26: a plain string value with an explicit `unit=` renders
+    `= V[unit];` and auto-imports, without needing a Quantity."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        a = sysml2py.Attribute("t", value="2.5", unit="s")
+        assert a.dump() == "attribute t = 2.5[s];"
+        pb = sysml2py.PackageBuilder("T")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("t", value="2.5", unit="s"))
+        pb.add(p)
+        assert "public import SI::s;" in pb.dump()
+        # plain value, no unit -> no import, no bracket
+        a2 = sysml2py.Attribute("x", value="1000")
+        assert a2.dump() == "attribute x = 1000;"
+        assert not a2._unit
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_import_dedup(tmp_path):
+    """Issue #26: two attributes with the same unit emit ONE import."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("Y")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("a", value=_unit_q(1, "kg")))
+        p.add(sysml2py.Attribute("b", value=_unit_q(2, "kg")))
+        pb.add(p)
+        txt = pb.dump()
+        assert txt.count("SI::kg") == 1, txt
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_no_import_for_no_unit(tmp_path):
+    """Issue #26: a package with no valued+unit attributes emits no import."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("N")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("plain"))
+        pb.add(p)
+        txt = pb.dump()
+        assert "public import" not in txt, txt
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_usecase_docstring_uses_printable_keyword(tmp_path):
+    """Issue #26 / r4-N1: the friendly UseCase docstring must print the
+    SysML keyword (`use case S;`), NOT the IR alias key (`use_case S;`)."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        doc = sysml2py.UseCase.__doc__ or ""
+        assert "use case S;" in doc, doc
+        assert "use case def S;" in doc, doc
+        assert "use_case S;" not in doc, doc  # IR key must not leak
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
