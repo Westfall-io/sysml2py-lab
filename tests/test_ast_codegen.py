@@ -1706,23 +1706,29 @@ def test_value_composite_unit_decomposes_imports(tmp_path):
 def test_value_fail_loud_unmapped_unit(tmp_path):
     """Issue #26: an unmapped unit raises ValueError (fail-loud) so a
     value= quantity can never emit a silently-wrong model.  Uses ValueError
-    (not NotImplementedError) to preserve the parser-lossless invariant."""
+    (not NotImplementedError) to preserve the parser-lossless invariant.
+
+    Fail-loud fires at CONSTRUCTION (via _set_unit -> _unit_to_namespace),
+    the earliest point — stricter than build/dump, so no emit entry point can
+    ever produce a unit-bearing model that wasn't validated."""
     pkg = _gen(tmp_path)
     sys.path.insert(0, str(pkg / "src"))
     sys.path.insert(0, str(REPO_ROOT / "src"))
     try:
         import sysml2py
         import pytest
-        # fail-loud must happen at build/dump, not silently render
+        # unmapped unit raises at construction, before any paint can dry
         with pytest.raises(ValueError):
-            a = sysml2py.Attribute("d", value=_unit_q(1, "pc"))  # unmapped
-            a.dump()
+            sysml2py.Attribute("d", value=_unit_q(1, "pc"))
         with pytest.raises(ValueError):
-            pb = sysml2py.PackageBuilder("X")
-            p = sysml2py.Part("P")
-            p.add(sysml2py.Attribute("d", value=_unit_q(1, "pc")))
-            pb.add(p)
-            pb.dump()
+            sysml2py.Attribute("d", value=_unit_q(1, "pc"), unit="kg")
+        # all four emit entry points stay stubbed-short by the same guard:
+        # a valid unit builds (no raise), an invalid one can never be built
+        pb = sysml2py.PackageBuilder("X")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("d", value=_unit_q(1, "kg")))
+        pb.add(p)
+        assert "kg" in pb.dump()
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))
@@ -1920,6 +1926,122 @@ def test_value_rejected_on_non_value_bearing(tmp_path):
         import pytest
         with pytest.raises(TypeError):
             sysml2py.ImportBuilder("SI::kg", value="x")
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_printer_path_emits_structural_import(tmp_path):
+    """Issue #26 / W2-6: printer.print_model()/canonical() on a unit-carrying
+    Builder must emit the structural imports (r1 W1-1 regression guard), and
+    stay in sync with dump()."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        from sysml2py.printer import print_model, canonical
+        pb = sysml2py.PackageBuilder("MyModel")
+        stage = sysml2py.Part("Stage_1")
+        stage.add(sysml2py.Attribute("mass", value=_unit_q(1000, "kg")))
+        pb.add(stage)
+        txt = print_model(pb)
+        assert "SI::kg" in txt, txt
+        assert "public import SI::kg;" in txt, txt
+        # printer output == dump() output for a Builder tree
+        assert txt == pb.dump(), (txt, pb.dump())
+        # canonical path also carries the import (not silently dropped);
+        # the canonicalizer spaces `::` and `[kg]`, so check the tokens
+        canon = canonical(pb)
+        assert "SI" in canon and "kg" in canon, canon
+        assert "public import" in canon, canon
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_product_unit_uses_star_separator(tmp_path):
+    """Issue #26 / W1-1 (r2): a multiplied composite unit must render with a
+    `*` separator (N*m, kg*m/s2), NOT a single mangled identifier (Nm) that
+    contradicts the emitted per-base imports."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        # N*m -> [N*m] with SI::N + SI::m imports
+        pb = sysml2py.PackageBuilder("T")
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("torque", value=_unit_q(5, "N*m", ["N", "m"], [1, 1])))
+        pb.add(p)
+        txt = pb.dump()
+        assert "attribute torque = 5[N*m];" in txt, txt
+        assert "public import SI::N;" in txt and "public import SI::m;" in txt, txt
+        assert "[Nm]" not in txt, txt  # mangled identifier must not appear
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_autoimport_dedup_with_user_import(tmp_path):
+    """Issue #26 / W2-2: when the user authors their own `ImportBuilder`
+    child that already declares the unit, the auto-importer must NOT emit a
+    duplicate public import."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        pb = sysml2py.PackageBuilder("Y")
+        pb.add(sysml2py.ImportBuilder("SI::kg"))
+        p = sysml2py.Part("P")
+        p.add(sysml2py.Attribute("mass", value=_unit_q(1, "kg")))
+        pb.add(p)
+        txt = pb.dump()
+        assert txt.count("SI::kg") == 1, txt  # one import, not two
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_explicit_unit_normalized_conflict(tmp_path):
+    """Issue #26 / W2-4: an explicit `unit=` that merely differs in
+    whitespace from the Quantity's own unit (e.g. 'm / s2' vs 'm/s2') must
+    NOT raise a spurious conflict — normalize before comparing."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        a = sysml2py.Attribute("g", value=_unit_q(9.81, "m / s2", ["m", "s"], [1, -2]),
+                               unit="m / s2")
+        assert a._unit == "m/s2"  # normalized bracket stored
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def test_value_empty_and_bad_unit_guards(tmp_path):
+    """Issue #26 / W2-1: value='' + unit= raises (dangling import); a unit
+    with no parseable base ('' or a bare magnitude) raises, not silent drop."""
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        import pytest
+        # value='' + unit: would emit an import nothing references
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("x", value="", unit="kg")
+        # empty unit-string: no parseable base
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("x", value="1", unit="")
+        # bare magnitude unit: no parseable base
+        with pytest.raises(ValueError):
+            sysml2py.Attribute("x", value="1", unit="123")
+        # plain string value + valid unit still works
+        a = sysml2py.Attribute("t", value="2.5", unit="s")
+        assert a._unit == "s"
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.path.remove(str(REPO_ROOT / "src"))

@@ -80,7 +80,8 @@ _IR_KEYWORD: dict[str, tuple[str, ...]] = {
 # names (``unit.bases`` strings — verified, not guessed), values are the
 # SysML namespace owning them.  Composite units (``m/s2``) decompose to their
 # bases; each distinct base contributes one import in its own namespace.
-# `day` maps to base `d`; there are no `mph`/`gal`/`in`/`ton` base names.
+# ``*``-aliases (``gal``) are accepted for the raw-string ``unit=`` path so a
+# corpus spelling like ``[mi / gal]`` re-authors cleanly.
 _UNIT_NAMESPACE: dict[str, str] = {
     # SI base + derived (corpus already uses `public import SI::kg;`)
     "kg": "SI", "m": "SI", "s": "SI", "km": "SI", "l": "SI", "L": "SI",
@@ -90,10 +91,11 @@ _UNIT_NAMESPACE: dict[str, str] = {
     "K": "SI", "mol": "SI", "cd": "SI", "rad": "SI", "sr": "SI",
     "Hz": "SI", "C": "SI", "F": "SI", "Ohm": "SI", "S": "SI", "T": "SI",
     "H": "SI", "lm": "SI", "lx": "SI", "Bq": "SI", "Gy": "SI", "Sv": "SI",
-    "kat": "SI",
+    "kat": "SI", "%": "SI", "percent": "SI",
     # non-SI length/volume/common
     "mi": "USCustomaryUnits", "ft": "USCustomaryUnits",
-    "yd": "USCustomaryUnits", "gallon": "USCustomaryUnits",
+    "yd": "USCustomaryUnits", "inch": "USCustomaryUnits", "in": "USCustomaryUnits",
+    "gallon": "USCustomaryUnits", "gal": "USCustomaryUnits",
     "lb": "USCustomaryUnits", "oz": "USCustomaryUnits",
 }
 
@@ -101,22 +103,34 @@ _UNIT_NAMESPACE: dict[str, str] = {
 def _build_unit_bracket(bases: list[str], powers: list[int]) -> str:
     """Build the SysML bracket spelling from structured astropy bases/powers.
 
-    ``(m, s)`` powers ``(1, -2)`` -> ``'m/s2'``; a product ``(kg, m)`` powers
-    ``(1, 1)`` -> ``'kgm'`` (a multiplied composite).  Powers of +-1 are
-    implicit; other magnitudes are appended (``s2``).  No spaces — matches the
-    corpus ``= 1000[kg]`` and ``[mi / gal]`` conventions."""
+    A product of positive powers is joined with ``*`` (``(N, m)`` powers
+    ``(1, 1)`` -> ``'N*m'``); negative powers are divisors (``(m, s)`` powers
+    ``(1, -2)`` -> ``'m/s2'``).  So ``kg*m/s2`` — never a single mangled
+    identifier like ``kgm`` that the imports would contradict.  Powers of +-1
+    stay implicit; other magnitudes are appended (``s2``).  No spaces — matches
+    the corpus ``= 1000[kg]`` and ``[mi / gal]`` conventions.
+    """
     parts: list[str] = []
     for base, power in zip(bases, powers):
+        if power == 0:
+            continue
         if power == 1:
             parts.append(base)
         elif power == -1:
             parts.append("/" + base)
+        elif power < 0:
+            parts.append("/" + base + str(-power))
         else:
-            if power < 0:
-                parts.append("/" + base + str(-power))
-            else:
-                parts.append(base + str(power))
-    return "".join(parts)
+            parts.append(base + str(power))
+    # join: a multiplicative (no-leading-slash) continuation gets a `*`
+    # separator so positive products read `N*m` not `Nm`
+    out = parts[0]
+    for part in parts[1:]:
+        if part.startswith("/"):
+            out += part
+        else:
+            out += "*" + part
+    return out
 
 
 def _split_unit_bases(unit_string: str) -> list[str]:
@@ -141,15 +155,19 @@ def _split_unit_bases(unit_string: str) -> list[str]:
 
 
 # IR kinds that carry a `value` field (W2-1) — Feature usages whose grammar
-# has a `= value`.  Definitions, Package, Comment, Import and Relationship
-# kinds have no value IR field; a value=/unit= there would be silently
-# dropped from build() while showing in dump(), so it must be rejected.
+# has a `= value`.  Definition kinds have no value IR field (a `def` cannot
+# carry a FeatureValue), Package/Comment/Import and Relationship kinds have
+# no value either; a value=/unit= there would be silently dropped from
+# build() while showing in dump(), so it must be rejected.
+# NOTE: only USAGE kinds are listed (no `... def`, no Package/Import/etc.).
+# Kept as a literal that mirrors IR_KIND_ALIASES usage entries; if the
+# grammar adds a value-bearing usage, add it here.
 _VALUE_BEARING_KINDS = frozenset({
-    "attribute", "part", "item", "reference", "port", "action", "state",
-    "flow", "occurrence", "event", "view", "use_case", "requirement",
-    "interface", "subject", "constraint", "attribute def", "part def",
-    "item def", "port def", "interface def",
+    "attribute", "part", "item", "reference", "port", "action",
+    "state", "occurrence", "requirement", "constraint", "interface",
+    "use_case", "subject",
 })
+
 
 
 
@@ -173,7 +191,6 @@ class Builder:
         self._multiplicity = None
         self._value = None
         self._unit = None
-        self._unit_spec = None
         self._unit_bases = None
         self._modifiers: dict[str, object] = {}
         self._typed_by = None
@@ -230,16 +247,30 @@ class Builder:
             )
         if value is not None:
             _v, _qspec = self._coerce_value(value)
-            self._value = _v
-            # explicit `unit=` must not silently override a Quantity's own
-            # unit with no conversion (W2-3)
-            if unit is not None and _qspec is not None and unit != _qspec[0]:
-                raise ValueError(
-                    f"explicit unit={unit!r} conflicts with the Quantity's "
-                    f"own unit ({_qspec[0]!r}); pass a converted Quantity or "
-                    f"omit unit="
-                )
-            self._set_unit(unit if unit is not None else _qspec)
+            if _v is None:
+                # value="" or an empty Quantity coerces to no value (W2-1);
+                # treat as "no value" so `unit=` still requires a real value,
+                # rather than emitting a dangling unit import.
+                if unit is not None:
+                    raise ValueError(
+                        f"value={value!r} is empty; a unit= requires a "
+                        f"non-empty value to scale"
+                    )
+                self._value = None
+            else:
+                self._value = _v
+                # explicit `unit=` must not silently override a Quantity's own
+                # unit with no conversion, and must compare against the
+                # NORMALIZED bracket, not a raw string (W2-3/W2-4).
+                if unit is not None and _qspec is not None:
+                    norm_unit = "".join(str(unit).split())
+                    if norm_unit != _qspec[0]:
+                        raise ValueError(
+                            f"explicit unit={unit!r} conflicts with the "
+                            f"Quantity's own unit ({_qspec[0]!r}); pass a "
+                            f"converted Quantity or omit unit="
+                        )
+                self._set_unit(unit if unit is not None else _qspec)
         elif unit is not None:
             # W2-2: a unit with no value is meaningless (no referenced value);
             # reject so we don't emit an import with nothing to apply to.
@@ -335,7 +366,15 @@ class Builder:
             bases = [str(b) for b in value.unit.bases]
             powers = [int(p) for p in value.unit.powers]
             bracket = _build_unit_bracket(bases, powers)
-            return str(value.value).removesuffix(".0"), (bracket, bases)
+            raw = value.value
+            if hasattr(raw, "shape") and getattr(raw, "shape", None):
+                # a non-scalar Quantity (array) can't render as a single valued
+                # literal in the IR — fail loud instead of emitting `= [1. 2.]`
+                raise ValueError(
+                    f"value= Quantity is non-scalar (shape="
+                    f"{raw.shape}); only scalar quantities are supported"
+                )
+            return str(raw).removesuffix(".0"), (bracket, bases)
         raise TypeError(
             f"value= must be str/int/float or an astropy Quantity, got "
             f"{type(value).__name__}"
@@ -353,18 +392,28 @@ class Builder:
         means ``_to_ir``, ``_render_sysml`` and ``Node.dump`` all agree.
         """
         if unit_string is None:
-            self._unit_spec = None
             self._unit = None
+            self._unit_bases = None
             return
         if isinstance(unit_string, tuple) and len(unit_string) == 2:
             bracket, bases = unit_string
         else:
             bases = _split_unit_bases(unit_string)
             bracket = "".join(unit_string.split())
+        # a unit with no parseable base is meaningless (W2-1): an empty string
+        # or a bare magnitude like '123' yields no import and a bogus `[ ]`
+        # bracket — fail loud rather than emit a dangling unit
+        if not bases:
+            raise ValueError(
+                f"unit={unit_string!r} has no parseable unit base; expected "
+                f"something like 'm', 'kg', 'm/s2' (got no unit name)"
+            )
+        if not bracket:
+            raise ValueError(f"unit={unit_string!r} normalizes to an empty "
+                             f"unit; expected e.g. 'm/s2'")
         # fail-loud: every base must be mappable before we store it
         for base in bases:
             self._unit_to_namespace(base)
-        self._unit_spec = (bracket, bases)
         self._unit = bracket
         self._unit_bases = bases
 
@@ -401,34 +450,51 @@ class Builder:
 
     def _collect_unit_imports(self) -> list[tuple[str, str]]:
         """Collect the union of unit imports this subtree references, walking
-        descendants (issue #26, Option A).  Deterministic document order."""
+        descendants (issue #26, Option A).
+
+        Returns ``(namespace, unit)`` pairs in deterministic order.  The
+        walk is deterministic (not necessarily source-document order — N-3).
+        A user-authored ``Import`` child whose name already matches an
+        auto-derived unit (e.g. ``public import SI::kg;``) is NOT re-emitted:
+        the name ``<ns>::<unit>`` is compared against every existing Import
+        child's name so we never double-import (W2-2).
+        """
         seen: list[tuple[str, str]] = []
+        existing = self._existing_import_names()
         stack = [self]
         while stack:
             node = stack.pop()
             for imp in node._unit_imports():
+                # skip if an existing Import member already declares it
+                fq = f"{imp[0]}::{imp[1]}"
+                if fq in existing:
+                    continue
                 if imp not in seen:
                     seen.append(imp)
             stack.extend(c for c in node._children if c is not None)
         return seen
 
-    def _with_auto_imports(self, root):
-        """Return a shallow copy of ``root`` with real ``Import`` builders
-        appended (structural, so they appear in BOTH ``_to_ir`` and
-        ``_render_sysml`` — W2-5/issue #26).  ``root``'s own units are
-        included via the subtree walk."""
-        if root is self:
-            raise TypeError("_with_auto_imports must be called on the root")
-        return root
+    def _existing_import_names(self) -> set[str]:
+        """Names of `import` members already present in this subtree (W2-2).
+
+        When a user authors their own ``ImportBuilder("SI::kg")`` child, the
+        auto-importer must not also emit ``public import SI::kg;``."""
+        names: set[str] = set()
+        stack = [self]
+        while stack:
+            node = stack.pop()
+            if getattr(node, "_kind", "") == "import":
+                names.add(node._name or "")
+            stack.extend(c for c in node._children if c is not None)
+        return names
 
     def _root_with_imports(self):
-        """The root builder with any auto-imports appended as real members.
+        """The root builder with any auto-imports prepended as real members.
 
         Called by ``dump()``/``build()``/``build_node()`` on the OUTERMOST
         builder so the imports are structural and consistent across every
-        emit path.  Returns a shallow copy — the original ``_children`` is
-        not mutated, so a nested/member ``_render_sysml`` call never re-adds
-        them.
+        emit path.  Returns a shallow copy — the original ``_children`` is not
+        mutated, so a nested/member ``_render_sysml`` call never re-adds them.
 
         Imports are only materialized when the root actually renders a
         ``{...}`` member body (i.e. it has real children).  A bare, childless
@@ -444,7 +510,6 @@ class Builder:
             return self
         import copy
         clone = copy.copy(self)
-        clone._children = list(self._children)
         # prepend imports so they open the body (corpus: `public import` first)
         imports = []
         for ns, unit in imps:
