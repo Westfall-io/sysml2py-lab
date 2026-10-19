@@ -345,17 +345,25 @@ def test_expression_body_mirrors_calculation(model):
 def test_committed_children_fresh():
     """Casting gate: committed children.json + children.md + parity report must
     equal fresh regeneration (no drift).  The generator is invoked via the
-    venv's sysml2py-lab console script; if that is missing the gate FAILS
+    sysml2py-lab console script; if that is missing the gate FAILS
     (never silently skips — a green no-op would defeat the casting gate)."""
-    import pathlib, subprocess, tempfile
+    import pathlib, shutil, subprocess, tempfile
     root = pathlib.Path(__file__).resolve().parent.parent
+    # Locate the console script the way CI and dev actually expose it:
+    # CI installs `pip install -e ".[dev]"` into the runner's environment, so
+    # the entry point is on PATH; a local dev venv (`.venv`) also puts it on
+    # PATH when activated, but this test must not depend on activation, so
+    # probe both the venv dir and PATH.
     venv_bin = root / ".venv" / "bin"
-    exe = venv_bin / "sysml2py-lab"
-    if not exe.exists():
-        pytest.fail(f"sysml2py-lab console script missing at {exe} — casting gate cannot run")
+    exe = shutil.which("sysml2py-lab") or (venv_bin / "sysml2py-lab")
+    if not exe or not pathlib.Path(exe).exists():
+        pytest.fail(
+            f"sysml2py-lab console script missing (PATH={shutil.which('sysml2py-lab')!r}, "
+            f"venv={venv_bin / 'sysml2py-lab'}) — casting gate cannot run"
+        )
     tmp = tempfile.mkdtemp()
     run = subprocess.run(
-        [str(exe), "spec", "children",
+        [exe, "spec", "children",
          "--out", str(pathlib.Path(tmp) / "children.json"),
          "--out-md", str(pathlib.Path(tmp) / "children.md"),
          "--out-parity", str(pathlib.Path(tmp) / "parity.md")],
