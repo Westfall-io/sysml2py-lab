@@ -147,6 +147,14 @@ class AdapterError(RuntimeError):
     """Raised when the adapter itself fails (import, java, timeout)."""
 
 
+# windtrader's own per-check default is 10s (client.py), which is too tight for
+# a COLD JVM on a fresh CI runner (jar download + JIT warm-up eats the budget
+# on the first file and trips the ratchet as a false adapter_error).  Use a
+# generous budget so a slow cold start is not mistaken for tooling failure;
+# a genuinely hung JVM still expires and still fails loud.
+_WINDTRADER_TIMEOUT_S = 60.0
+
+
 def _import_validate() -> Callable:
     """Import windtrader's `validate`, raising AdapterError on failure."""
     try:
@@ -187,7 +195,7 @@ def validate_text(
 
     validate_fn = _import_validate()
     try:
-        result = validate_fn(text, version=version)
+        result = validate_fn(text, version=version, timeout_s=_WINDTRADER_TIMEOUT_S)
     except FileNotFoundError as exc:
         raise AdapterError("java not found on PATH; windtrader-java requires a JVM") from exc
     except Exception as exc:  # subprocess failures, timeouts, ...

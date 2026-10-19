@@ -349,7 +349,7 @@ def test_record_verdicts_hard_fails_on_adapter_error(monkeypatch, tmp_path):
         exit_code = 3  # adapter failure
         stdout = ""
         stderr = "java: not found"
-    monkeypatch.setattr(wtmod, "_import_validate", lambda: (lambda t, version="0.2.0": _CmdResult()))
+    monkeypatch.setattr(wtmod, "_import_validate", lambda: (lambda t, version="0.2.0", **kw: _CmdResult()))
     with pytest.raises(wt.AdapterError):
         wt.record_verdicts({"x.sysml": "part {}"}, version="0.2.0")
 
@@ -360,7 +360,7 @@ def test_record_verdicts_records_roundtrip_extra(monkeypatch, tmp_path):
     import sysml2py_lab.validate.windtrader as wtmod
 
     calls = []
-    def _fake_validate(text, version="0.2.0"):
+    def _fake_validate(text, version="0.2.0", **kw):
         calls.append(text)
         return wt.Verdict(status="valid", exit_code=0, version=version,
                            diagnostics=[])
@@ -462,7 +462,7 @@ def test_corpus_add_refuses_invalid_without_allow(tmp_path, monkeypatch):
                                                      "version": "0.2.0", "diagnostics": ["err"]}}
     fp = tmp_path / "fx.json"
     json.dump(fx, open(fp, "w"))
-    monkeypatch.setattr(wt, "_import_validate", lambda: (lambda t, version="0.2.0": wt.Verdict(
+    monkeypatch.setattr(wt, "_import_validate", lambda: (lambda t, version="0.2.0", **kw: wt.Verdict(
         status="invalid", exit_code=2, version="0.2.0", diagnostics=["err"])))
     from sysml2py_lab import cli as cli_mod
     # must pass --offline? no: use the monkeypatched live validator
@@ -478,7 +478,7 @@ def test_corpus_add_allow_invalid_stamps_manifest(tmp_path, monkeypatch):
     cd = _make_corpus(tmp_path, {})
     newf = tmp_path / "new.sysml"
     newf.write_text("part { bad syntax ; }")
-    monkeypatch.setattr(wt, "_import_validate", lambda: (lambda t, version="0.2.0": wt.Verdict(
+    monkeypatch.setattr(wt, "_import_validate", lambda: (lambda t, version="0.2.0", **kw: wt.Verdict(
         status="invalid", exit_code=2, version="0.2.0", diagnostics=["err"])))
     from sysml2py_lab import cli as cli_mod
     rc = cli_mod.main(["corpus", "add", "--allow-invalid",
