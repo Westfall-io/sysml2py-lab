@@ -1854,6 +1854,72 @@ def test_value_import_cast_roundtrip_symmetric(tmp_path):
         sys.path.remove(str(REPO_ROOT / "src"))
 
 
+def test_import_emits_explicit_visibility(tmp_path):
+    """KERML-74 (issue #23): a builder-API import must ALWAYS emit an
+    explicit visibility indicator — `public import`, `private import`,
+    `protected import` — NEVER bare `import X::*;`, which is spec-invalid.
+
+    Default is `public` (faithful to the PR #22 corpus correction and the
+    pre-KERML-74 default), and it is non-mutating on re-render and castable:
+    the emitted `public import` re-parses to modifiers=['public'] matching
+    the model's `_to_ir()` (the round-trip holds element-for-element).
+    """
+    pkg = _gen(tmp_path)
+    sys.path.insert(0, str(pkg / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        import sysml2py
+        from sysml2py_lab.ir import parse_ir
+        from sysml2py_lab.regress import _ir_to_json
+
+        def imp(modifier=None):
+            i = sysml2py.ImportBuilder("SI::kg")
+            if modifier is not None:
+                i._set_visibility(modifier)
+            return i
+
+        # default -> public
+        assert "public import" in _wrap(sysml2py.Part("S"), imp()).dump()
+        # explicit private / protected
+        assert "private import" in _wrap(sysml2py.Part("S"), imp("private")).dump()
+        assert "protected import" in _wrap(sysml2py.Part("S"), imp("protected")).dump()
+        # never bare: each emission carries exactly one visibility prefix
+        for mod in (None, "private", "protected"):
+            txt = _wrap(sysml2py.Part("S"), imp(mod)).dump()
+            # a bare `import SI::kg;` (no visibility prefix) must never appear
+            assert re.search(r"^\s*import SI::kg;$", txt, re.M) is None, txt
+            # and one of the explicit prefixes must be present
+            assert re.search(r"(public|private|protected) import SI::kg;", txt), txt
+
+        # cast: emitted -> parse -> modifiers recovered, matches model
+        txt = _wrap(sysml2py.Part("S"), imp()).dump()
+        tree = sysml2py.Node.from_ir(_ir_to_json(parse_ir(txt)))
+        gd = tree.get_definition()
+        imports = _collect_imports(gd)
+        assert any(mods == ("public",) for nm, mods in imports), imports
+        # invalid visibility fails loud
+        import pytest
+        with pytest.raises(ValueError):
+            imp("secret")
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.path.remove(str(REPO_ROOT / "src"))
+
+
+def _wrap(builder, child):
+    builder._set_child(child)
+    return builder
+
+
+def _collect_imports(node):
+    out = []
+    if node.get("kind") == "import":
+        out.append((node.get("name"), tuple(node.get("modifiers", []))))
+    for c in node.get("children", []):
+        out.extend(_collect_imports(c))
+    return out
+
+
 def test_value_bool_renders_lowercase(tmp_path):
     """Issue #26 / W1-5: a Python bool value= must render the grammar's
     lower-case 'true'/'false', not 'True'/'False' (which would parse as a
