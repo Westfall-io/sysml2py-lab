@@ -693,7 +693,11 @@ class Builder:
         imports = []
         for ns, unit in imps:
             imp = ImportBuilder(f"{ns}::{unit}")
-            imp._modifiers["public"] = True
+            # KERML-74: ImportBuilder already defaults visibility to public
+            # (via __init__), so `_set_visibility("public")` is idempotent —
+            # do NOT also set _modifiers["public"], or emission renders
+            # `public public import` (r#23 caught the duplicate).
+            imp._set_visibility("public")
             imports.append(imp)
         clone._children = imports + clone._children
         return clone
@@ -853,6 +857,16 @@ class Builder:
                 mods.append(v)
             elif v is not None and v is not False:
                 mods.append(f"{k}={v}")
+        # KERML-74: textual import declarations REQUIRE an explicit visibility
+        # indicator (`public import`, `private import`, `protected import`) —
+        # bare `import X::*;` is spec-invalid (windtrader-java #10 triage).
+        # The corpus correction (PR #22) and the pre-KERML-74 default were
+        # `public`.  `ImportBuilder.__init__` is the SINGLE source of truth for
+        # the default (it sets `_modifiers["visibility"] = "public"`), so by
+        # the time we render, `visibility` is always present and this catch-all
+        # loop alone carries it — there is deliberately NO render-side fallback
+        # here: a fallback with no `_to_ir()` counterpart would break the cast
+        # (emission saying `public` while the model carries no modifier).
         mod_txt = (" ".join(mods) + " ") if mods else ""
         # Issue #27: `self._kind` is the coarse canonical-IR kind (part /
         # attribute / ...) OR the definition-variant keyword ("part def").
@@ -990,6 +1004,38 @@ class {{ cls.name }}(Builder):
     kind = "{{ cls.kind }}"
     ir_kind = "{{ cls.ir_kind }}"
     owned_body = {{ cls.owned_body_lit }}
+
+{% if cls.ir_kind == "import" %}
+    # KERML-74: textual imports REQUIRE an explicit visibility indicator
+    # (`public|private|protected import …;`); bare `import …;` is
+    # spec-invalid (windtrader-java #10 triage).  The builder defaults an
+    # import to `public` so `_to_ir()` carries the modifier AND emission
+    # renders it — model and text agree, so the cast holds
+    # element-for-element (re-parsing `public import` yields
+    # modifiers=['public']).  Users can switch via `_set_visibility`.
+    def __init__(self, name=None, *, kind=None, value=None, unit=None):
+        super().__init__(name, kind=kind, value=value, unit=unit)
+        if self._modifiers.get("visibility") is None:
+            self._modifiers["visibility"] = "public"
+
+    def _set_visibility(self, value=None):
+        """Set the import's visibility indicator (KERML-74).
+
+        Accepts ``public`` / ``private`` / ``protected`` (or no value, which
+        defaults to ``public``).  Mutually exclusive: setting one clears the
+        others so e.g. ``public+private`` can never render.
+        """
+        if value is None:
+            value = "public"
+        if value not in ("public", "private", "protected"):
+            raise ValueError(
+                f"invalid visibility {value!r}; expected 'public', 'private' or 'protected'"
+            )
+        for tok in ("public", "private", "protected"):
+            self._modifiers.pop(tok, None)
+        self._modifiers["visibility"] = value
+        return self
+{% endif %}
 
 {% endfor %}
 
