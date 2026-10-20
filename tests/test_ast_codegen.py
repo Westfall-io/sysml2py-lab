@@ -1892,17 +1892,19 @@ def test_import_emits_explicit_visibility(tmp_path):
             assert re.search(r"(public|private|protected) import SI::kg;", txt), txt
 
         # cast: emitted -> parse -> modifiers recovered, matches model
-        txt = _wrap(sysml2py.Part("S"), imp()).dump()
+        b = imp()
+        txt = _wrap(sysml2py.Part("S"), b).dump()
         tree = sysml2py.Node.from_ir(_ir_to_json(parse_ir(txt)))
         gd = tree.get_definition()
         imports = _collect_imports(gd)
         assert any(mods == ("public",) for nm, mods in imports), imports
-        # model side: `build()` must carry the SAME modifier as emission/parse
-        # (text and model must agree — otherwise the cast breaks silently)
-        model_imports = _collect_imports(imp().build())
-        parsed_model = imports
-        assert parsed_model == model_imports, (
-            f"cast asymmetry: parsed={parsed_model} model={model_imports}"
+        # model side: the SAME instance (post-render) must carry the SAME
+        # modifier as emission/parse — a render-side mutation of `_modifiers`
+        # (e.g. an accidentally-mutating fallback) would make the dumped
+        # instance drift from a fresh one, so reuse `b`, not a new builder.
+        model_imports = _collect_imports(b.build())
+        assert imports == model_imports, (
+            f"cast asymmetry: parsed={imports} model={model_imports}"
         )
         # invalid visibility fails loud
         import pytest
