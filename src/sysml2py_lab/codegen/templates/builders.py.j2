@@ -861,12 +861,12 @@ class Builder:
         # indicator (`public import`, `private import`, `protected import`) —
         # bare `import X::*;` is spec-invalid (windtrader-java #10 triage).
         # The corpus correction (PR #22) and the pre-KERML-74 default were
-        # `public`; faithful to that, a builder-API import with no explicit
-        # visibility emits `public`.  Non-mutating: we only touch the local
-        # `mods` list, never `self._modifiers`, so `_to_ir()` on the original
-        # model is unaffected.
-        if self.ir_kind == "import" and self._modifiers.get("visibility") is None:
-            mods.insert(0, "public")
+        # `public`.  `ImportBuilder.__init__` is the SINGLE source of truth for
+        # the default (it sets `_modifiers["visibility"] = "public"`), so by
+        # the time we render, `visibility` is always present and this catch-all
+        # loop alone carries it — there is deliberately NO render-side fallback
+        # here: a fallback with no `_to_ir()` counterpart would break the cast
+        # (emission saying `public` while the model carries no modifier).
         mod_txt = (" ".join(mods) + " ") if mods else ""
         # Issue #27: `self._kind` is the coarse canonical-IR kind (part /
         # attribute / ...) OR the definition-variant keyword ("part def").

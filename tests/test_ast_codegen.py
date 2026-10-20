@@ -1897,6 +1897,13 @@ def test_import_emits_explicit_visibility(tmp_path):
         gd = tree.get_definition()
         imports = _collect_imports(gd)
         assert any(mods == ("public",) for nm, mods in imports), imports
+        # model side: `build()` must carry the SAME modifier as emission/parse
+        # (text and model must agree — otherwise the cast breaks silently)
+        model_imports = _collect_imports(imp().build())
+        parsed_model = imports
+        assert parsed_model == model_imports, (
+            f"cast asymmetry: parsed={parsed_model} model={model_imports}"
+        )
         # invalid visibility fails loud
         import pytest
         with pytest.raises(ValueError):
