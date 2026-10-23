@@ -27,7 +27,11 @@ open("file2.sysml", "w").write(model.dump())
   normalized — byte-identity is explicitly NOT the contract.)
 - **Edit:** `model.add(builder)` appends a builder-authored element; the
   builder renders faithfully for authored content, so an injected package
-  survives. Untouched source content is preserved verbatim.
+  survives. The original model's statements are preserved (same elements/
+  kinds/names/children/order/values/units) — the model round-trips as a
+  whole. LAYOUT note: inter-statement whitespace (blank lines, indentation)
+  is normalized by `render_ir`, so untouched content is preserved at the
+  model level, NOT re-emitted with identical formatting.
 
 ## Why this design (the fork, and the measured resolution)
 
@@ -45,12 +49,12 @@ identifier quoting like `'Parts Example-1'` is not reconstructed; typed
 multiplicities re-order). Re-encoding from IR *fields* therefore drops what
 the parser didn't decompose. The IR itself is lossless (`render_ir` = 61/61),
 so the honest editable+lossless model wraps the IR and renders it — edits are
-spliced in, untouched content re-emits its original raw text.
+spliced in, untouched statement text re-emits as parsed.
 
 `render_ir` concatenates each node's `raw_text` in preorder (source order),
-so losslessness is structural. `ReadModel.add()` appends an `IRNode` whose
-`raw_text` is the added builder's `dump()` (or a raw string), spliced into the
-output.
+so losslessness is structural. `ReadModel.add()` appends a chunk (the added
+builder's `dump()` text, or a raw string) with a `//`-line-comment termination
+guard, spliced into the output.
 
 ## Files
 

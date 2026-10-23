@@ -1,4 +1,4 @@
-"""read_model: load a .sysml file, edit it, and emit lossless SysML.
+"""read_model: load a .sysml file, edit it, emit lossless SysML.
 
 This is the read side of the read-modify-write loop.  A user script does::
 
@@ -12,20 +12,38 @@ This is the read side of the read-modify-write loop.  A user script does::
 The parser lives HERE (the lab), per the agreed design (B): the distributable
 ``sysml2py`` stays builder-only.
 
-Fidelity (cast-true): ``dump()`` is LOSSLESS.  The model wraps the parsed IR
-tree, and ``dump()`` renders it via ``render_ir`` — which is canonical-equal
-on 61/61 corpus files (100%).  Edits via ``model.add(builder)`` are appended;
-the builder renders faithfully for authored content, so an injected package
-survives.  Untouched source content is preserved — nothing is silently
-dropped, reordered, or invented.
+Fidelity (cast-true): ``dump()`` is LOSSLESS at the *model* level.  The model
+wraps the parsed IR tree, and ``dump()`` renders it via ``render_ir`` — which
+is canonical-equal on 61/61 corpus files (100%): same elements, kinds, names,
+modifiers, children, order, values/units — nothing is dropped, reordered, or
+invented.  Edits via ``model.add(builder)`` are appended; the builder renders
+faithfully for authored content, so an injected package survives.
+
+Note on layout: the model-level round-trip is structural, NOT byte-identical.
+``render_ir`` concatenates each statement's raw text and discards inter-
+statement whitespace (blank lines / indentation), so a hand-formatted file is
+re-emitted in a compact single-flow form.  That is expected: the contract is
+that the *model* survives unchanged, not the formatting.  See the spec.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from .ir import IRNode, ir_to_json, parse_ir, render_ir
+from .ir import IRNode, parse_ir, render_ir
+
+
+def _chunk(text: str) -> str:
+    """Terminate a `//` line comment so later chunks aren't swallowed.
+
+    Mirrors ``render_ir``'s guard: a ``//`` comment's lexical effect runs to
+    end-of-line, so a chunk that ends in ``// note`` would comment out the
+    next chunk if no newline is emitted.  Block comments ``/* */`` terminate
+    themselves.
+    """
+    if text.lstrip().startswith("//") and not text.endswith("\n"):
+        return text + "\n"
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -38,28 +56,32 @@ class ReadModel:
 
     ``dump()`` renders the IR tree losslessly via ``render_ir`` (canonical-
     equal on the whole corpus).  ``add()`` appends a builder-authored element
-    to the root namespace, splicing its rendered text into the output.
+    (or a raw text string) to the output, spliced after the original content.
 
-    Children of the root (the top-level namespace) are reachable so a script
-    can navigate/insert into existing packages, but the lossless guarantee
-    applies to whatever is untouched: only what a script explicitly ``add``s
-    is rendered fresh; the rest re-emits the original raw text.
+    Untouched source content is preserved at the model level: only what a
+    script explicitly ``add``s is rendered fresh; the rest re-emits the
+    original statement text.  (Inter-statement whitespace is normalized — see
+    module docstring.)
     """
 
     def __init__(self, root: IRNode):
         self._root = root
-        self._added: list[IRNode] = []
+        self._added: list[str] = []
 
     @property
     def children(self):
-        """Live list of the root namespace's members (for navigation)."""
+        """The parsed structure of the original model (read-only view)."""
         return self._root.children
 
     def add(self, builder_or_raw) -> "ReadModel":
-        """Append an element to the top-level namespace.
+        """Append content to the emitted model.
 
         Accepts a ``sysml2py`` Builder (rendered faithfully via its
-        ``dump()``) or a string of raw SysML text.  Returns self for chaining.
+        ``dump()``) or a string of raw SysML text.  Appends at the end of the
+        output.  Returns self for chaining.
+
+        Note: for a file whose root is ``package 'X' { ... }``, ``add()``
+        produces a *second* top-level element, not a member of package X.
         """
         if isinstance(builder_or_raw, str):
             text = builder_or_raw
@@ -70,24 +92,20 @@ class ReadModel:
                 "add() expects a sysml2py Builder or a raw text string, "
                 f"got {type(builder_or_raw).__name__}"
             )
-        node = IRNode(
-            kind="added",
-            name="",
-            raw_text=text,
-            fidelity="modelled",
-        )
-        self._added.append(node)
+        self._added.append(text)
         return self
 
     def dump(self) -> str:
-        """Emit the model losslessly as SysML text."""
-        return render_ir(self._root) + self._render_added()
+        """Emit the model as SysML text (structural round-trip)."""
+        return render_ir(self._root) + _render_added(self._added)
 
-    def _render_added(self) -> str:
-        if not self._added:
-            return ""
-        text = "".join(n.raw_text for n in self._added)
-        return text + ("\n" if not text.endswith("\n") else "")
+
+def _render_added(chunks: list[str]) -> str:
+    if not chunks:
+        return ""
+    out = [_chunk(c) for c in chunks]
+    text = "\n".join(out)
+    return text + ("\n" if not text.endswith("\n") else "")
 
 
 # ---------------------------------------------------------------------------

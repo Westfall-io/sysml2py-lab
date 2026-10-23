@@ -3,7 +3,7 @@
 Verify the lossless + editable contract of ``sysml2py_lab.read_model``:
   * no-edit:  read_model(f).dump() is canonical-equal to f for EVERY corpus file
   * edit:     read_model(f).add(builder).dump() keeps the original content and
-              includes the newly added element (byte-preserving for untouched)
+              includes the newly added element (structural round-trip)
 """
 
 from __future__ import annotations
@@ -33,44 +33,48 @@ def test_read_dump_lossless_no_edit(path_s):
     assert _canonical_equal(model.dump(), src)
 
 
-def _ensure_sysml2py():
-    """Put the generated sysml2py package's src/ on sys.path (lab is not
-    depended on at runtime by the generated library)."""
+def test_read_edit_preserves_original_and_adds(tmp_path):
+    """read -> add a package -> dump keeps original and includes the new one.
+
+    The generated ``sysml2py`` package is built in-test (repo convention,
+    like ``test_ast_codegen``) so this test never depends on a sibling
+    checkout and never silently skips.
+    """
     import sys
 
-    for cand in (
-        Path(__file__).resolve().parent.parent.parent / "sysml2py" / "src",
-        Path(__file__).resolve().parent.parent.parent.parent / "sysml2py" / "src",
-    ):
-        if (cand / "sysml2py" / "__init__.py").exists():
-            if str(cand) not in sys.path:
-                sys.path.insert(0, str(cand))
-            return
-    pytest.skip("generated sysml2py package not found (skipping builder edit test)")
+    from sysml2py_lab.codegen.emit import EmitOptions, emit_sysml2py
 
+    pkg = emit_sysml2py(tmp_path / "out", opts=EmitOptions())
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
 
-def test_read_edit_preserves_original_and_adds():
-    """read -> add a package -> dump keeps original and includes the new one."""
-    _ensure_sysml2py()
-    import sysml2py
+        path_s = CORPUS_DIR / "test_Training_Parts_Parts_Example_1.sysml"
 
-    path_s = CORPUS_DIR / "test_Training_Parts_Parts_Example_1.sysml"
-    src = Path(path_s).read_text(encoding="utf-8")
+        model = read_model(path_s)
+        new_pkg = sysml2py.PackageBuilder("NewSubsystem")
+        new_pkg.add(sysml2py.Part("Motor").add(
+            sysml2py.Attribute("torque", value=10, unit="N*m")))
+        model.add(new_pkg)
 
-    model = read_model(path_s)
-    pkg = sysml2py.PackageBuilder("NewSubsystem")
-    pkg.add(sysml2py.Part("Motor").add(
-        sysml2py.Attribute("torque", value=10, unit="N*m")))
-    model.add(pkg)
+        out = model.dump()
+        # original content survives
+        assert "part def Vehicle" in out
+        assert "part cyl" in out
+        # the added element renders
+        assert "package NewSubsystem" in out
+        assert "part Motor" in out
+        assert "attribute torque = 10[N*m]" in out
 
-    out = model.dump()
-    # original content survives
-    assert "part def Vehicle" in out
-    assert "part cyl" in out
-    # the added element renders
-    assert "package NewSubsystem" in out
-    assert "part Motor" in out
-    assert "attribute torque = 10[N*m]" in out
+        # CASTING: re-parse the edited output — reading the edited file back
+        # must not error, and a no-edit round-trip of it must hold.
+        out_path = tmp_path / "edited.sysml"
+        out_path.write_text(out, encoding="utf-8")
+        model2 = read_model(out_path)
+        assert _canonical_equal(model2.dump(), out)
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.modules.pop("sysml2py", None)
 
 
 def test_read_add_takes_raw_text_too():
