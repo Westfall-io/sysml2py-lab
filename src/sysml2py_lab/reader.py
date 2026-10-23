@@ -14,7 +14,7 @@ The parser lives HERE (the lab), per the agreed design (B): the distributable
 
 Fidelity (cast-true): ``dump()`` is LOSSLESS at the *model* level.  The model
 wraps the parsed IR tree, and ``dump()`` renders it via ``render_ir`` — which
-is canonical-equal on 61/61 corpus files (100%): same elements, kinds, names,
+is canonical-equal on 62/62 corpus files (100%): same elements, kinds, names,
 modifiers, children, order, values/units — nothing is dropped, reordered, or
 invented.  Edits via ``model.add(builder)`` are appended; the builder renders
 faithfully for authored content, so an injected package survives.
@@ -70,8 +70,8 @@ class ReadModel:
 
     @property
     def children(self):
-        """The parsed structure of the original model (read-only view)."""
-        return self._root.children
+        """The parsed structure of the original model (read-only snapshot)."""
+        return tuple(self._root.children)
 
     def add(self, builder_or_raw) -> "ReadModel":
         """Append content to the emitted model.
@@ -97,7 +97,16 @@ class ReadModel:
 
     def dump(self) -> str:
         """Emit the model as SysML text (structural round-trip)."""
-        return render_ir(self._root) + _render_added(self._added)
+        body = render_ir(self._root)
+        added = _render_added(self._added)
+        if not added:
+            return body
+        # N6: a separator between the original body and the added block, so a
+        # final `;`/`}`-unterminated statement with a trailing `//` comment
+        # cannot swallow the added content.
+        if body and not body.endswith("\n"):
+            body += "\n"
+        return body + added
 
 
 def _render_added(chunks: list[str]) -> str:

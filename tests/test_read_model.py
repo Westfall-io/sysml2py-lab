@@ -8,21 +8,19 @@ Verify the lossless + editable contract of ``sysml2py_lab.read_model``:
 
 from __future__ import annotations
 
-import glob
 from pathlib import Path
 
 import pytest
 
-from sysml2py_lab import read_model
+from sysml2py_lab import read_model, corpus
+from sysml2py_lab.normalize import canonical_equals
 
-CORPUS_DIR = Path(__file__).resolve().parent.parent / "corpus" / "grammar-2023-07"
-CORPUS_FILES = sorted(glob.glob(str(CORPUS_DIR / "*.sysml")))
-
-
-def _canonical_equal(a: str, b: str) -> bool:
-    from sysml2py_lab.regress import canonical_equals
-
-    return canonical_equals(a, b)
+CORPUS_DIR = Path(__file__).resolve().parent.parent / "corpus"
+CORPUS_FILES = [str(p) for p in corpus.iter_corpus_files(CORPUS_DIR)]
+assert len(CORPUS_FILES) >= 61, (
+    f"corpus shrank to {len(CORPUS_FILES)} files; the lossless gate would "
+    "silently skip — refusing to run"
+)
 
 
 @pytest.mark.parametrize("path_s", CORPUS_FILES, ids=lambda p: Path(p).stem)
@@ -30,7 +28,7 @@ def test_read_dump_lossless_no_edit(path_s):
     """read -> dump (no edits) must preserve the model (canonical-equal)."""
     src = Path(path_s).read_text(encoding="utf-8")
     model = read_model(path_s)
-    assert _canonical_equal(model.dump(), src)
+    assert canonical_equals(model.dump(), src)
 
 
 def test_read_edit_preserves_original_and_adds(tmp_path):
@@ -49,7 +47,7 @@ def test_read_edit_preserves_original_and_adds(tmp_path):
     try:
         import sysml2py
 
-        path_s = CORPUS_DIR / "test_Training_Parts_Parts_Example_1.sysml"
+        path_s = CORPUS_DIR / "grammar-2023-07" / "test_Training_Parts_Parts_Example_1.sysml"
 
         model = read_model(path_s)
         new_pkg = sysml2py.PackageBuilder("NewSubsystem")
@@ -71,7 +69,7 @@ def test_read_edit_preserves_original_and_adds(tmp_path):
         out_path = tmp_path / "edited.sysml"
         out_path.write_text(out, encoding="utf-8")
         model2 = read_model(out_path)
-        assert _canonical_equal(model2.dump(), out)
+        assert canonical_equals(model2.dump(), out)
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.modules.pop("sysml2py", None)
@@ -79,7 +77,26 @@ def test_read_edit_preserves_original_and_adds(tmp_path):
 
 def test_read_add_takes_raw_text_too():
     """add() also accepts a raw SysML string (not just a Builder)."""
-    path_s = CORPUS_DIR / "test_Training_Parts_Parts_Example_1.sysml"
+    path_s = CORPUS_DIR / "grammar-2023-07" / "test_Training_Parts_Parts_Example_1.sysml"
     model = read_model(path_s)
     model.add("package Extra { part Z; }")
     assert "package Extra" in model.dump()
+
+
+def test_read_add_comment_cannot_swallow_following_chunk(tmp_path):
+    """A `//`-comment chunk must not comment out a later added chunk.
+
+    Regression for the comment-swallowing hazard: `// note` followed by a
+    package renders as ``// note\\npackage ...`` (newline-terminated), so the
+    package survives re-parsing.  (``canonical_equals`` strips comments, so
+    this is asserted structurally, on the re-parsed tree.)
+    """
+    from sysml2py_lab.ir import parse_ir
+
+    text = "package Base { }\n// note"
+    src_path = tmp_path / "base.sysml"
+    src_path.write_text(text, encoding="utf-8")
+    out = read_model(src_path).add("// note").add("package Extra { part Z; }").dump()
+    root = parse_ir(out)
+    names = [n.name for n in root.walk() if n.name]
+    assert "Extra" in names, f"added package was swallowed by the // comment in:\n{out}"

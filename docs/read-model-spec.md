@@ -1,6 +1,6 @@
 # read_model: load a .sysml file, edit it, emit lossless SysML
 
-**Status:** implemented (awaiting PR review/merge)
+**Status:** implemented (merged via PR #34)
 **Owning repo:** `sysml2py-lab` (parser/loader + lossless render). The
 distributable `sysml2py` stays builder-only (decision B).
 
@@ -22,7 +22,7 @@ open("file2.sysml", "w").write(model.dump())
 ## Fidelity contract (Chris's decision: EDITABLE + LOSSLESS)
 
 - **No-edit:** `read_model(f).dump()` is canonical-equal to `f` for **every**
-  corpus file (verified **61/61**, 100%). Nothing is dropped, reordered, or
+  corpus file (verified **62/62**, 100%). Nothing is dropped, reordered, or
   invented. (`canonical_equals` = structural round-trip; whitespace/layout
   normalized — byte-identity is explicitly NOT the contract.)
 - **Edit:** `model.add(builder)` appends a builder-authored element; the
@@ -35,19 +35,19 @@ open("file2.sysml", "w").write(model.dump())
 
 ## Why this design (the fork, and the measured resolution)
 
-Two candidate designs were measured (all 61 corpus files):
+Three candidate designs were measured (whole-corpus denominator: 62 files):
 
 | Path | no-edit round-trip | editable? |
 | --- | --- | --- |
-| hydrate -> reconstruct each node as a `sysml2py` Builder, `builder.dump()` | **3/61** | yes |
+| hydrate -> reconstruct each node as a `sysml2py` Builder, `builder.dump()` | **3/62** | yes |
 | `Node.from_ir().dump()` (AST, raw-text-preserving) | 62/62 | no |
-| **`ReadModel` chosen: wrap the IR tree, dump via `render_ir`** | **61/61** | **yes** |
+| **`ReadModel` chosen: wrap the IR tree, dump via `render_ir`** | **62/62** | **yes** |
 
 The builder-reconstruction path lost fidelity because the parser's IR does not
 fully model every header (`part redefines eng` keeps `eng` only in raw_text;
 identifier quoting like `'Parts Example-1'` is not reconstructed; typed
 multiplicities re-order). Re-encoding from IR *fields* therefore drops what
-the parser didn't decompose. The IR itself is lossless (`render_ir` = 61/61),
+the parser didn't decompose. The IR itself is lossless (`render_ir` = 62/62),
 so the honest editable+lossless model wraps the IR and renders it — edits are
 spliced in, untouched statement text re-emits as parsed.
 
@@ -60,12 +60,12 @@ guard, spliced into the output.
 
 - `src/sysml2py_lab/reader.py` — `ReadModel` + `read_model()`.
 - `src/sysml2py_lab/__init__.py` — exports `read_model`, `ReadModel`.
-- `tests/test_read_model.py` — 61 corpus lossless tests + edit + raw-text.
+- `tests/test_read_model.py` — 62 corpus lossless tests + edit + raw-text + comment guard.
 
 ## House rule
 
 Feature branch -> PR -> review (Claude Code) -> merge. Casting-tested: the
-61/61 lossless round-trip + edit tests must be green before merge. Cross-repo:
+62/62 lossless round-trip + edit tests must be green before merge. Cross-repo:
 none needed — this is lab-internal; the distributable stays builder-only.
 
 ## Not in scope (per decision B)

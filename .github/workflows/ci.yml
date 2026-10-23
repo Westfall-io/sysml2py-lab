@@ -26,7 +26,7 @@ jobs:
         # and exclusions are auditable from config.  Gate covers the PR's
         # changed files + the generated package (which ships its own config).
         run: |
-          ruff check src/sysml2py_lab/regress.py src/sysml2py_lab/cli.py src/sysml2py_lab/ir.py src/sysml2py_lab/reader.py src/sysml2py_lab/validate/ tests/test_regress.py tests/test_mvp_roundtrip.py tests/test_read_model.py tests/test_windtrader_validate.py
+          ruff check src/sysml2py_lab/__init__.py src/sysml2py_lab/regress.py src/sysml2py_lab/cli.py src/sysml2py_lab/ir.py src/sysml2py_lab/reader.py src/sysml2py_lab/validate/ tests/test_regress.py tests/test_mvp_roundtrip.py tests/test_read_model.py tests/test_windtrader_validate.py
           rm -rf /tmp/ci-lint
           sysml2py-lab generate --out /tmp/ci-lint
           ruff check /tmp/ci-lint/sysml2py/src
