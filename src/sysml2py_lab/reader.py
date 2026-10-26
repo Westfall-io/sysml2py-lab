@@ -73,7 +73,7 @@ class ReadModel:
         """The parsed structure of the original model (read-only snapshot)."""
         return tuple(self._root.children)
 
-    def add(self, builder_or_raw) -> "ReadModel":
+    def add(self, builder_or_raw) -> ReadModel:
         """Append content to the emitted model.
 
         Accepts a ``sysml2py`` Builder (rendered faithfully via its

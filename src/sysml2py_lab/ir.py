@@ -22,23 +22,22 @@ At minimum it preserves the raw_text so nothing is silently dropped.
 Comments are retained as IR nodes (kind `comment`).
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Iterator
 
 from .lexer import (
-    Token,
-    tokenize_sysml,
+    BLOCK_COMMENT,
     LBRACE,
+    LINE_COMMENT,
     RBRACE,
     SEMI,
-    LINE_COMMENT,
-    BLOCK_COMMENT,
-    UNRESTRICTED_NAME,
     STRING,
-    WORD,
     SYMBOL,
+    UNRESTRICTED_NAME,
     WHITESPACE,
+    WORD,
+    Token,
+    tokenize_sysml,
 )
 
 # Node kinds
@@ -115,7 +114,7 @@ def _kind_vocab_from_model(model_path: str | None = None) -> set[str]:
         return set()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return set()
     kinds: set[str] = set()
     for body_entries in data.get("bodies", {}).values():
@@ -136,12 +135,12 @@ class IRNode:
     modifiers: list[str] = field(default_factory=list)
     type_refs: list[str] = field(default_factory=list)
     multiplicity: str | None = None
-    children: list["IRNode"] = field(default_factory=list)
+    children: list[IRNode] = field(default_factory=list)
     source_span: tuple[int, int] = (0, 0)
     raw_text: str = ""
     fidelity: str = "modelled"
 
-    def walk(self) -> Iterator["IRNode"]:
+    def walk(self) -> Iterator[IRNode]:
         """Yield self and all descendants (preorder)."""
         yield self
         for c in self.children:
@@ -150,9 +149,11 @@ class IRNode:
     def dump(self, indent: int = 0) -> str:
         pad = "  " * indent
         lines = [
-            f"{pad}{self.kind} name={self.name!r} mods={self.modifiers} "
-            f"types={self.type_refs} mult={self.multiplicity} "
-            f"fid={self.fidelity} span={self.source_span}"
+            (
+                f"{pad}{self.kind} name={self.name!r} mods={self.modifiers} "
+                f"types={self.type_refs} mult={self.multiplicity} "
+                f"fid={self.fidelity} span={self.source_span}"
+            )
         ]
         for c in self.children:
             lines.append(c.dump(indent + 1))

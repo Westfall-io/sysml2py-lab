@@ -1,16 +1,19 @@
 # read_model: load a .sysml file, edit it, emit lossless SysML
 
-**Status:** implemented (merged via PR #34)
-**Owning repo:** `sysml2py-lab` (parser/loader + lossless render). The
-distributable `sysml2py` stays builder-only (decision B).
+**Status:** implemented. Lab round-trip landed via PR #34; the read-side
+modules were then ported into the user-facing distributable (generated
+`sysml2py` gains `read_model`/`ReadModel`) — see "Port into the distributable"
+below. The distributable is **no longer builder-only by dint of this feature**:
+read/modify/emit is part of the user-facing baseline, since `sysml2py` (not the
+lab factory) is what model authors install.
 
 ## Goal
 
 A person writes their own script to do read-modify-write on a `.sysml` file:
 
 ```python
-from sysml2py_lab import read_model
-from sysml2py import PackageBuilder, Part, Attribute
+from sysml2py import read_model          # the user-facing import (also works
+from sysml2py import PackageBuilder, Part, Attribute   # from sysml2py_lab)
 
 model = read_model("file.sysml")        # an editable, LOSSLESS model
 pkg = PackageBuilder("NewSubsystem")
@@ -18,6 +21,9 @@ pkg.add(Part("Motor").add(Attribute("torque", value=10, unit="N*m")))
 model.add(pkg)
 open("file2.sysml", "w").write(model.dump())
 ```
+
+`from sysml2py import read_model` is the supported entry point; `sysml2py_lab`
+re-exports the same implementation for the factory/test path.
 
 ## Fidelity contract (Chris's decision: EDITABLE + LOSSLESS)
 
@@ -56,20 +62,47 @@ so losslessness is structural. `ReadModel.add()` appends a chunk (the added
 builder's `dump()` text, or a raw string) with a `//`-line-comment termination
 guard, spliced into the output.
 
+## Port into the distributable (this feature is in the user-facing baseline)
+
+`sysml2py-lab` is the factory; `sysml2py` is what model authors install. A
+read/modify capability that only worked by importing from the factory would be
+a leaky abstraction, so the read side was ported into the generated package:
+
+- `emit_sysml2py` now copies `lexer.py` + `ir.py` + `reader.py` verbatim into
+  the generated `sysml2py` package (the same single-sourcing mechanism already
+  used for `normalize.py`).
+- The generated `sysml2py/__init__.py` re-exports `read_model`/`ReadModel`.
+- The whole read side is **pure stdlib** (~870 lines: lexer 170, ir 555,
+  reader 143) and talks only via intra-package relative imports, so it is
+  self-contained inside the distributable and adds no runtime dependencies.
+- The copied modules are clean under ruff **defaults** (the generated package's
+  own `pyproject.toml` pins no `select`, so default rules apply). That forced
+  clearing a small amount of pre-existing lab debt in `ir.py` (unused top-level
+  `Path` import, `typing.Iterator` -> `collections.abc`, blind `except
+  Exception` narrowed, quoted forward-ref annotations unquoted) and matching
+  `lexer.py`'s import layout to `normalize.py`'s docstring-first pattern. The
+  lab's conservative `[tool.ruff.lint] select` + the ir.py E402 per-file-ignore
+  remain for the factory-side files.
+
 ## Files
 
-- `src/sysml2py_lab/reader.py` — `ReadModel` + `read_model()`.
-- `src/sysml2py_lab/__init__.py` — exports `read_model`, `ReadModel`.
-- `tests/test_read_model.py` — 62 corpus lossless tests + edit + raw-text + comment guard.
+- `src/sysml2py_lab/reader.py` — `ReadModel` + `read_model()` (single source).
+- `src/sysml2py_lab/codegen/emit.py` — copies lexer/ir/reader into the
+  generated package.
+- `src/sysml2py_lab/codegen/templates/pkg_init.py.j2` — re-exports
+  `read_model`/`ReadModel` from the generated `sysml2py.__init__`.
+- `tests/test_read_model.py` — 62 corpus lossless tests + edit + raw-text +
+  comment guard + **generated-package export + generated round-trip/edit**
+  tests (build the package in-test via `emit_sysml2py`).
 
 ## House rule
 
 Feature branch -> PR -> review (Claude Code) -> merge. Casting-tested: the
-62/62 lossless round-trip + edit tests must be green before merge. Cross-repo:
-none needed — this is lab-internal; the distributable stays builder-only.
+62/62 lossless round-trip + edit tests must be green before merge, including
+`test_generated_code_passes_ruff` (the ported modules must stay ruff-clean
+under the generated package's default select).
 
-## Not in scope (per decision B)
+## Not in scope
 
-- No text parser added to the distributable `sysml2py`.
 - No `.insert` alias (`.add` covers it). No `a.Package("C")` accessor (use
   `PackageBuilder("C")` + `.add`).

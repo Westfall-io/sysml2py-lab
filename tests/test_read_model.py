@@ -100,3 +100,78 @@ def test_read_add_comment_cannot_swallow_following_chunk(tmp_path):
     root = parse_ir(out)
     names = [n.name for n in root.walk() if n.name]
     assert "Extra" in names, f"added package was swallowed by the // comment in:\n{out}"
+
+
+def test_generated_package_exports_read_model(tmp_path):
+    """The user-facing generated ``sysml2py`` package exports read_model.
+
+    ``read_model``/``ReadModel`` are part of the distributable baseline (not a
+    factory-only extra): the generated ``sysml2py/__init__`` must re-export
+    them, and the read-side modules (lexer/ir/reader) must be present in the
+    generated package.
+    """
+    import sys
+
+    from sysml2py_lab.codegen.emit import EmitOptions, emit_sysml2py
+
+    pkg = emit_sysml2py(tmp_path / "out", opts=EmitOptions())
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        import sysml2py
+
+        assert hasattr(sysml2py, "read_model")
+        assert hasattr(sysml2py, "ReadModel")
+        assert (pkg / "src" / "sysml2py" / "lexer.py").exists()
+        assert (pkg / "src" / "sysml2py" / "ir.py").exists()
+        assert (pkg / "src" / "sysml2py" / "reader.py").exists()
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.modules.pop("sysml2py", None)
+
+
+def test_generated_read_model_roundtrip_and_edit(tmp_path):
+    """End-to-end through the GENERATED package's read_model (user-facing path).
+
+    from sysml2py import read_model, PackageBuilder, Part  — not the lab's
+    import.  No-edit dump is canonical-equal to the source; an added package
+    survives and the edited output re-parses (casts clean).
+    """
+    import sys
+
+    from sysml2py_lab.codegen.emit import EmitOptions, emit_sysml2py
+
+    pkg = emit_sysml2py(tmp_path / "out", opts=EmitOptions())
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        from sysml2py import PackageBuilder, Part, canonical_equals, read_model
+
+        src_text = (
+            "package Spacecraft {\n"
+            "  part def Vehicle {\n"
+            "    part eng : Engine;\n"
+            "  }\n"
+            "  part primary : Vehicle;\n"
+            "}\n"
+        )
+        src_path = tmp_path / "model.sysml"
+        src_path.write_text(src_text, encoding="utf-8")
+
+        # no-edit lossless
+        model = read_model(src_path)
+        assert canonical_equals(model.dump(), src_text)
+
+        # edit
+        model.add(PackageBuilder("NewSubsystem").add(Part("Motor")))
+        out = model.dump()
+        assert "part def Vehicle" in out
+        assert "package NewSubsystem" in out
+        assert "part Motor" in out
+
+        # casting: re-read the edited output through the generated read_model
+        edited = tmp_path / "edited.sysml"
+        edited.write_text(out, encoding="utf-8")
+        model2 = read_model(edited)
+        assert canonical_equals(model2.dump(), out)
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.modules.pop("sysml2py", None)
