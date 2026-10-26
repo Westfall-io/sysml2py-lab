@@ -175,3 +175,59 @@ def test_generated_read_model_roundtrip_and_edit(tmp_path):
     finally:
         sys.path.remove(str(pkg / "src"))
         sys.modules.pop("sysml2py", None)
+
+
+def test_generated_read_model_classifies_kinds_via_embedded_vocab(tmp_path):
+    """The GENERATED package classifies kinds even with no children.json.
+
+    Regression for B1/the distributable: the copied ir.py resolves
+    ``spec/relationships/children.json`` via a repo-relative path that does
+    NOT exist in the generated package or an installed wheel, so
+    ``_kind_vocab_from_model`` must fall back to the EMBEDDED vocab
+    (otherwise ``actor``/``message``/etc. degrade to ``kind=\"unknown\"``,
+    ``name=\"actor\"`` — wrong data on the only read-inspection API,
+    ``ReadModel.children``).  This test would FAIL without that fallback.
+
+    It reproduces the wheel condition by pointing at a nonexistent
+    ``model_path``, then walks the parsed tree through the generated package
+    and asserts the kinds/names are correct.
+    """
+    import sys
+
+    from sysml2py_lab.codegen.emit import EmitOptions, emit_sysml2py
+
+    pkg = emit_sysml2py(tmp_path / "out", opts=EmitOptions())
+    sys.path.insert(0, str(pkg / "src"))
+    try:
+        # load read_model from the GENERATED package, not the lab
+        from sysml2py import read_model
+
+        src = tmp_path / "kinds.sysml"
+        src.write_text(
+            "package P {\n"
+            "  actor driver : Person;\n"
+            "  message m;\n"
+            "  attribute mass : Scalar;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        model = read_model(src, model_path="/nonexistent/children.json")
+        # walk the whole tree collecting (kind, name) pairs, skipping the
+        # structural brace/comment nodes
+        kinds: set[tuple[str, str]] = set()
+
+        def walk(n):
+            if n.kind not in {"brace_open", "brace_close", "comment"}:
+                kinds.add((n.kind, n.name))
+            for c in getattr(n, "children", []):
+                walk(c)
+
+        for top in model.children:
+            walk(top)
+        # actor and message must be real kinds (embedded vocab), not degraded
+        assert ("actor", "driver") in kinds, kinds
+        assert ("message", "m") in kinds, kinds
+        assert ("attribute", "mass") in kinds, kinds
+    finally:
+        sys.path.remove(str(pkg / "src"))
+        sys.modules.pop("sysml2py", None)

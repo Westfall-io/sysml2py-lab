@@ -175,9 +175,22 @@ def corpus_stats(corpus_dir: Path, *, model_path: str | None = None) -> dict:
     node kind (set-based; a kind present in 60 files maxes at 60), the set of
     model kinds with ZERO corpus coverage, and fidelity totals.  `unknown`
     (the opaque bucket) is excluded — it is not a vocabulary member.
+
+    `model_loaded` reflects whether the relationship model FILE was actually
+    loaded (a real `spec/relationships/children.json` or an explicit
+    `model_path`).  The embedded kind vocab in ir.py is a CLASSIFICATION
+    fallback for the distributable, not a claim that the relationship model is
+    present — so a missing model file still reports `model_loaded: False` and
+    does NOT report perfect coverage (W3).
     """
+    from pathlib import Path as _Path
+
     vocab = set(_kind_vocab_from_model(model_path))
-    model_loaded = bool(vocab)
+    if model_path:
+        model_loaded = _Path(model_path).exists()
+    else:
+        cand = _Path(__file__).resolve().parents[2] / "spec" / "relationships" / "children.json"
+        model_loaded = cand.exists()
     used: dict[str, int] = {}
     per_file: dict[str, list[str]] = {}
     fidelity_total = {"modelled": 0, "partial": 0, "opaque": 0}

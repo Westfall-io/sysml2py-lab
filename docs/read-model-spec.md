@@ -75,14 +75,15 @@ a leaky abstraction, so the read side was ported into the generated package:
 - The whole read side is **pure stdlib** (~870 lines: lexer 170, ir 555,
   reader 143) and talks only via intra-package relative imports, so it is
   self-contained inside the distributable and adds no runtime dependencies.
-- The copied modules are clean under ruff **defaults** (the generated package's
-  own `pyproject.toml` pins no `select`, so default rules apply). That forced
-  clearing a small amount of pre-existing lab debt in `ir.py` (unused top-level
-  `Path` import, `typing.Iterator` -> `collections.abc`, blind `except
-  Exception` narrowed, quoted forward-ref annotations unquoted) and matching
-  `lexer.py`'s import layout to `normalize.py`'s docstring-first pattern. The
-  lab's conservative `[tool.ruff.lint] select` + the ir.py E402 per-file-ignore
-  remain for the factory-side files.
+- The copied modules are kept lint-clean standalone because the generated
+  package's `pyproject.toml` pins no per-file-ignores, and
+  `test_generated_code_passes_ruff` / CI lint the whole generated `src` tree.
+  (Ruff's default `select` is the same E4/E7/E9/F.) That forced clearing a
+  small amount of pre-existing lab debt in `ir.py` (unused top-level `Path`
+  import, `typing.Iterator` -> `collections.abc`, blind `except Exception`
+  narrowed, quoted forward-ref annotations unquoted) and matching `lexer.py`'s
+  import layout to `normalize.py`'s docstring-first pattern. The lab's
+  conservative `[tool.ruff.lint] select` remains for the factory-side files.
 
 ## Files
 
@@ -99,8 +100,8 @@ a leaky abstraction, so the read side was ported into the generated package:
 
 Feature branch -> PR -> review (Claude Code) -> merge. Casting-tested: the
 62/62 lossless round-trip + edit tests must be green before merge, including
-`test_generated_code_passes_ruff` (the ported modules must stay ruff-clean
-under the generated package's default select).
+`test_generated_code_passes_ruff` (the ported modules must stay lint-clean
+under the whole generated `src` tree).
 
 ## Not in scope
 
