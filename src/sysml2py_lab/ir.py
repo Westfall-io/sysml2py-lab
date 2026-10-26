@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Loss-minimizing IR for SysML text (issue #7).
 
 The IR replaces the brace heuristic with a comment/string-aware parse:
@@ -22,23 +20,24 @@ At minimum it preserves the raw_text so nothing is silently dropped.
 Comments are retained as IR nodes (kind `comment`).
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Iterator
 
 from .lexer import (
-    Token,
-    tokenize_sysml,
+    BLOCK_COMMENT,
     LBRACE,
+    LINE_COMMENT,
     RBRACE,
     SEMI,
-    LINE_COMMENT,
-    BLOCK_COMMENT,
-    UNRESTRICTED_NAME,
     STRING,
-    WORD,
     SYMBOL,
+    UNRESTRICTED_NAME,
     WHITESPACE,
+    WORD,
+    Token,
+    tokenize_sysml,
 )
 
 # Node kinds
@@ -93,13 +92,59 @@ _KIND_KEYWORDS = {
 assert not (_RESERVED_KINDS & set(_KIND_KEYWORDS)), \
     f"reserved structural kinds overlap static keywords: {sorted(_RESERVED_KINDS & set(_KIND_KEYWORDS))}"
 
+# The full member-kind vocab derived from the issue-6 children model
+# (`spec/relationships/children.json` in the lab).  It is EMBEDDED here so the
+# IR classifies these kinds correctly whether the model file is reachable (the
+# lab, where it sits at <root>/spec/relationships/children.json) or not (an
+# installed wheel of the distributable, which has no spec/ dir).  Previously
+# the fallback was an empty set, which silently degraded kinds like `actor`,
+# `subject`, `flow`, `message`, `enumeration`, `allocation`, `view`, and
+# `calculation` to `opaque` — real model kinds named by the `_is_kind_word`
+# comment as "must not be downgraded".  The lookup below becomes an optional
+# refinement; this embedded set is the always-available baseline.
+_DERIVED_KIND_VOCAB = frozenset({
+    "action", "actionnode", "actiontargetsuccession", "actor", "alias",
+    "allocation", "analysiscase", "annotating", "assertconstraint",
+    "association", "associationstructure", "attribute", "behavior",
+    "behaviorusage", "bindingconnector", "booleanexpression", "calculation",
+    "case", "class", "classifier", "comment", "concern",
+    "conjugatedporttyping", "conjugation", "connection", "connector",
+    "constraint", "datatype", "defaultinterfaceend", "defaultreference",
+    "definition", "dependency", "disjoining", "doaction", "documentation",
+    "elementfilter", "entryaction", "entrytransition", "enumeratedvalue",
+    "enumeration", "enumerationusage", "eventoccurrence", "exhibitstate",
+    "exitaction", "expose", "expression", "extended", "feature",
+    "featureinverting", "flowconnection", "framedconcern", "function",
+    "guardedsuccession", "guardedtargetsuccession", "import",
+    "includeusecase", "individual", "initialnode", "interaction",
+    "interface", "interfacenonoccurrenceusage", "interfaceoccurrenceusage",
+    "invariant", "item", "itemflow", "librarypackage", "message",
+    "metaclass", "metadata", "metadatabody", "metadatabodyusage",
+    "multiplicityrange", "multiplicitysubset", "namespace", "nonfeature",
+    "nonoccurrenceusage", "objective", "objectiverequirement", "occurrence",
+    "occurrenceusage", "ownedexpression", "ownedfeaturetyping", "package",
+    "part", "performaction", "port", "portion", "predicate", "redefinition",
+    "reference", "rendering", "requirement", "requirementconstraint",
+    "requirementverification", "resultexpression", "returnfeature",
+    "returnparameter", "satisfyrequirement", "specialization",
+    "stakeholder", "state", "stateaction", "step", "structure",
+    "structureusage", "subclassification", "subject", "subsetting",
+    "succession", "successionflowconnection", "successionitemflow",
+    "targetsuccession", "targettransition", "targettransitionusage",
+    "textualrepresentation", "transition", "transitionusage", "type",
+    "typefeaturing", "usecase", "variantreference", "variantusage",
+    "verificationcase", "view", "viewpoint", "viewrendering",
+})
+
 
 def _kind_vocab_from_model(model_path: str | None = None) -> set[str]:
     """Build the set of known member-kind stems from the issue-6 children
     model (`spec/relationships/children.json`).
 
-    Returns a set of lowercased stems; empty if the model is unavailable so
-    the IR still classifies via the static fallback table.
+    Returns the embedded ``_DERIVED_KIND_VOCAB`` when the model file is
+    unavailable (an installed distributable), so classification stays complete
+    with no filesystem dependency.  When the file IS reachable (the lab), it
+    returns the file-derived set so the two stay in lockstep.
     """
     import json
     import re
@@ -112,11 +157,11 @@ def _kind_vocab_from_model(model_path: str | None = None) -> set[str]:
         if cand.exists():
             path = cand
     if path is None or not path.exists():
-        return set()
+        return set(_DERIVED_KIND_VOCAB)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return set()
+    except (OSError, ValueError):
+        return set(_DERIVED_KIND_VOCAB)
     kinds: set[str] = set()
     for body_entries in data.get("bodies", {}).values():
         for entry in body_entries:
@@ -136,12 +181,12 @@ class IRNode:
     modifiers: list[str] = field(default_factory=list)
     type_refs: list[str] = field(default_factory=list)
     multiplicity: str | None = None
-    children: list["IRNode"] = field(default_factory=list)
+    children: list[IRNode] = field(default_factory=list)
     source_span: tuple[int, int] = (0, 0)
     raw_text: str = ""
     fidelity: str = "modelled"
 
-    def walk(self) -> Iterator["IRNode"]:
+    def walk(self) -> Iterator[IRNode]:
         """Yield self and all descendants (preorder)."""
         yield self
         for c in self.children:
@@ -150,9 +195,11 @@ class IRNode:
     def dump(self, indent: int = 0) -> str:
         pad = "  " * indent
         lines = [
-            f"{pad}{self.kind} name={self.name!r} mods={self.modifiers} "
-            f"types={self.type_refs} mult={self.multiplicity} "
-            f"fid={self.fidelity} span={self.source_span}"
+            (
+                f"{pad}{self.kind} name={self.name!r} mods={self.modifiers} "
+                f"types={self.type_refs} mult={self.multiplicity} "
+                f"fid={self.fidelity} span={self.source_span}"
+            )
         ]
         for c in self.children:
             lines.append(c.dump(indent + 1))

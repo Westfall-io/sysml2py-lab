@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Comment/string-aware lexer for SysML text (issue #7).
 
 The lexer tiles the whole input into tokens — every byte belongs to exactly
@@ -14,6 +12,8 @@ Whitespace is emitted as its own token kind so that round-tripping the token
 stream reproduces the input exactly when needed; the IR layer decides whether
 whitespace belongs to a node's raw_text or is inter-node trivia.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 

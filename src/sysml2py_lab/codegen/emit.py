@@ -153,6 +153,16 @@ def emit_sysml2py(
     _norm_src = (Path(__file__).resolve().parents[1] / "normalize.py").read_text(encoding="utf-8")
     (src_pkg / "normalize.py").write_text(_norm_src, encoding="utf-8")
 
+    # Read side: lexer + IR + read_model copied into the generated package
+    # verbatim (single implementation; the read/modify/emit capability is part
+    # of the user-facing baseline, not a factory-only extra). All three are
+    # pure-stdlib and talk only via intra-package relative imports, so they
+    # are self-contained inside the distributable.
+    _lab_src = Path(__file__).resolve().parents[1]
+    for _mod in ("lexer.py", "ir.py", "reader.py"):
+        _src = (_lab_src / _mod).read_text(encoding="utf-8")
+        (src_pkg / _mod).write_text(_src, encoding="utf-8")
+
     # Package metadata + init re-exporting the generated classes
     (pkg_root / "pyproject.toml").write_text(
         env.get_template("pyproject.toml.j2").render(version=opts.version),
